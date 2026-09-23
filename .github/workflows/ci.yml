@@ -53,6 +53,12 @@ jobs:
       - name: Integration tests (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:integration
+      # package.json "engines" promises 1.85; test the floor, not only the latest.
+      - name: Integration tests on the engine floor (Linux, VS Code 1.85.0)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:integration
+        env:
+          POLYLOG_VSCODE_VERSION: "1.85.0"
 
   # CLAUDE.md constraint 2 and spec §6: no literal colors or fonts, and
   # impeccable's detector rules (contrast, focus states, gray-on-color, nested

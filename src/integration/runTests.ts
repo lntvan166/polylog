@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const env = gitEnv(home);
 
   await runTests({
-    vscodeExecutablePath: await downloadAndUnzipVSCode("stable"),
+    vscodeExecutablePath: await downloadAndUnzipVSCode(process.env.POLYLOG_VSCODE_VERSION ?? "stable"),
     extensionDevelopmentPath: repoRoot,
     extensionTestsPath: path.resolve(__dirname, "index.js"),
     launchArgs: [workspaceFile, "--disable-extensions", "--disable-workspace-trust", "--no-sandbox"],

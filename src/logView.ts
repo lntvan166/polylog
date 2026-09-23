@@ -76,6 +76,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private history: { repoId: string; path: string } | null = null;
   /** The history diff currently open (its modified-side URI), replaced on each step. */
   private historyTab: string | undefined;
+  /** History steps swap tabs one at a time, and a step already overtaken is skipped. */
+  private historySteps: Promise<void> = Promise.resolve();
+  private historyStep = 0;
   private dateBeforeHistory: Pick<FilterState, "date" | "from" | "to"> | null = null;
   /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
   private branches: BranchName[] = [];
@@ -456,7 +459,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.deps.changes.set(null);
   }
 
-  private async openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
+  private openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
+    // Overlapping swaps (holding ↓ with preview editors off) closed the tab a later
+    // step had just activated: its diff was still open, so VS Code reused it.
+    const step = ++this.historyStep;
+    const run = () => (step === this.historyStep ? this.swapHistoryDiff(commit, preserveFocus) : undefined);
+    this.historySteps = this.historySteps.then(run, run);
+    return this.historySteps;
+  }
+
+  private async swapHistoryDiff(commit: Commit, preserveFocus: boolean): Promise<void> {
     const f = commit.file!;
     const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
     // Stepping through a history reuses one tab. VS Code's preview tab does that

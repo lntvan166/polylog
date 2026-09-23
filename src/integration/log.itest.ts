@@ -244,6 +244,8 @@ describe("Polylog panel", () => {
       const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
       await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
       const s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+      // The Log selects row 0 on its own; on a slow host that can land after a step below.
+      await until("the newest revision is shown", (x) => x.changes.items[0]?.startsWith("feat: add retry") === true);
       for (const row of [s.rows[1], s.rows[0], s.rows[1]]) {
         await send({ type: "select", repoId: row.repoId, sha: row.sha });
         await waitFor(`the diff for ${row.subject}`, () => {
@@ -254,6 +256,12 @@ describe("Polylog panel", () => {
       await sleep(300);
       const diffs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTextDiff);
       assert.strictEqual(diffs.length, 1, "each step replaced the previous history diff");
+      // Holding ↓/↑: the next step arrives while the previous one is still swapping tabs.
+      for (const row of [s.rows[0], s.rows[1], s.rows[0], s.rows[1], s.rows[0]]) await send({ type: "select", repoId: row.repoId, sha: row.sha });
+      await sleep(1500);
+      const after = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTextDiff);
+      assert.deepStrictEqual(after.map((t) => (t.input as vscode.TabInputTextDiff).modified.query.includes(s.rows[0].sha)), [true],
+        "rapid steps leave exactly one diff tab, showing the last selection");
       await send({ type: "exitHistory" });
       await until("all commits again", (x) => x.history === null);
     } finally {
