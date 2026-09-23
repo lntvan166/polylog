@@ -50,6 +50,9 @@ jobs:
       - run: npm run typecheck
       - run: npm run compile
       - run: npm test
+      - name: Integration tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:integration
 
   # CLAUDE.md constraint 2 and spec §6: no literal colors or fonts, and
   # impeccable's detector rules (contrast, focus states, gray-on-color, nested
