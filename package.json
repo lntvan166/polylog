@@ -4,6 +4,7 @@
   "description": "One git log across every repo in your workspace. Search commits by message across all of them at once, and see the changed files without switching repositories.",
   "version": "0.0.0",
   "publisher": "lntvan166",
+  "icon": "media/icon.png",
   "license": "MIT",
   "repository": {
     "type": "git",
