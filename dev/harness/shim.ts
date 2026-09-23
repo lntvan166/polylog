@@ -65,7 +65,13 @@ function handle(m: WebviewMessage): void {
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
-    case "select": send({ type: "detail", repoId: m.repoId, sha: m.sha, files: mockFiles(m.sha) }); return;
+    case "select": {
+      const subject = all.find((c) => c.sha === m.sha)?.subject ?? "";
+      const n = parseInt(m.sha.slice(0, 4), 16) % 900;
+      const message = `${subject}\n\nfunc: ACME_SYNC_${String(n).padStart(3, "0")}\ntask: ACME-${n}`;
+      send({ type: "detail", repoId: m.repoId, sha: m.sha, files: mockFiles(m.sha), message });
+      return;
+    }
     case "openFile": console.info("[harness] openFile", m); return;
     case "openSettings": console.info("[harness] openSettings"); return;
   }

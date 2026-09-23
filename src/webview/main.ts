@@ -19,6 +19,7 @@ const SKELETON_DELAY_MS = 150;
 interface Detail {
   key: string;
   files?: FileChange[] | null;
+  message?: string;
   error?: string;
 }
 
@@ -99,7 +100,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       break;
     case "detail":
       if (state.detail?.key === commitKey(m)) {
-        state.detail = { key: state.detail.key, files: m.files, error: m.error };
+        state.detail = { key: state.detail.key, files: m.files, message: m.message, error: m.error };
         if (state.openWhenLoaded) {
           state.openWhenLoaded = false;
           openFirstFile();
@@ -159,12 +160,13 @@ function runEmptyAction(action: EmptyAction): void {
 function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   list.update({
-    rows: state.rows, repoNames: names, repoIds: state.filter.repoIds, selected: state.selected, now: state.now,
+    rows: state.rows, repoNames: names, repoIds: state.filter.repoIds, repoOrder: state.repos.map((r) => r.id),
+    selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter }) : null);
   const c = state.rows[state.selected] ?? null;
-  detail.render(c, c ? names.get(c.repoId) ?? c.repoId : "", state.detail?.files, state.detail?.error);
+  detail.render(c, c ? names.get(c.repoId) ?? c.repoId : "", state.detail?.files, state.detail?.error, state.detail?.message);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;

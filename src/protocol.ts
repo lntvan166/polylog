@@ -6,7 +6,7 @@ export type HostMessage =
   | { type: "init"; repos: Repo[]; filter: FilterState }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number }
-  | { type: "detail"; repoId: string; sha: string; files: FileChange[] | null; error?: string };
+  | { type: "detail"; repoId: string; sha: string; files: FileChange[] | null; message?: string; error?: string };
 
 /** Webview → extension host. Every field is untrusted until validated. */
 export type WebviewMessage =

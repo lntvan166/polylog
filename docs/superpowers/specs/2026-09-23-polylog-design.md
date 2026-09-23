@@ -243,6 +243,14 @@ Rationale: categorical color perception tops out around 8–12 hues. At 68 repos
 per-repo chip is decoration rather than information, and hand-assigned hues collapse in
 high-contrast themes. Color is spent where it carries meaning — on a small, user-chosen set.
 
+**Amended 2026-09-23 (maintainer decision):** every repository now gets a chip, as in the
+JetBrains VCS Log. The hue comes from the repo's position, cycling through the six
+`--vscode-charts-*` colors; a filtered set of six or fewer gets distinct hues. The chip is a
+22% tint behind text in `--vscode-foreground`, so contrast never depends on the hue, and in
+high-contrast themes it is an outline instead of a tint. The repo name is always printed, so
+color stays a marker, not the identifier. Rows are one line (repo | subject | author | date),
+the changed files are a folder tree, and the full commit message sits below them.
+
 ### Filters
 
 Three, each mapping to a `git log` flag:

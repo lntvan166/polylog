@@ -1,7 +1,7 @@
 import { randomBytes } from "crypto";
 import * as path from "path";
 import * as vscode from "vscode";
-import { diffSides, parseNumstat, showArgs } from "./commitDetail";
+import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
 import { fetchPage, type QueryState, type RunGit } from "./logQuery";
@@ -200,8 +200,8 @@ export class LogPanel implements vscode.Disposable {
     const repo = this.repos.find((r) => r.id === repoId);
     if (!repo || !isSha(sha)) return;
     try {
-      const out = await this.deps.run(repo.root, showArgs(sha), ctl.signal);
-      this.post({ type: "detail", repoId, sha, files: parseNumstat(out) });
+      const { files, message } = parseShow(await this.deps.run(repo.root, showArgs(sha), ctl.signal));
+      this.post({ type: "detail", repoId, sha, files, message });
     } catch (e) {
       if (!isAbortError(e)) this.post({ type: "detail", repoId, sha, files: null, error: messageOf(e) });
     }

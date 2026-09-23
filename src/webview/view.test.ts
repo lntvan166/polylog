@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentIndex, ACCENT_COUNT, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
+  fileTree, relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
 const NOW = 1790164800;
@@ -41,11 +41,13 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   console.log("ok - keyboard selection clamps to the list");
 }
 {
+  const all = ["/ws/a", "/ws/b", "/ws/c", "/ws/d", "/ws/e", "/ws/f", "/ws/g", "/ws/h"];
   assert.strictEqual(ACCENT_COUNT, 6);
-  assert.strictEqual(accentIndex("/ws/acme-api", null), null, "unfiltered: no color");
-  assert.strictEqual(accentIndex("/ws/acme-api", ["/ws/acme-web", "/ws/acme-api"]), 1);
-  assert.strictEqual(accentIndex("/ws/x", Array.from({ length: 7 }, (_, i) => i === 0 ? "/ws/x" : `/ws/${i}`)), null, "more than six: no color");
-  console.log("ok - accents only for a filtered set of at most six repos");
+  assert.strictEqual(accentIndex("/ws/b", null, all), 1, "every repo gets a color from its place in the repo list");
+  assert.strictEqual(accentIndex("/ws/h", null, all), 1, "past six hues the ramp repeats (the name still disambiguates)");
+  assert.strictEqual(accentIndex("/ws/h", ["/ws/a", "/ws/h"], all), 1, "a filtered set of up to six gets distinct hues by selection order");
+  assert.strictEqual(accentIndex("/ws/zzz", null, all), 0, "an unknown repo still renders");
+  console.log("ok - every repo has an accent; a small filtered set gets distinct ones");
 }
 {
   assert.strictEqual(repoButtonLabel(null, repos), "All repositories");
@@ -94,4 +96,13 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(reselect(null, rows), 0);
   assert.strictEqual(reselect("/ws/acme-web\0a", []), -1, "no rows, no selection");
   console.log("ok - reselect keeps the selection across a replay or refresh");
+}
+{
+  const f = (path: string) => ({ path, added: 1, deleted: 0 });
+  const tree = fileTree([f("src/client.ts"), f("internal/upload/upload_test.go"), f("README.md"), f("internal/upload/upload.go")]);
+  const shape = (nodes: ReturnType<typeof fileTree>): unknown => nodes.map((n) => n.kind === "folder" ? [n.name, n.count, shape(n.children)] : n.name);
+  assert.deepStrictEqual(shape(tree), [["internal/upload", 2, ["upload.go", "upload_test.go"]], ["src", 1, ["client.ts"]], "README.md"]);
+  assert.deepStrictEqual(shape(fileTree([f("a/b/x.ts"), f("a/c/y.ts")])), [["a", 2, [["b", 1, ["x.ts"]], ["c", 1, ["y.ts"]]]]]);
+  assert.deepStrictEqual(fileTree([]), []);
+  console.log("ok - fileTree groups by folder, folders first, single-child chains compressed");
 }

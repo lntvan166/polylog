@@ -4,7 +4,7 @@
  * `npm run check:theme` fails on any literal color or font.
  */
 :root {
-  --row-height: calc(var(--vscode-font-size, 13px) * 3.2);
+  --row-height: calc(var(--vscode-font-size, 13px) * 1.9);
   --pad-x: 12px;
 }
 
@@ -78,16 +78,17 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .notice-text { flex: 1; overflow-wrap: anywhere; }
 
 /* ── List and detail ────────────────────────────────────────────────────── */
-.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 2fr); min-height: 0; }
+.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); min-height: 0; }
 .list-pane { display: grid; min-height: 0; border-right: 1px solid var(--vscode-panel-border); }
 .list-pane > * { grid-area: 1 / 1; }
 .list { overflow-y: auto; min-height: 0; }
 .rows { position: relative; }
 
+/* One line per commit, like an IDE log: repo chip | subject | author | date. */
 .row {
   position: absolute; top: 0; left: 0; right: 0; height: var(--row-height);
-  display: flex; flex-direction: column; justify-content: center; gap: 2px;
-  padding: 0 var(--pad-x); border-left: 3px solid transparent; cursor: default;
+  display: grid; grid-template-columns: minmax(72px, 15ch) minmax(0, 1fr) minmax(48px, 10ch) 8ch;
+  align-items: center; column-gap: 10px; padding: 0 var(--pad-x); cursor: default;
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
@@ -95,45 +96,68 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
   background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
   outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px;
 }
-.subject, .meta { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.meta { display: flex; gap: 12px; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
-.list:focus .row[aria-selected="true"] .meta { color: inherit; }
-.repo { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.date { margin-left: auto; font-variant-numeric: tabular-nums; }
+.subject, .author, .date, .chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.author, .date { color: var(--vscode-descriptionForeground); }
+.list:focus .row[aria-selected="true"] :is(.author, .date) { color: inherit; }
+.date { text-align: right; font-variant-numeric: tabular-nums; }
 
-/* Repo accents: only for a filtered set of up to six repositories (spec §4). */
-.row.accent-0 { border-left-color: var(--vscode-charts-red); }
-.row.accent-1 { border-left-color: var(--vscode-charts-blue); }
-.row.accent-2 { border-left-color: var(--vscode-charts-yellow); }
-.row.accent-3 { border-left-color: var(--vscode-charts-green); }
-.row.accent-4 { border-left-color: var(--vscode-charts-purple); }
-.row.accent-5 { border-left-color: var(--vscode-charts-orange); }
+/* Repo chip: a tint of the repo's chart hue behind text in the theme's own
+   foreground, so contrast never depends on the hue. Every repo has one
+   (maintainer decision); see accentIndex in view.ts. */
+.chip {
+  justify-self: start; max-width: 100%; padding: 1px 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--vscode-foreground); font-size: 0.92em;
+}
+.accent-0 { --accent: var(--vscode-charts-red); }
+.accent-1 { --accent: var(--vscode-charts-blue); }
+.accent-2 { --accent: var(--vscode-charts-yellow); }
+.accent-3 { --accent: var(--vscode-charts-green); }
+.accent-4 { --accent: var(--vscode-charts-purple); }
+.accent-5 { --accent: var(--vscode-charts-orange); }
 
-.skeleton .bar { display: inline-block; width: 60%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
-.skeleton .bar.short { width: 35%; }
+.skeleton .bar { display: inline-block; width: 70%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
+.skeleton .bar.short { width: 50%; }
 
 .empty { align-self: start; max-width: 560px; padding: 32px 24px; }
 .empty h2 { margin: 0 0 6px; font-size: 1.1em; font-weight: 600; }
 .empty p { margin: 0 0 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
 
-.detail { overflow-y: auto; min-height: 0; padding: 8px 0; }
-.detail-header { padding: 4px var(--pad-x) 10px; }
-.detail-subject { font-weight: 600; overflow-wrap: anywhere; }
-.detail-meta { margin-top: 2px; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
-.sha { font-family: var(--vscode-editor-font-family); }
+/* Detail: file tree on top, the full commit message underneath. */
+.detail { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.detail-files { overflow-y: auto; min-height: 0; padding: 8px 0; }
 .files-count { padding: 0 var(--pad-x) 4px; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
-.files { list-style: none; margin: 0; padding: 0; }
+.tree { list-style: none; margin: 0; padding: 0; }
+.tree .tree { padding-left: 14px; }
+.folder > summary {
+  display: flex; align-items: baseline; gap: 8px; padding: 2px var(--pad-x); cursor: pointer;
+  color: var(--vscode-foreground);
+}
+.folder > summary:hover { background: var(--vscode-list-hoverBackground); }
+.folder > summary { list-style: none; }
+.folder > summary::-webkit-details-marker { display: none; }
+.folder > summary::before { content: "▾"; width: 1ch; flex: none; color: var(--vscode-icon-foreground); }
+.folder:not([open]) > summary::before { content: "▸"; }
+.folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.folder-count { margin-left: auto; font-size: 0.9em; color: var(--vscode-descriptionForeground); }
 .file {
-  display: flex; align-items: baseline; gap: 8px; width: 100%; height: auto; padding: 3px var(--pad-x);
+  display: flex; align-items: baseline; gap: 8px; width: 100%; height: auto; padding: 2px var(--pad-x) 2px calc(var(--pad-x) + 14px);
   border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--vscode-foreground); text-align: left;
 }
 .file:hover { background: var(--vscode-list-hoverBackground); }
 .file:disabled { opacity: 1; color: var(--vscode-disabledForeground); }
-.file .base { white-space: nowrap; }
+.file .base { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file .dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
 .file .stat { margin-left: auto; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
 .added { color: var(--vscode-gitDecoration-addedResourceForeground); }
 .deleted { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+.detail-message {
+  max-height: 45vh; overflow-y: auto; padding: 8px var(--pad-x) 10px;
+  border-top: 1px solid var(--vscode-panel-border);
+}
+.message-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); font-size: 0.95em; line-height: 1.45; }
+.message-meta { margin-top: 8px; font-size: 0.92em; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
+.sha { font-family: var(--vscode-editor-font-family); }
 .hint { padding: 0 var(--pad-x); color: var(--vscode-descriptionForeground); }
 .error { padding: 0 var(--pad-x); color: var(--vscode-errorForeground); }
 
@@ -146,11 +170,15 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 body.vscode-high-contrast .row:hover,
 body.vscode-high-contrast .file:hover,
 body.vscode-high-contrast .repo-option:hover,
+body.vscode-high-contrast .folder > summary:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {
   .split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
   .list-pane { border-right: 0; border-bottom: 1px solid var(--vscode-panel-border); }
+  .row { grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 8ch; }
+  .row .author { display: none; }
 }

@@ -1,13 +1,13 @@
 import * as assert from "assert";
-import { diffSides, parseNumstat, showArgs } from "./commitDetail";
+import { diffSides, parseNumstat, parseShow, showArgs } from "./commitDetail";
 
 const SHA = "a".repeat(40);
 const PARENT = "b".repeat(40);
 const OTHER = "c".repeat(40);
 
 {
-  assert.deepStrictEqual(showArgs(SHA), ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=", SHA]);
-  console.log("ok - showArgs: NUL-separated numstat, renames, first-parent for merges");
+  assert.deepStrictEqual(showArgs(SHA), ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", SHA]);
+  console.log("ok - showArgs: full message then NUL-separated numstat, renames, first-parent for merges");
 }
 
 // Byte-exact shapes captured from git 2.43 (see plan Task 5 notes).
@@ -51,4 +51,16 @@ const OTHER = "c".repeat(40);
   assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT] }, { path: "new.go", oldPath: "old.go" }).before.path, "old.go");
   assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT, OTHER] }, { path: "a.go" }).before.ref, PARENT, "merge: first parent");
   console.log("ok - diffSides: parent vs commit, empty root side, rename source, first parent of merges");
+}
+
+// Byte-exact shape from git 2.43: "<message>\n" RS NUL [NUL|\n] numstat…
+{
+  const out = "feat: sync code (ACME-7)\n\nfunc: ACME_SYNC_005\ntask: 7\n\x1e\x00\x001\t0\tside.txt\x00";
+  assert.deepStrictEqual(parseShow(out), {
+    message: "feat: sync code (ACME-7)\n\nfunc: ACME_SYNC_005\ntask: 7",
+    files: [{ path: "side.txt", added: 1, deleted: 0 }],
+  });
+  assert.deepStrictEqual(parseShow("merge\n\x1e\x00\n1\t0\tside.txt\x00").files, [{ path: "side.txt", added: 1, deleted: 0 }]);
+  assert.deepStrictEqual(parseShow("empty commit\n\x1e\x00"), { message: "empty commit", files: [] });
+  console.log("ok - parseShow splits the full message from the file list");
 }

@@ -3,7 +3,7 @@ import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { parseNumstat, showArgs } from "./commitDetail";
+import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, logArgs, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
@@ -61,10 +61,11 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   }
   {
     const [renameSha, , , rootSha] = (await log(ALL)).map((c) => c.sha);
-    const root = parseNumstat(await runGit(api, showArgs(rootSha)));
+    const root = parseShow(await runGit(api, showArgs(rootSha))).files;
     assert.deepStrictEqual(root.find((f) => f.path === "logo.png"), { path: "logo.png", added: null, deleted: null });
     assert.deepStrictEqual(root.find((f) => f.path === "sp ace é.txt"), { path: "sp ace é.txt", added: 1, deleted: 0 });
-    assert.deepStrictEqual(parseNumstat(await runGit(api, showArgs(renameSha))), [{ path: "renamed.txt", oldPath: "sp ace é.txt", added: 0, deleted: 0 }]);
+    assert.strictEqual(parseShow(await runGit(api, showArgs(renameSha))).message, "café: rename");
+    assert.deepStrictEqual(parseShow(await runGit(api, showArgs(renameSha))).files, [{ path: "renamed.txt", oldPath: "sp ace é.txt", added: 0, deleted: 0 }]);
     console.log("ok - numstat on real commits: binary, unicode path, rename");
   }
   {
@@ -80,7 +81,7 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     });
     const merge = parseLog(await runGit(web, logArgs(ALL, { pageSize: 1, now: 0 })), web)[0];
     assert.strictEqual(merge.parents.length, 2);
-    assert.deepStrictEqual(parseNumstat(await runGit(web, showArgs(merge.sha))), [{ path: "side.txt", added: 1, deleted: 0 }]);
+    assert.deepStrictEqual(parseShow(await runGit(web, showArgs(merge.sha))).files, [{ path: "side.txt", added: 1, deleted: 0 }]);
     console.log("ok - a merge commit lists files against its first parent");
   }
   {

@@ -66,8 +66,9 @@ product; everything else is a non-goal.
   no hard-coded color, no bundled font, no light/dark assumption. Must render correctly in
   light, dark and high-contrast. Expressive design work (distinctive palette, typography,
   personality) is out of scope by decision.
-- Repo color is spent only on repositories the user has filtered down to (at most 8), from
-  the `--vscode-charts-*` ramp. Otherwise the repo is a plain column.
+- Every repository gets a tinted chip from the six `--vscode-charts-*` hues (maintainer
+  decision, 2026-09-23, amending spec §4). The name is always printed; color is a marker.
+  High-contrast themes use an outline instead of a tint.
 - **Voice:** like VS Code itself. Short, plain, factual. Name the cause and the fix. No
   personality, no jokes, no exclamation marks.
 - Fixtures and examples use neutral placeholders only: repos `acme-web`, `acme-api`,

@@ -2,9 +2,17 @@ import type { RevisionRef } from "./revisionUri";
 import type { Commit, FileChange } from "./types";
 
 export function showArgs(sha: string): string[] {
-  // -z: paths unquoted and NUL-terminated; -M: renames even if diff.renames=false;
-  // merges diff against their first parent, matching the diff editor's "before".
-  return ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=", sha];
+  // One spawn for both halves of the detail pane: the full message (ended by
+  // RS), then the file list. -z: paths unquoted and NUL-terminated; -M: renames
+  // even if diff.renames=false; merges diff against their first parent,
+  // matching the diff editor's "before".
+  return ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", sha];
+}
+
+export function parseShow(stdout: string): { message: string; files: FileChange[] } {
+  const end = stdout.indexOf("\x1e");
+  if (end < 0) return { message: "", files: parseNumstat(stdout) };
+  return { message: stdout.slice(0, end).replace(/\n+$/, ""), files: parseNumstat(stdout.slice(end + 1)) };
 }
 
 const STAT = /^\n*(-|\d+)\t(-|\d+)\t([\s\S]*)$/;

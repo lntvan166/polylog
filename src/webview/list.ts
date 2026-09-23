@@ -6,6 +6,8 @@ export interface ListProps {
   rows: readonly Commit[];
   repoNames: ReadonlyMap<string, string>;
   repoIds: readonly string[] | null;
+  /** Every repository id in workspace order; each repo's color comes from its place here. */
+  repoOrder: readonly string[];
   selected: number;
   now: number;
   skeleton: boolean;
@@ -20,7 +22,7 @@ const SKELETON_ROWS = 8;
  */
 export class CommitList {
   private rowHeight = 0;
-  private props: ListProps = { rows: [], repoNames: new Map(), repoIds: null, selected: -1, now: 0, skeleton: false };
+  private props: ListProps = { rows: [], repoNames: new Map(), repoIds: null, repoOrder: [], selected: -1, now: 0, skeleton: false };
 
   constructor(
     private readonly root: HTMLElement,
@@ -55,7 +57,7 @@ export class CommitList {
 
   private height(): number {
     if (this.rowHeight === 0) {
-      const probe = h("div", { class: "row" }, [h("div", { class: "subject" }, ["M"]), h("div", { class: "meta" }, ["M"])]);
+      const probe = h("div", { class: "row" }, [h("span", { class: "subject" }, ["M"])]);
       probe.style.visibility = "hidden";
       this.body.append(probe);
       this.rowHeight = probe.offsetHeight || 40;
@@ -78,8 +80,7 @@ export class CommitList {
       this.body.style.height = `${SKELETON_ROWS * rh}px`;
       for (let i = 0; i < SKELETON_ROWS; i++) {
         this.body.append(this.place(h("div", { class: "row skeleton", "aria-hidden": "true" }, [
-          h("div", { class: "subject" }, [h("span", { class: "bar" })]),
-          h("div", { class: "meta" }, [h("span", { class: "bar short" })]),
+          h("span", { class: "bar short" }), h("span", { class: "bar" }), h("span", { class: "bar short" }), h("span", { class: "bar short" }),
         ]), i));
       }
       this.root.setAttribute("aria-rowcount", "0");
@@ -94,22 +95,21 @@ export class CommitList {
     else this.root.removeAttribute("aria-activedescendant");
   }
 
+  /** One line, like an IDE log: repo chip | subject | author | date. */
   private renderRow(c: Commit, i: number): HTMLElement {
-    const accent = accentIndex(c.repoId, this.props.repoIds);
+    const accent = accentIndex(c.repoId, this.props.repoIds, this.props.repoOrder);
     return h("div", {
-      class: accent === null ? "row" : `row accent-${accent}`,
+      class: "row",
       role: "row",
       id: `row-${i}`,
       "aria-rowindex": String(i + 1),
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
     }, [
-      h("div", { class: "subject", role: "gridcell" }, [c.subject]),
-      h("div", { class: "meta", role: "presentation" }, [
-        h("span", { class: "repo", role: "gridcell" }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
-        h("span", { class: "author", role: "gridcell" }, [c.author]),
-        h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
-      ]),
+      h("span", { class: `chip accent-${accent}`, role: "gridcell" }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
+      h("span", { class: "subject", role: "gridcell", title: c.subject }, [c.subject]),
+      h("span", { class: "author", role: "gridcell" }, [c.author]),
+      h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
     ]);
   }
 
