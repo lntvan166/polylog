@@ -42,13 +42,13 @@ export function moveSelection(key: string, index: number, total: number, pageRow
   }
 }
 
-/** VS Code defines exactly six chart hues; see styles.css .accent-0 … .accent-5. */
+/** Six hues: five of VS Code's chart colors plus terminal cyan; see styles.css .accent-0 … .accent-5. */
 export const ACCENT_COUNT = 6;
 
 /**
  * Every repository gets a hue (maintainer decision, overriding spec §4's
  * filtered-only rule): its place in the workspace's repo list, cycling through
- * the six chart colors. When the user filters to six or fewer, hues follow the
+ * the six hues. When the user filters to six or fewer, hues follow the
  * selection so each chosen repo is distinct. The color is only a marker; the
  * repo name is always printed beside it.
  */

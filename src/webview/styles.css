@@ -155,7 +155,8 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .accent-2 { --accent: var(--vscode-charts-yellow); }
 .accent-3 { --accent: var(--vscode-charts-green); }
 .accent-4 { --accent: var(--vscode-charts-purple); }
-.accent-5 { --accent: var(--vscode-charts-orange); }
+/* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
+.accent-5 { --accent: var(--vscode-terminal-ansiCyan); }
 
 .skeleton .bar { display: inline-block; width: 70%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
 .skeleton .bar.short { width: 50%; }

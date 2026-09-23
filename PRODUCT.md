@@ -67,7 +67,8 @@ product; everything else is a non-goal.
   no hard-coded color, no bundled font, no light/dark assumption. Must render correctly in
   light, dark and high-contrast. Expressive design work (distinctive palette, typography,
   personality) is out of scope by decision.
-- Every repository gets a tinted chip from the six `--vscode-charts-*` hues (maintainer
+- Every repository gets a tinted chip from six theme hues — five `--vscode-charts-*` plus
+  `--vscode-terminal-ansiCyan`, since `charts-orange` vanishes in real themes (maintainer
   decision, 2026-09-23, amending spec §4). The name is always printed; color is a marker.
   High-contrast themes use an outline instead of a tint.
 - **Voice:** like VS Code itself. Short, plain, factual. Name the cause and the fix. No
