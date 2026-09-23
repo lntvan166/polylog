@@ -1,0 +1,10 @@
+# Allowlist: exclude everything, then re-include exactly what ships.
+# CHANGELOG.md ships on purpose — both registries render it.
+**
+!out/extension.js
+!out/webview.js
+!out/webview.css
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE

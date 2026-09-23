@@ -16,3 +16,7 @@ PRODUCT.md.bak
 
 # Dev-only browser harness build output (the harness SOURCE is committed)
 dev/harness/dist/
+
+# Denylist entries (employer, internal repo/service/branch/ticket/module names).
+# Never committed; CI reads the same list from the POLYLOG_DENYLIST secret.
+.denylist

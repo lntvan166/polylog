@@ -1,0 +1,104 @@
+{
+  "name": "polylog",
+  "displayName": "Polylog — Multi-Repo Git Log",
+  "description": "One git log across every repo in your workspace. Search commits by message across all of them at once, and see the changed files without switching repositories.",
+  "version": "0.0.0",
+  "publisher": "lntvan166",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lntvan166/polylog"
+  },
+  "bugs": {
+    "url": "https://github.com/lntvan166/polylog/issues"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "log",
+    "history",
+    "multi-repo",
+    "monorepo",
+    "polyrepo",
+    "multi-root",
+    "commits",
+    "workspace"
+  ],
+  "activationEvents": [
+    "onCommand:polylog.open"
+  ],
+  "main": "./out/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "polylog.open",
+        "title": "Open Merged Log",
+        "category": "Polylog"
+      }
+    ],
+    "configuration": {
+      "title": "Polylog",
+      "properties": {
+        "polylog.pageSize": {
+          "type": "number",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Commits fetched per repository per page."
+        },
+        "polylog.maxConcurrency": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Maximum number of git processes running at once."
+        },
+        "polylog.scanDepth": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 6,
+          "markdownDescription": "Folder levels to search for repositories when the Git extension reports none. See also `#git.repositoryScanMaxDepth#`."
+        },
+        "polylog.excludeRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns for repositories to leave out, matched against the repository folder name and its full path."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run check:denylist && npm run bundle",
+    "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --target=node18",
+    "bundle": "npm run bundle:ext -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "check:denylist": "node scripts/check-denylist.mjs",
+    "test:unit": "node scripts/denylist.test.mjs",
+    "test": "npm run test:unit",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "~1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^8.57.1",
+    "typescript": "^5.9.3"
+  }
+}
