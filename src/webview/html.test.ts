@@ -18,7 +18,7 @@ const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptU
   console.log("ok - no inline styles or literal colors in the shell");
 }
 {
-  for (const id of ["filters", "search", "author", "me", "repo-button", "repo-menu", "repo-search", "repo-all", "repo-none", "repo-list", "date", "custom-range", "from", "to", "refresh", "notices", "list", "rows", "empty", "more", "count"]) {
+  for (const id of ["app", "repo-pane", "repo-filter", "repo-rows", "splitter", "filters", "search", "author", "me", "date", "custom-range", "from", "to", "refresh", "notices", "list", "rows", "empty", "more", "count"]) {
     assert.ok(html.includes(`id="${id}"`), `missing #${id}`);
   }
   console.log("ok - every element main.ts looks up exists");

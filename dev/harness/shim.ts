@@ -62,7 +62,8 @@ function reload(): void {
 
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "init", repos, filter, me: "dana@example.com" }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, me: "dana@example.com", layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" } }, 0); reload(); return;
+    case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;

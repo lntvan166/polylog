@@ -39,4 +39,7 @@
   --vscode-charts-green: #374e06;
   --vscode-charts-purple: #652d90;
   --vscode-charts-orange: #8f5a00;
+  --vscode-panel-background: #ffffff;
+  --vscode-sash-hoverBorder: #006bbd;
+  --vscode-list-focusBackground: transparent;
 }

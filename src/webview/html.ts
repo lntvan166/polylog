@@ -23,50 +23,46 @@ export function renderHtml(o: HtmlOptions): string {
 <title>Polylog</title>
 </head>
 <body>
-<div class="app">
-  <form id="filters" class="filters" role="search" aria-label="Filter commits">
-    <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
-    <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">
-    <button id="me" class="secondary" type="button" title="Only my commits" hidden>Me</button>
-    <div class="repo-picker">
-      <button id="repo-button" class="dropdown" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="repo-menu">All repositories</button>
-      <div id="repo-menu" class="menu" hidden>
-        <input id="repo-search" type="search" placeholder="Filter repositories" aria-label="Filter repositories" autocomplete="off" spellcheck="false">
-        <div class="menu-actions">
-          <button id="repo-all" class="link" type="button">All</button>
-          <button id="repo-none" class="link" type="button">None</button>
+<div id="app" class="app">
+  <aside id="repo-pane" class="repo-pane" aria-label="Repositories">
+    <div class="repo-search"><input id="repo-filter" class="repo-filter" type="search" placeholder="Filter repositories" aria-label="Filter repositories" autocomplete="off" spellcheck="false"></div>
+    <div id="repo-rows" class="repo-rows" role="listbox" aria-multiselectable="true" aria-label="Repositories" tabindex="0"></div>
+  </aside>
+  <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the repositories pane" tabindex="0"></div>
+  <div class="log">
+    <form id="filters" class="filters" role="search" aria-label="Filter commits">
+      <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
+      <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">
+      <button id="me" class="secondary" type="button" title="Only my commits" hidden>Me</button>
+      <select id="date" aria-label="Date range">
+        <option value="24h">Last 24 hours</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+        <option value="all">All time</option>
+        <option value="custom">Custom range</option>
+      </select>
+      <span id="custom-range" class="custom-range" hidden>
+        <input id="from" type="date" aria-label="From date">
+        <span aria-hidden="true">–</span>
+        <input id="to" type="date" aria-label="To date">
+      </span>
+      <button id="refresh" class="icon-button" type="button" aria-label="Refresh" title="Refresh">${REFRESH_ICON}</button>
+    </form>
+    <div id="notices" class="notices"></div>
+    <main class="main">
+      <section class="list-pane" aria-label="Commits">
+        <div id="list" class="list" role="grid" aria-label="Commits" aria-rowcount="0" tabindex="0">
+          <div id="rows" class="rows" role="rowgroup"></div>
         </div>
-        <div id="repo-list" class="repo-list" role="group" aria-label="Repositories"></div>
-      </div>
-    </div>
-    <select id="date" aria-label="Date range">
-      <option value="24h">Last 24 hours</option>
-      <option value="7d">Last 7 days</option>
-      <option value="30d">Last 30 days</option>
-      <option value="all">All time</option>
-      <option value="custom">Custom range</option>
-    </select>
-    <span id="custom-range" class="custom-range" hidden>
-      <input id="from" type="date" aria-label="From date">
-      <span aria-hidden="true">–</span>
-      <input id="to" type="date" aria-label="To date">
-    </span>
-    <button id="refresh" class="icon-button" type="button" aria-label="Refresh" title="Refresh">${REFRESH_ICON}</button>
-  </form>
-  <div id="notices" class="notices"></div>
-  <main class="main">
-    <section class="list-pane" aria-label="Commits">
-      <div id="list" class="list" role="grid" aria-label="Commits" aria-rowcount="0" tabindex="0">
-        <div id="rows" class="rows" role="rowgroup"></div>
-      </div>
-      <div id="empty" class="empty" hidden></div>
-    </section>
-  </main>
-  <footer class="footer">
-    <button id="more" class="secondary" type="button" hidden>Load More</button>
-    <span class="note" title="Commits in different repositories share no history, so they are merged by committer date. A rebase or a skewed clock can place a commit out of order.">Newest first by commit date</span>
-    <span id="count" class="count" aria-live="polite"></span>
-  </footer>
+        <div id="empty" class="empty" hidden></div>
+      </section>
+    </main>
+    <footer class="footer">
+      <button id="more" class="secondary" type="button" hidden>Load More</button>
+      <span class="note" title="Commits in different repositories share no history, so they are merged by committer date. A rebase or a skewed clock can place a commit out of order.">Newest first by commit date</span>
+      <span id="count" class="count" aria-live="polite"></span>
+    </footer>
+  </div>
 </div>
 <script nonce="${o.nonce}" src="${o.scriptUri}"></script>
 </body>

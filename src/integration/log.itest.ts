@@ -71,27 +71,20 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
-  it("the Repositories pane filters the Log and follows the dropdown", async () => {
-    let s = await snapshot();
-    assert.deepStrictEqual(s.repoTree.items, ["All repositories", "acme-api", "acme-libs", "acme-web"]);
-    assert.deepStrictEqual(s.repoTree.selected, ["All repositories"]);
-    const api = s.repos.find((r) => r.name === "acme-api")!;
-    await vscode.commands.executeCommand("polylog._itest.pickRepos", [api.id]);
-    s = await until("acme-api only", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === api.id));
-    assert.deepStrictEqual(s.filter.repoIds, [api.id], "the pick became the Log's repo filter");
-    const web = s.repos.find((r) => r.name === "acme-web")!;
-    await send({ type: "filter", filter: { ...ALL, repoIds: [web.id] } });
-    await until("the tree follows the dropdown", (x) => x.repoTree.selected.join() === "acme-web");
-    await vscode.commands.executeCommand("polylog._itest.pickRepos", ["polylog:all"]);
-    await until("every repo again", (x) => x.rows.length === 6 && x.filter.repoIds === null);
+  it("remembers the Repositories pane width the user dragged to", async () => {
+    assert.strictEqual((await snapshot()).layout.repoPaneWidth, 190, "default width");
+    await send({ type: "layout", repoPaneWidth: 240 });
+    assert.strictEqual((await snapshot()).layout.repoPaneWidth, 240);
+    await send({ type: "layout", repoPaneWidth: Number.NaN });
+    assert.strictEqual((await snapshot()).layout.repoPaneWidth, 240, "a bad width from the webview is ignored");
   });
 
   it("Group by Repository is on by default and can be turned off and on", async () => {
-    assert.strictEqual((await snapshot()).groupByRepo, true);
+    assert.strictEqual((await snapshot()).layout.groupByRepo, true);
     await vscode.commands.executeCommand("polylog.hideRepos");
-    assert.strictEqual((await snapshot()).groupByRepo, false);
+    assert.strictEqual((await snapshot()).layout.groupByRepo, false);
     await vscode.commands.executeCommand("polylog.showRepos");
-    assert.strictEqual((await snapshot()).groupByRepo, true);
+    assert.strictEqual((await snapshot()).layout.groupByRepo, true);
   });
 
   it("offers the user's own git email as the Me author", async () => {

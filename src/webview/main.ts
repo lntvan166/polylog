@@ -7,6 +7,8 @@ import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
 import { CommitList } from "./list";
 import { NoticeBar } from "./notices";
+import { RepoPane } from "./repoPane";
+import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH } from "./repoPaneModel";
 import { countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
@@ -39,6 +41,42 @@ const notices = new NoticeBar(byId("notices"), () => {
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }));
+const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
+const appEl = byId("app");
+const splitter = byId("splitter");
+let paneWidth = DEFAULT_REPO_PANE_WIDTH;
+
+function applyPaneWidth(width: number): void {
+  paneWidth = clampPaneWidth(width, window.innerWidth);
+  appEl.style.setProperty("--repo-pane-width", `${paneWidth}px`);
+  splitter.setAttribute("aria-valuenow", String(paneWidth));
+}
+
+// Drag (or ←/→) the divider; the width is saved by the host when you let go.
+splitter.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  splitter.setPointerCapture(e.pointerId);
+  splitter.classList.add("dragging");
+  const startX = e.clientX;
+  const startWidth = paneWidth;
+  const move = (ev: PointerEvent) => applyPaneWidth(startWidth + ev.clientX - startX);
+  const up = () => {
+    splitter.classList.remove("dragging");
+    splitter.removeEventListener("pointermove", move);
+    splitter.removeEventListener("pointerup", up);
+    post({ type: "layout", repoPaneWidth: paneWidth });
+  };
+  splitter.addEventListener("pointermove", move);
+  splitter.addEventListener("pointerup", up);
+});
+splitter.addEventListener("keydown", (e) => {
+  const step = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
+  if (!step) return;
+  e.preventDefault();
+  applyPaneWidth(paneWidth + step);
+  post({ type: "layout", repoPaneWidth: paneWidth });
+});
+window.addEventListener("resize", () => applyPaneWidth(paneWidth));
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 
@@ -56,7 +94,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.repos = m.repos;
       state.filter = m.filter;
       filters.setMe(m.me);
-      filters.update(m.filter, m.repos);
+      filters.update(m.filter);
+      repoPane.update(m.repos, m.filter.repoIds);
+      appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
+      applyPaneWidth(m.layout.repoPaneWidth);
       break;
     case "loading":
       state.loading = true;
@@ -107,7 +148,8 @@ function openFirstFile(): void {
 
 function setFilter(f: FilterState): void {
   state.filter = f;
-  filters.update(f, state.repos);
+  filters.update(f);
+  repoPane.update(state.repos, f.repoIds);
   post({ type: "filter", filter: f });
   render();
 }
@@ -148,10 +190,6 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key !== "Escape") return;
-  if (filters.closeMenu()) {
-    e.preventDefault();
-    return;
-  }
   if (t === searchEl && searchEl.value !== "") {
     e.preventDefault();
     setFilter({ ...state.filter, text: "" });

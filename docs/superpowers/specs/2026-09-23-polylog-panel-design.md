@@ -144,3 +144,21 @@ rejection of a permanent repo sidebar.
   dropdown and still passed to git; changing the dropdown moves the tree's selection.
 - **Group by Repository** is on by default; the Log's title bar toggles it
   (`polylog.showRepos` / `polylog.hideRepos`, context key `polylog.hideRepos`, persisted).
+
+## 11. Amendment: Repositories pane inside the Log webview (2026-09-23, maintainer decision)
+
+Supersedes §10's native Repositories view. Native views in one container can be collapsed
+by clicking their title (losing the user's size), and extensions cannot style the dividers
+between them, so the Repositories pane moved into the Log webview:
+
+- Log view = Repositories pane | draggable divider | Log. The divider is a theme line
+  (`panel.border`) that lights with `sash.hoverBorder`; drag or ←/→ resizes; the width is
+  saved (`globalState`, default 190px, clamped 120–480px, leaving ≥300px for the Log).
+- The pane: a search box that narrows the repo list, "All repositories" with the count, and
+  a checkbox plus chip-colored dot per repo. Click a name = only that repo; checkbox,
+  Space or Ctrl/Cmd-click = toggle; Enter = only. It edits the same repo filter (still
+  passed to git); the filter bar's repo dropdown is removed.
+- Changes stays a native tree (file-icon theme + git colors). View `initialSize`: Log 1100,
+  Changes 450, matching the maintainer's reference layout.
+- The webview paints `panel.background`, the same surface as the native tree beside it.
+- Group by Repository now shows or hides this pane.

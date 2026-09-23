@@ -12,7 +12,8 @@
 html, body { height: 100%; margin: 0; padding: 0; }
 body {
   overflow: hidden;
-  background: var(--vscode-editor-background);
+  /* A panel view: match the panel's surface (and the native Changes tree beside it), not the editor's. */
+  background: var(--vscode-panel-background, var(--vscode-editor-background));
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
   font-size: var(--vscode-font-size);
@@ -23,12 +24,36 @@ button, input, select { font: inherit; }
 :focus { outline: none; }
 :focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
-.app { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; height: 100vh; }
+/* Repositories | divider | Log. The pane width is set from main.ts (--repo-pane-width). */
+.app { display: grid; grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr); height: 100vh; }
+.app.no-repos { grid-template-columns: minmax(0, 1fr); }
+.app.no-repos .repo-pane, .app.no-repos .splitter { display: none; }
+.log { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+
+/* ── Repositories pane ──────────────────────────────────────────────────── */
+.repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+/* Same height and bottom line as the Log's filter bar, so the two panes' rows line up. */
+.repo-search { padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.repo-filter { width: 100%; }
+.repo-rows { overflow-y: auto; min-height: 0; padding: 2px 0 6px; }
+.repo-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.repo-row { display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 10px; cursor: pointer; white-space: nowrap; }
+.repo-row:hover { background: var(--vscode-list-hoverBackground); }
+.repo-rows:focus .repo-row.active { background: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground)); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
+.repo-row[aria-selected="false"] .repo-name { color: var(--vscode-descriptionForeground); }
+.repo-check { margin: 0; flex: none; accent-color: var(--vscode-button-background); }
+.repo-dot { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--accent); }
+.repo-dot.all { background: transparent; border: 1px solid var(--vscode-descriptionForeground); }
+.repo-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* The divider: a visible theme line that lights up like VS Code's own sash. */
+.splitter { cursor: col-resize; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); touch-action: none; }
+.splitter:hover, .splitter.dragging, .splitter:focus-visible { background: var(--vscode-sash-hoverBorder); outline: none; }
 
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
-.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px var(--pad-x); border-bottom: 1px solid var(--vscode-panel-border); }
-.search { flex: 1 1 240px; min-width: 160px; }
-.author-filter { flex: 0 1 160px; min-width: 100px; }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.search { flex: 1 1 180px; min-width: 120px; }
+.author-filter { flex: 0 1 140px; min-width: 90px; }
 #me[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 input[type="search"], input[type="date"], select {
   height: 26px; padding: 2px 6px; border-radius: 2px;
@@ -46,8 +71,8 @@ button {
 }
 button:hover { background: var(--vscode-button-hoverBackground); }
 button:disabled { cursor: default; opacity: 0.6; }
-button.secondary, button.dropdown { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
-button.secondary:hover, button.dropdown:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
 button.link { height: auto; padding: 2px 4px; border: 0; background: transparent; color: var(--vscode-textLink-foreground); }
 button.link:hover { background: transparent; color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
 .icon-button {
@@ -55,21 +80,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
   border-color: transparent; border-radius: 4px; background: transparent; color: var(--vscode-icon-foreground);
 }
 .icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
-
-.repo-picker { position: relative; }
-.dropdown { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu {
-  position: absolute; top: calc(100% + 2px); left: 0; z-index: 10;
-  width: 280px; max-height: 60vh; display: flex; flex-direction: column; gap: 4px; padding: 6px;
-  background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground);
-  border: 1px solid var(--vscode-dropdown-border); box-shadow: 0 2px 8px var(--vscode-widget-shadow);
-}
-.menu input[type="search"] { width: 100%; }
-.menu-actions { display: flex; gap: 4px; }
-.repo-list { overflow-y: auto; min-height: 0; }
-.repo-option { display: flex; align-items: center; gap: 6px; padding: 2px 4px; cursor: pointer; }
-.repo-option:hover { background: var(--vscode-list-hoverBackground); }
-.repo-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ── Notices ────────────────────────────────────────────────────────────── */
 .notice {
@@ -108,7 +118,7 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
    (maintainer decision); see accentIndex in view.ts. */
 .chip {
   justify-self: start; max-width: 100%; padding: 1px 6px; border-radius: 3px;
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--vscode-foreground); font-size: 0.92em;
 }
 .accent-0 { --accent: var(--vscode-charts-red); }
