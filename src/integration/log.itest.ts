@@ -132,6 +132,17 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("colors tree files by what the commit did to them", async () => {
+    const retry = bySubject(await snapshot(), "feat: add retry");
+    await send({ type: "select", repoId: retry.repoId, sha: retry.sha });
+    let s = await until("retry decorations", (x) => x.changes.decorations.length > 0 && x.changes.items[0].startsWith("feat: add retry"));
+    assert.deepStrictEqual(s.changes.decorations, ["upload.go M gitDecoration.modifiedResourceForeground"]);
+    const root = bySubject(s, "feat: scaffold api");
+    await send({ type: "select", repoId: root.repoId, sha: root.sha });
+    s = await until("root decorations", (x) => x.changes.items[0]?.startsWith("feat: scaffold api") && x.changes.decorations.length > 0);
+    assert.deepStrictEqual(s.changes.decorations, ["upload.go A gitDecoration.addedResourceForeground"]);
+  });
+
   it("tree files are not worktree URIs (no live git or Problems decorations)", async () => {
     const c = bySubject(await snapshot(), "feat: add retry");
     await send({ type: "select", repoId: c.repoId, sha: c.sha });

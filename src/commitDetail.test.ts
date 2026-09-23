@@ -6,7 +6,7 @@ const PARENT = "b".repeat(40);
 const OTHER = "c".repeat(40);
 
 {
-  assert.deepStrictEqual(showArgs(SHA), ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", SHA]);
+  assert.deepStrictEqual(showArgs(SHA), ["show", "--raw", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", SHA]);
   console.log("ok - showArgs: full message then NUL-separated numstat, renames, first-parent for merges");
 }
 
@@ -63,4 +63,20 @@ const OTHER = "c".repeat(40);
   assert.deepStrictEqual(parseShow("merge\n\x1e\x00\n1\t0\tside.txt\x00").files, [{ path: "side.txt", added: 1, deleted: 0 }]);
   assert.deepStrictEqual(parseShow("empty commit\n\x1e\x00"), { message: "empty commit", files: [] });
   console.log("ok - parseShow splits the full message from the file list");
+}
+
+// Byte shape from git 2.43 with --raw: raw records (":<modes> <shas> <STATUS>\0path\0",
+// renames carry old and new), then the numstat records.
+{
+  const raw = (st: string, ...paths: string[]) => `:100644 100644 ${"a".repeat(7)} ${"b".repeat(7)} ${st}\x00${paths.join("\x00")}\x00`;
+  const out = "mix\n\x1e\x00" +
+    raw("D", "gone.txt") + raw("R100", "renamed.txt", "moved.txt") + raw("A", "new.txt") + raw("M", "side.txt") +
+    "0\t1\tgone.txt\x000\t0\t\x00renamed.txt\x00moved.txt\x001\t0\tnew.txt\x001\t0\tside.txt\x00";
+  assert.deepStrictEqual(parseShow(out).files, [
+    { path: "gone.txt", added: 0, deleted: 1, status: "D" },
+    { path: "moved.txt", oldPath: "renamed.txt", added: 0, deleted: 0, status: "R" },
+    { path: "new.txt", added: 1, deleted: 0, status: "A" },
+    { path: "side.txt", added: 1, deleted: 0, status: "M" },
+  ]);
+  console.log("ok - parseShow attaches each file's change status from --raw");
 }

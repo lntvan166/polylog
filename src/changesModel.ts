@@ -1,5 +1,5 @@
 import { fileTree, type TreeNode } from "./fileTree";
-import { commitKey, type Commit, type FileChange } from "./types";
+import { commitKey, type ChangeStatus, type Commit, type FileChange } from "./types";
 import { absoluteTime, relativeTime } from "./webview/view";
 
 export type ChangesStatus = "loading" | "ready" | "error";
@@ -26,6 +26,27 @@ export interface CommitDesc extends Base { kind: "commit"; children: NodeDesc[] 
 export interface FolderDesc extends Base { kind: "folder"; path: string; children: NodeDesc[] }
 export interface FileDesc extends Base { kind: "file"; path: string; file: FileChange; openable: boolean }
 export type NodeDesc = CommitDesc | FolderDesc | FileDesc;
+
+export interface Decoration {
+  badge: string;
+  /** A theme color id, so the tree uses the user's own git colors. */
+  color: string;
+  tooltip: string;
+}
+
+const DECORATIONS: Record<ChangeStatus, Decoration> = {
+  A: { badge: "A", color: "gitDecoration.addedResourceForeground", tooltip: "Added" },
+  M: { badge: "M", color: "gitDecoration.modifiedResourceForeground", tooltip: "Modified" },
+  D: { badge: "D", color: "gitDecoration.deletedResourceForeground", tooltip: "Deleted" },
+  R: { badge: "R", color: "gitDecoration.renamedResourceForeground", tooltip: "Renamed" },
+  C: { badge: "C", color: "gitDecoration.addedResourceForeground", tooltip: "Copied" },
+  T: { badge: "T", color: "gitDecoration.modifiedResourceForeground", tooltip: "Type changed" },
+};
+
+/** What the commit did to a file, as a native file decoration (color + badge). */
+export function decorationFor(status: ChangeStatus | undefined): Decoration | undefined {
+  return status ? DECORATIONS[status] : undefined;
+}
 
 export const NO_SELECTION = "Select a commit in the Log to see its changed files.";
 export const LOADING = "Loading changed files…";

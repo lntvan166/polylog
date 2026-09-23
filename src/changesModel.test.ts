@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { describeChanges, firstOpenable, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
+import { decorationFor, describeChanges, firstOpenable, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
 import type { Commit } from "./types";
 
 const NOW = 1790164800;
@@ -76,4 +76,14 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
   assert.strictEqual(firstOpenable([{ path: "a.png", added: null, deleted: null }]), undefined);
   assert.strictEqual(firstOpenable([]), undefined);
   console.log("ok - firstOpenable skips binaries and is undefined when nothing can be opened");
+}
+{
+  assert.deepStrictEqual(decorationFor("A"), { badge: "A", color: "gitDecoration.addedResourceForeground", tooltip: "Added" });
+  assert.deepStrictEqual(decorationFor("M"), { badge: "M", color: "gitDecoration.modifiedResourceForeground", tooltip: "Modified" });
+  assert.deepStrictEqual(decorationFor("D"), { badge: "D", color: "gitDecoration.deletedResourceForeground", tooltip: "Deleted" });
+  assert.deepStrictEqual(decorationFor("R"), { badge: "R", color: "gitDecoration.renamedResourceForeground", tooltip: "Renamed" });
+  assert.deepStrictEqual(decorationFor("C"), { badge: "C", color: "gitDecoration.addedResourceForeground", tooltip: "Copied" });
+  assert.deepStrictEqual(decorationFor("T"), { badge: "T", color: "gitDecoration.modifiedResourceForeground", tooltip: "Type changed" });
+  assert.strictEqual(decorationFor(undefined), undefined);
+  console.log("ok - each change status maps to the theme's git decoration color and a badge");
 }

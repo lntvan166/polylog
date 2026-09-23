@@ -14,6 +14,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     discovery,
     changes,
+    vscode.window.registerFileDecorationProvider(changes),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),

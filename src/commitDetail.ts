@@ -1,18 +1,41 @@
 import type { RevisionRef } from "./revisionUri";
-import type { Commit, FileChange } from "./types";
+import type { ChangeStatus, Commit, FileChange } from "./types";
 
 export function showArgs(sha: string): string[] {
-  // One spawn for both halves of the detail pane: the full message (ended by
-  // RS), then the file list. -z: paths unquoted and NUL-terminated; -M: renames
-  // even if diff.renames=false; merges diff against their first parent,
-  // matching the diff editor's "before".
-  return ["show", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", sha];
+  // One spawn for the whole detail: the full message (ended by RS), then --raw
+  // records (each file's change status), then --numstat (its +/− counts).
+  // -z: paths unquoted and NUL-terminated; -M: renames even if
+  // diff.renames=false; merges diff against their first parent, matching the
+  // diff editor's "before".
+  return ["show", "--raw", "--numstat", "-z", "-M", "--diff-merges=first-parent", "--format=%B%x1e", sha];
+}
+
+const STATUSES = new Set<string>(["A", "M", "D", "R", "C", "T"]);
+
+/** --raw -z records: ":<modes> <shas> <STATUS[score]>\0<path>\0", renames/copies with two paths. Keyed by the new path. */
+function parseRaw(tokens: readonly string[]): Map<string, ChangeStatus> {
+  const status = new Map<string, ChangeStatus>();
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i].replace(/^\n+/, "");
+    if (!t.startsWith(":")) continue;
+    const letter = t.split(" ").pop()?.charAt(0) ?? "";
+    const twoPaths = letter === "R" || letter === "C";
+    const path = tokens[i + (twoPaths ? 2 : 1)];
+    i += twoPaths ? 2 : 1;
+    if (path !== undefined && STATUSES.has(letter)) status.set(path, letter as ChangeStatus);
+  }
+  return status;
 }
 
 export function parseShow(stdout: string): { message: string; files: FileChange[] } {
   const end = stdout.indexOf("\x1e");
-  if (end < 0) return { message: "", files: parseNumstat(stdout) };
-  return { message: stdout.slice(0, end).replace(/\n+$/, ""), files: parseNumstat(stdout.slice(end + 1)) };
+  const body = end < 0 ? stdout : stdout.slice(end + 1);
+  const status = parseRaw(body.split("\0"));
+  const files = parseNumstat(body).map((f) => {
+    const s = status.get(f.path);
+    return s ? { ...f, status: s } : f;
+  });
+  return { message: end < 0 ? "" : stdout.slice(0, end).replace(/\n+$/, ""), files };
 }
 
 const STAT = /^\n*(-|\d+)\t(-|\d+)\t([\s\S]*)$/;

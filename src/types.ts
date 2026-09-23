@@ -17,6 +17,9 @@ export interface Commit {
   parents: string[];
 }
 
+/** What a commit did to a file, from `git show --raw`: Added, Modified, Deleted, Renamed, Copied, Type-changed. */
+export type ChangeStatus = "A" | "M" | "D" | "R" | "C" | "T";
+
 export interface FileChange {
   path: string;
   /** Set for renames. */
@@ -24,6 +27,7 @@ export interface FileChange {
   /** null for binary files. */
   added: number | null;
   deleted: number | null;
+  status?: ChangeStatus;
 }
 
 export interface RepoFailure {
