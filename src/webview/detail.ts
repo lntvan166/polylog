@@ -1,6 +1,7 @@
 import type { Commit, FileChange } from "../types";
 import { clear, h } from "./dom";
-import { absoluteTime, fileTree, type TreeFolder, type TreeNode } from "./view";
+import { fileTree, type TreeFolder, type TreeNode } from "../fileTree";
+import { absoluteTime } from "./view";
 
 /** Changed files as a folder tree on top, the full commit message below. */
 export class DetailPane {

@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentIndex, ACCENT_COUNT, countLabel, dateLabel, emptyState, moveSelection,
-  fileTree, relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
+  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
 const NOW = 1790164800;
@@ -96,13 +96,4 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(reselect(null, rows), 0);
   assert.strictEqual(reselect("/ws/acme-web\0a", []), -1, "no rows, no selection");
   console.log("ok - reselect keeps the selection across a replay or refresh");
-}
-{
-  const f = (path: string) => ({ path, added: 1, deleted: 0 });
-  const tree = fileTree([f("src/client.ts"), f("internal/upload/upload_test.go"), f("README.md"), f("internal/upload/upload.go")]);
-  const shape = (nodes: ReturnType<typeof fileTree>): unknown => nodes.map((n) => n.kind === "folder" ? [n.name, n.count, shape(n.children)] : n.name);
-  assert.deepStrictEqual(shape(tree), [["internal/upload", 2, ["upload.go", "upload_test.go"]], ["src", 1, ["client.ts"]], "README.md"]);
-  assert.deepStrictEqual(shape(fileTree([f("a/b/x.ts"), f("a/c/y.ts")])), [["a", 2, [["b", 1, ["x.ts"]], ["c", 1, ["y.ts"]]]]]);
-  assert.deepStrictEqual(fileTree([]), []);
-  console.log("ok - fileTree groups by folder, folders first, single-child chains compressed");
 }
