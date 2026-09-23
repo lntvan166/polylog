@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
 
 const all = ["/ws/acme-api", "/ws/acme-libs", "/ws/acme-web"];
 const repos = all.map((id) => ({ id, name: id.slice(4) }));
@@ -33,4 +33,17 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.strictEqual(clampPaneWidth(400, 600), 300, "always leaves 300px for the Log");
   assert.strictEqual(clampPaneWidth(Number.NaN, 1400), 190, "a corrupt saved width falls back to the default");
   console.log("ok - the repo pane width is clamped to a usable range");
+}
+{
+  const names = ["acme-api", "acme-libs", "acme-web", "acme-svc-01", "acme-svc-10", "acme-svc-11", "web-acme-tools"].map((name) => ({ id: `/ws/${name}`, name }));
+  const q = (query: string) => visibleRepos(names, query).map((r) => r.name);
+  assert.deepStrictEqual(q("aw"), ["acme-web"], "letters must appear in order");
+  assert.deepStrictEqual(q("svc1"), ["acme-svc-10", "acme-svc-11", "acme-svc-01"], "scattered letters match; tighter runs rank higher");
+  assert.deepStrictEqual(q("web"), ["web-acme-tools", "acme-web"], "a prefix match ranks first, then a word-start match");
+  assert.deepStrictEqual(q("LBS"), ["acme-libs"], "case-insensitive");
+  assert.deepStrictEqual(q("zq"), [], "letters out of order or missing do not match");
+  assert.deepStrictEqual(q(""), names.map((r) => r.name), "empty query keeps workspace order");
+  assert.deepStrictEqual(fuzzyMatch("aw", "acme-web")?.positions, [0, 5], "positions of the matched letters, for highlighting");
+  assert.strictEqual(fuzzyMatch("wa", "acme-web"), null);
+  console.log("ok - repo search is fuzzy: in-order letters, word starts and runs rank higher");
 }

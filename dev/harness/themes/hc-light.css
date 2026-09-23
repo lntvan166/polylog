@@ -42,4 +42,5 @@
   --vscode-panel-background: #ffffff;
   --vscode-sash-hoverBorder: #006bbd;
   --vscode-list-focusBackground: transparent;
+  --vscode-list-highlightForeground: #0f4a85;
 }

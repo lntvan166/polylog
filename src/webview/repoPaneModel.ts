@@ -25,9 +25,59 @@ export function toggleRepo(repoIds: readonly string[] | null, id: string, allIds
   return ordered.length === allIds.length ? null : ordered;
 }
 
-export function visibleRepos<T extends { name: string }>(repos: readonly T[], query: string): T[] {
+const BOUNDARY = new Set(["-", "_", ".", "/", " "]);
+
+/**
+ * Fuzzy match, like VS Code's Quick Open: the query's letters must appear in
+ * order; runs of consecutive letters, word starts and a prefix score higher.
+ * Tries every alignment (tiny DP), so "svc1" prefers the "1" that starts a word.
+ */
+export function fuzzyMatch(query: string, text: string): { score: number; positions: number[] } | null {
   const q = query.trim().toLowerCase();
-  return q ? repos.filter((r) => r.name.toLowerCase().includes(q)) : [...repos];
+  const t = text.toLowerCase();
+  if (!q) return { score: 0, positions: [] };
+  const charScore = (j: number, consecutive: boolean) =>
+    1 + (consecutive ? 5 : 0) + (j === 0 || BOUNDARY.has(t[j - 1]) ? 4 : 0) + (j === 0 ? 3 : 0);
+  // best[i][j]: best score with q[i] matched at t[j]; from[i][j]: where q[i-1] was.
+  const best: number[][] = [];
+  const from: number[][] = [];
+  for (let i = 0; i < q.length; i++) {
+    best.push(new Array(t.length).fill(-Infinity));
+    from.push(new Array(t.length).fill(-1));
+    for (let j = i; j < t.length; j++) {
+      if (t[j] !== q[i]) continue;
+      if (i === 0) {
+        best[0][j] = charScore(j, false);
+        continue;
+      }
+      for (let k = i - 1; k < j; k++) {
+        if (best[i - 1][k] === -Infinity) continue;
+        const s = best[i - 1][k] + charScore(j, k === j - 1);
+        if (s > best[i][j]) {
+          best[i][j] = s;
+          from[i][j] = k;
+        }
+      }
+    }
+  }
+  const last = q.length - 1;
+  let end = -1;
+  for (let j = 0; j < t.length; j++) if (best[last][j] > (end < 0 ? -Infinity : best[last][end])) end = j;
+  if (end < 0 || best[last][end] === -Infinity) return null;
+  const positions: number[] = [];
+  for (let i = last, j = end; i >= 0; j = from[i][j], i--) positions.unshift(j);
+  // Shorter names win ties, so "acme-web" beats "acme-web-legacy".
+  return { score: best[last][end] - t.length * 0.01, positions };
+}
+
+/** Repos matching the pane's search, best match first; the empty query keeps workspace order. */
+export function visibleRepos<T extends { name: string }>(repos: readonly T[], query: string): T[] {
+  if (!query.trim()) return [...repos];
+  return repos
+    .map((r, i) => ({ r, i, m: fuzzyMatch(query, r.name) }))
+    .filter((x): x is { r: T; i: number; m: { score: number; positions: number[] } } => x.m !== null)
+    .sort((a, b) => b.m.score - a.m.score || a.i - b.i)
+    .map((x) => x.r);
 }
 
 export function clampPaneWidth(width: number, total: number): number {

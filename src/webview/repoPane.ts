@@ -1,6 +1,6 @@
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
-import { isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
 import { accentIndex } from "./view";
 
 interface Row {
@@ -31,6 +31,11 @@ export class RepoPane {
       if (e.key === "ArrowDown") {
         e.preventDefault();
         this.list.focus();
+      } else if (e.key === "Enter" && this.filterInput.value.trim() && this.rows.length > 1) {
+        // Enter picks the best match (row 0 is "All repositories").
+        e.preventDefault();
+        this.active = 1;
+        this.activate(1, false);
       }
     });
     this.list.addEventListener("click", (e) => {
@@ -76,6 +81,29 @@ export class RepoPane {
     }
   }
 
+  /** The name with the letters the fuzzy search matched wrapped for highlighting. */
+  private highlighted(name: string): (string | HTMLElement)[] {
+    const m = this.filterInput.value.trim() ? fuzzyMatch(this.filterInput.value, name) : null;
+    if (!m || m.positions.length === 0) return [name];
+    const hit = new Set(m.positions);
+    const parts: (string | HTMLElement)[] = [];
+    let run = "";
+    let inHit = false;
+    const flush = () => {
+      if (run) parts.push(inHit ? h("span", { class: "hit" }, [run]) : run);
+      run = "";
+    };
+    for (let i = 0; i < name.length; i++) {
+      if (hit.has(i) !== inHit) {
+        flush();
+        inHit = hit.has(i);
+      }
+      run += name[i];
+    }
+    flush();
+    return parts;
+  }
+
   private render(): void {
     const allIds = this.repos.map((r) => r.id);
     this.rows = [{ id: null, name: "All repositories" }, ...visibleRepos(this.repos, this.filterInput.value)];
@@ -97,7 +125,7 @@ export class RepoPane {
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
-        h("span", { class: "repo-name" }, [row.name]),
+        h("span", { class: "repo-name" }, row.id === null ? [row.name] : this.highlighted(row.name)),
         row.id === null ? h("span", { class: "repo-count" }, [count]) : null,
       ]));
     });
