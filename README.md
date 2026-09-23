@@ -53,8 +53,9 @@ the rest of your editor. That includes light, dark and both high-contrast themes
 3. Run **Polylog: Open Merged Log** from the Command Palette (`Ctrl+Shift+P` /
    `Cmd+Shift+P`), or click the **Polylog** tab in the bottom panel next to Terminal.
 
-Nothing to configure. Polylog finds repositories through VS Code's Git extension. If that
-reports none, it looks in your workspace folders instead.
+Nothing to configure. Polylog shows every repository VS Code's Git extension has open,
+plus any it finds in your workspace folders (up to `polylog.scanDepth` levels deep). Use
+`polylog.excludeRepos` to leave some out.
 
 ---
 
@@ -74,7 +75,8 @@ reports none, it looks in your workspace folders instead.
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
-  renames, always searches all time, and restores your date range when you close it.
+  renames, opens on all time, and restores your date range when you close it. Your
+  message and author filters still apply, so clear them to see every commit.
 - **Keyboard first.** The selection drives everything, so you can review a day's work
   without touching the mouse.
 
@@ -127,7 +129,7 @@ skewed clock can place a commit out of order.
 |---|---|---|
 | `polylog.pageSize` | `200` | Commits fetched per repository per page. |
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
-| `polylog.scanDepth` | `2` | Folder levels to search for repositories when the Git extension reports none. |
+| `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
 
 ---
@@ -137,7 +139,7 @@ skewed clock can place a commit out of order.
 | Requirement | Notes |
 |---|---|
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
-| `git` on your `PATH` | The same git VS Code's Git extension uses |
+| `git` on your `PATH` | Polylog runs `git` from `PATH`; it does not read `git.path` |
 
 Polylog only reads history. It never runs a command that changes a repository.
 

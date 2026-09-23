@@ -24,8 +24,8 @@ const rules = (text, kind = "css") => findViolations(text, kind).map((v) => v.ru
   console.log("ok - TypeScript is checked for literal colors too");
 }
 {
-  // charts.orange is VS Code's alias of minimap.findMatchHighlight: translucent in the
-  // dark themes and undefined in high contrast, so anything painted with it disappears.
+  // charts.orange is VS Code's alias of minimap.findMatchHighlight: translucent in light
+  // and dark themes and undefined in high contrast, so anything painted with it disappears.
   assert.deepStrictEqual(rules(".a { --accent: var(--vscode-charts-orange); }"), ["unreliable token --vscode-charts-orange"]);
   console.log("ok - tokens that vanish in real themes are flagged");
 }

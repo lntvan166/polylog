@@ -31,7 +31,7 @@ The first release.
 - **File History.** Right-click a file in the Explorer, an editor, a tab or the Changes
   tree and choose **Polylog: File History**. The Log shows that file's commits, following
   renames. The diff follows the selection, so `↑`/`↓` steps through its revisions. It
-  always covers all time, and closing it restores your date range.
+  opens on all time, and closing it restores your date range.
 - **Keyboard navigation:** `↑`/`↓`, `Home`/`End`, `PageUp`/`PageDown` to move, `Enter` to
   open the first changed file, `/` to search, `Esc` to clear.
 - **Every color comes from your theme**, in light, dark and both high-contrast themes.

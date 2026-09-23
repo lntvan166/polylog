@@ -4,7 +4,8 @@ import * as path from "path";
 const SKIP = new Set(["node_modules", ".git"]);
 
 /**
- * Fallback discovery when the Git extension reports nothing: a bounded walk.
+ * Discovery by a bounded walk of the workspace folders; its result is merged with
+ * the Git extension's repositories (see mergeRoots in repos.ts).
  * A `.git` directory or file (worktree, submodule) marks a repository.
  * Symlinked directories are not followed, so a cycle cannot hang the walk.
  */

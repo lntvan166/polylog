@@ -250,6 +250,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.dateBeforeHistory) this.filter = { ...this.filter, ...this.dateBeforeHistory };
     this.dateBeforeHistory = null;
     this.history = null;
+    // The next File History is a new session: its first step must not close this one's diff.
+    this.historyTab = undefined;
     this.persistFilter();
   }
 
@@ -469,6 +471,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private async swapHistoryDiff(commit: Commit, preserveFocus: boolean): Promise<void> {
+    if (!this.history) return; // queued before the user closed File History
     const f = commit.file!;
     const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
     // Stepping through a history reuses one tab. VS Code's preview tab does that

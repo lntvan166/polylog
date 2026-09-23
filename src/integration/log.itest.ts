@@ -264,6 +264,18 @@ describe("Polylog panel", () => {
         "rapid steps leave exactly one diff tab, showing the last selection");
       await send({ type: "exitHistory" });
       await until("all commits again", (x) => x.history === null);
+      // A later File History is a new session: it must not close the diff this one left open.
+      const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
+      await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(web.root, "client.ts")));
+      const w = await until("client.ts history", (x) => x.history?.path === "client.ts" && x.rows.length === 2);
+      await until("its newest revision is shown", (x) => x.changes.items[0]?.startsWith("fix: guard nil") === true);
+      await send({ type: "select", repoId: w.rows[1].repoId, sha: w.rows[1].sha });
+      await sleep(1500);
+      const kept = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTextDiff)
+        .map((t) => (t.input as vscode.TabInputTextDiff).modified.path);
+      assert.deepStrictEqual(kept.sort(), ["/client.ts", "/upload.go"], "upload.go's diff from the previous session is still open");
+      await send({ type: "exitHistory" });
+      await until("all commits again", (x) => x.history === null);
     } finally {
       await cfg.update("enablePreview", undefined, vscode.ConfigurationTarget.Global);
       await closeEditors();

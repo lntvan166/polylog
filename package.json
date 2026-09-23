@@ -213,7 +213,7 @@
           "default": 2,
           "minimum": 0,
           "maximum": 6,
-          "markdownDescription": "Folder levels to search for repositories when the Git extension reports none. See also `#git.repositoryScanMaxDepth#`."
+          "markdownDescription": "Folder levels to search the workspace folders for repositories. Polylog shows these together with the repositories the Git extension has open. See also `#git.repositoryScanMaxDepth#`."
         },
         "polylog.excludeRepos": {
           "type": "array",

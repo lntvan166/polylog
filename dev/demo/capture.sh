@@ -8,7 +8,7 @@
 # Needs Xvfb, xdotool, ImageMagick (import) and ffmpeg. Uses the VS Code that the
 # integration tests download into .vscode-test/, with a throwaway profile and HOME:
 # no account, no other extensions, no real paths or names on screen. Coordinates
-# assume the fixed 1440×900 display below; if VS Code's layout changes, re-check them
+# assume the fixed 1440×900 display and Dark Modern theme below; if VS Code's layout changes, re-check them
 # against the step screenshots in dev/demo/out/.
 set -euo pipefail
 
@@ -52,6 +52,7 @@ export HOME=$WS/.home GIT_CONFIG_NOSYSTEM=1
 
 Xvfb :99 -screen 0 1440x900x24 -nolisten tcp >/dev/null 2>&1 &
 XVFB=$!
+CODEPID=
 trap 'kill $CODEPID $XVFB 2>/dev/null || true' EXIT
 sleep 1
 "$CODE/code" --no-sandbox --user-data-dir "$PROFILE/user" --extensions-dir "$PROFILE/ext" \

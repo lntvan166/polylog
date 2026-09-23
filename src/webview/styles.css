@@ -175,9 +175,11 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 
 /* ── High contrast: hover and selection are outlines, not fills ─────────── */
 body.vscode-high-contrast .row:hover,
-body.vscode-high-contrast .repo-option:hover,
+body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+/* button.background is black in hcDark: a checked box would vanish into the panel. */
+body.vscode-high-contrast .repo-check { accent-color: var(--vscode-contrastActiveBorder); }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */

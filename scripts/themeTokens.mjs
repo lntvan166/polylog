@@ -2,7 +2,7 @@
 // --vscode-* variable. This flags literals so a hard-coded color cannot slip in.
 const NAMED = ["white", "black", "red", "green", "blue", "gray", "grey", "silver", "orange", "yellow", "purple", "pink", "navy", "teal", "maroon", "olive", "lime", "aqua", "fuchsia", "brown"];
 // Theme variables that exist but cannot carry a color: VS Code registers charts.orange as
-// an alias of minimap.findMatchHighlight, which is translucent in the dark themes and
+// an alias of minimap.findMatchHighlight, which is translucent in light and dark themes and
 // unset in high contrast. The harness shims define them opaque, so only this rule sees it.
 const UNRELIABLE = ["--vscode-charts-orange"];
 const NAMED_RE = new RegExp(`:[^;]*(?<![-\\w])(${NAMED.join("|")})(?![-\\w])`, "i");
