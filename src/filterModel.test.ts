@@ -84,9 +84,9 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 {
   assert.deepStrictEqual(sanitizeFilter(undefined), DEFAULT_FILTER);
   assert.deepStrictEqual(sanitizeFilter("garbage"), DEFAULT_FILTER);
-  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", author: "", repoIds: ["/a"], date: "30d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "x", author: "rin", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", author: "rin", repoIds: null, date: "7d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "", author: 4, repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", author: "", repoIds: null, date: "custom", from: "2026-09-01" });
+  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", author: "", mine: false, repoIds: ["/a"], date: "30d" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "x", author: "rin", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", author: "rin", mine: false, repoIds: null, date: "7d" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "", author: 4, mine: "yes", repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", author: "", mine: false, repoIds: null, date: "custom", from: "2026-09-01" });
   console.log("ok - sanitizeFilter repairs corrupt persisted state");
 }
 
@@ -111,4 +111,14 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const inj = args({ ...ALL, author: "--output=/tmp/pwned" });
   assert.ok(inj.includes("--author=--output=/tmp/pwned") && !inj.includes("--output=/tmp/pwned"));
   console.log("ok - author becomes one literal, case-insensitive --author= argument");
+}
+
+// ── Me: each repository's own user.email ────────────────────────────────────
+{
+  const a = logArgs({ ...ALL, mine: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
+  assert.ok(a.includes("--author=dana@example.com") && a.includes("--fixed-strings"));
+  const both = logArgs({ ...ALL, mine: true, author: "rin" }, { pageSize: 200, now: NOW, me: "dana@example.com" });
+  assert.ok(both.includes("--author=dana@example.com") && !both.includes("--author=rin"), "Me replaces the typed author");
+  assert.ok(sanitizeFilter({ ...ALL, mine: true }).mine);
+  console.log("ok - Me becomes --author=<that repository's user.email>");
 }

@@ -22,6 +22,8 @@ export interface PageRequest {
   prev: QueryState | null;
   run: RunGit;
   signal: AbortSignal;
+  /** repo id → that repo's user.email, for the "Me" filter. */
+  me?: ReadonlyMap<string, string>;
 }
 
 export interface PageResult {
@@ -46,7 +48,10 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   const progress = new Map<string, RepoProgress>(
     req.prev
       ? [...req.prev.progress].filter(([id]) => byId.has(id)).map(([id, p]) => [id, { ...p, pending: [...p.pending] }])
-      : selectRepos(req.filter, req.repos).map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
+      : selectRepos(req.filter, req.repos)
+          // Me: a repo with no user.email has no commits that are "mine".
+          .filter((r) => !req.filter.mine || req.me?.has(r.id))
+          .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
   const failures: RepoFailure[] = [];
 
@@ -57,7 +62,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     const settled = await runPool(
       targets,
       req.concurrency,
-      (repo, signal) => req.run(repo.root, logArgs(req.filter, { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched } }), signal),
+      (repo, signal) => req.run(repo.root, logArgs(req.filter, { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched }, me: req.me?.get(repo.id) }), signal),
       req.signal,
     );
     if (req.signal.aborted) throw abortError();

@@ -9,7 +9,7 @@ import { EXPECTED_ORDER } from "./fixture";
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
 const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const ALL = { text: "", author: "", repoIds: null, date: "all" as const };
+const ALL = { text: "", author: "", mine: false, repoIds: null, date: "all" as const };
 
 async function waitFor<T>(what: string, probe: () => PromiseLike<T | undefined> | T | undefined, ms = 20000): Promise<T> {
   const end = Date.now() + ms;
@@ -87,9 +87,24 @@ describe("Polylog panel", () => {
     assert.strictEqual((await snapshot()).layout.groupByRepo, true);
   });
 
-  it("offers the user's own git email as the Me author", async () => {
-    const s = await snapshot();
-    assert.strictEqual(s.me, "dana@example.com");
+  it("Me means each repository's own user.email", async () => {
+    await until("identities read", (x) => x.me.length === 3);
+    await send({ type: "filter", filter: { ...ALL, mine: true } });
+    const s = await until("my commits", (x) => x.rows.length === 3);
+    // acme-libs has a repo-local identity (rin); the others use the global one (dana).
+    assert.deepStrictEqual(s.rows.map((r) => r.subject), ["docs: link ACME-7 from the changelog", "fix: guard nil response", "feat: scaffold api"]);
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("hiding the Repositories pane clears its repo filter", async () => {
+    const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
+    await send({ type: "filter", filter: { ...ALL, repoIds: [web.id] } });
+    await until("acme-web only", (x) => x.rows.length === 2);
+    await vscode.commands.executeCommand("polylog.hideRepos");
+    const s = await until("every repo again", (x) => x.rows.length === 6);
+    assert.strictEqual(s.filter.repoIds, null, "no invisible filter left behind");
+    await vscode.commands.executeCommand("polylog.showRepos");
   });
 
   it("fills the native Changes tree when a commit is selected", async () => {

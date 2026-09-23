@@ -7,6 +7,8 @@ export interface FilterState {
   text: string;
   /** Matched against "Name <email>" by git's --author; "" = anyone. */
   author: string;
+  /** "Me": each repository's own user.email, which replaces `author`. */
+  mine: boolean;
   /** null = every repository; [] = none. */
   repoIds: string[] | null;
   date: DatePreset;
@@ -24,7 +26,7 @@ export interface RepoCursor {
   skip: number;
 }
 
-export const DEFAULT_FILTER: FilterState = { text: "", author: "", repoIds: null, date: "30d" };
+export const DEFAULT_FILTER: FilterState = { text: "", author: "", mine: false, repoIds: null, date: "30d" };
 
 const PRESETS: readonly DatePreset[] = ["24h", "7d", "30d", "all", "custom"];
 const PRESET_SECONDS = { "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400 } as const;
@@ -51,10 +53,11 @@ export function untilOf(f: FilterState): number | undefined {
   return f.date === "custom" ? localDay(f.to, "23:59:59") : undefined;
 }
 
-export function logArgs(f: FilterState, o: { pageSize: number; now: number; cursor?: RepoCursor }): string[] {
+export function logArgs(f: FilterState, o: { pageSize: number; now: number; cursor?: RepoCursor; me?: string }): string[] {
   const args = ["log", LOG_FORMAT, `--max-count=${o.pageSize}`];
   const text = f.text.trim();
-  const author = f.author.trim();
+  // Me uses the repository user.email (callers skip repos that have none).
+  const author = f.mine ? (o.me ?? "").trim() : f.author.trim();
   // Both patterns literal and case-insensitive; git ANDs --author with --grep.
   if (text || author) args.push("--regexp-ignore-case", "--fixed-strings");
   if (text) args.push(`--grep=${text}`);
@@ -79,6 +82,7 @@ export function sanitizeFilter(raw: unknown): FilterState {
   const f: FilterState = {
     text: typeof r.text === "string" ? r.text : "",
     author: typeof r.author === "string" ? r.author : "",
+    mine: r.mine === true,
     repoIds: Array.isArray(r.repoIds) ? r.repoIds.filter((x): x is string => typeof x === "string") : null,
     date,
   };
@@ -92,5 +96,5 @@ export function sanitizeFilter(raw: unknown): FilterState {
 /** True when only typed fields (search text, author) changed: those are debounced. */
 export function sameExceptText(a: FilterState, b: FilterState): boolean {
   const ids = (x: FilterState) => (x.repoIds === null ? null : x.repoIds.join("\0"));
-  return a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
+  return a.mine === b.mine && a.date === b.date && a.from === b.from && a.to === b.to && ids(a) === ids(b);
 }

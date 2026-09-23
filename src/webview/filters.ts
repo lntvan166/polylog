@@ -10,7 +10,6 @@ export class FilterBar {
   private readonly search = byId<HTMLInputElement>("search");
   private readonly author = byId<HTMLInputElement>("author");
   private readonly meButton = byId<HTMLButtonElement>("me");
-  private me: string | undefined;
   private readonly date = byId<HTMLSelectElement>("date");
   private readonly customRange = byId("custom-range");
   private readonly from = byId<HTMLInputElement>("from");
@@ -19,16 +18,15 @@ export class FilterBar {
   constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void) {
     byId("filters").addEventListener("submit", (e) => e.preventDefault());
     this.search.addEventListener("input", () => this.emit({ text: this.search.value }));
-    this.author.addEventListener("input", () => this.emit({ author: this.author.value }));
-    this.meButton.addEventListener("click", () => {
-      if (this.me) this.emit({ author: this.me });
-    });
+    // Typing an author replaces Me; Me toggles on and off.
+    this.author.addEventListener("input", () => this.emit({ author: this.author.value, mine: false }));
+    this.meButton.addEventListener("click", () => this.emit({ mine: !this.current().mine }));
     this.date.addEventListener("change", () => {
       const date = this.date.value as DatePreset;
-      const { text, author, repoIds } = this.current();
+      const { text, author, mine, repoIds } = this.current();
       this.onChange(date === "custom"
-        ? { text, author, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
-        : { text, author, repoIds, date });
+        ? { text, author, mine, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
+        : { text, author, mine, repoIds, date });
     });
     for (const input of [this.from, this.to]) {
       input.addEventListener("change", () => this.emit({ from: this.from.value || undefined, to: this.to.value || undefined }));
@@ -39,19 +37,20 @@ export class FilterBar {
   update(filter: FilterState): void {
     this.filter = filter;
     if (this.search.value !== filter.text) this.search.value = filter.text;
-    if (this.author.value !== filter.author) this.author.value = filter.author;
-    this.meButton.setAttribute("aria-pressed", String(!!this.me && filter.author === this.me));
+    const shownAuthor = filter.mine ? "" : filter.author;
+    if (this.author.value !== shownAuthor) this.author.value = shownAuthor;
+    this.author.placeholder = filter.mine ? "Me" : "Author";
+    this.meButton.setAttribute("aria-pressed", String(filter.mine));
     this.date.value = filter.date;
     this.customRange.hidden = filter.date !== "custom";
     this.from.value = filter.from ?? "";
     this.to.value = filter.to ?? "";
   }
 
-  /** The user's git email, from the host; shows the Me button when known. */
-  setMe(me: string | undefined): void {
-    this.me = me;
-    this.meButton.hidden = !me;
-    if (me) this.meButton.title = `Only commits by ${me}`;
+  /** Shown once the host knows at least one repository's user.email. */
+  setMe(hasMe: boolean): void {
+    this.meButton.hidden = !hasMe;
+    this.meButton.title = "Only my commits (each repository's user.email)";
   }
 
   private current(): FilterState {

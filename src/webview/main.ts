@@ -8,6 +8,7 @@ import { FilterBar } from "./filters";
 import { CommitList } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
+import { attachSplitter } from "./splitter";
 import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH } from "./repoPaneModel";
 import { countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
@@ -52,30 +53,8 @@ function applyPaneWidth(width: number): void {
   splitter.setAttribute("aria-valuenow", String(paneWidth));
 }
 
-// Drag (or ←/→) the divider; the width is saved by the host when you let go.
-splitter.addEventListener("pointerdown", (e) => {
-  e.preventDefault();
-  splitter.setPointerCapture(e.pointerId);
-  splitter.classList.add("dragging");
-  const startX = e.clientX;
-  const startWidth = paneWidth;
-  const move = (ev: PointerEvent) => applyPaneWidth(startWidth + ev.clientX - startX);
-  const up = () => {
-    splitter.classList.remove("dragging");
-    splitter.removeEventListener("pointermove", move);
-    splitter.removeEventListener("pointerup", up);
-    post({ type: "layout", repoPaneWidth: paneWidth });
-  };
-  splitter.addEventListener("pointermove", move);
-  splitter.addEventListener("pointerup", up);
-});
-splitter.addEventListener("keydown", (e) => {
-  const step = e.key === "ArrowLeft" ? -16 : e.key === "ArrowRight" ? 16 : 0;
-  if (!step) return;
-  e.preventDefault();
-  applyPaneWidth(paneWidth + step);
-  post({ type: "layout", repoPaneWidth: paneWidth });
-});
+// Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
+attachSplitter(splitter, { get: () => paneWidth, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth }) });
 window.addEventListener("resize", () => applyPaneWidth(paneWidth));
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
@@ -93,7 +72,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "init":
       state.repos = m.repos;
       state.filter = m.filter;
-      filters.setMe(m.me);
+      filters.setMe(m.hasMe);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
@@ -158,8 +137,8 @@ function runEmptyAction(action: EmptyAction): void {
   const f = state.filter;
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
-    case "clearAuthor": setFilter({ ...f, author: "" }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, repoIds: f.repoIds, date: "all" }); return;
+    case "clearAuthor": setFilter({ ...f, author: "", mine: false }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, repoIds: f.repoIds, date: "all" }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }

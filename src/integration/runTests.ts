@@ -1,4 +1,5 @@
 // Runs OUTSIDE VS Code, in plain node. Never import "vscode" here.
+import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -14,6 +15,8 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = dana\n\temail = dana@example.com\n");
   const ws = path.join(home, "ws");
   for (const [name, commits] of Object.entries(FIXTURE)) makeRepo(path.join(ws, name), commits, home);
+  // A repo-local identity, like a personal repo inside a work workspace.
+  execFileSync("git", ["config", "user.email", "rin@example.com"], { cwd: path.join(ws, "acme-libs"), env: gitEnv(home) });
   const workspaceFile = path.join(home, "acme.code-workspace");
   fs.writeFileSync(workspaceFile, JSON.stringify({ folders: Object.keys(FIXTURE).map((n) => ({ path: path.join(ws, n) })) }));
   const env = gitEnv(home);

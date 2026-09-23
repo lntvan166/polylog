@@ -7,7 +7,7 @@ import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
 import { fetchPage, type QueryState, type RunGit } from "./logQuery";
-import { isAbortError } from "./pool";
+import { isAbortError, runPool } from "./pool";
 import type { HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
@@ -38,7 +38,8 @@ export interface LogSnapshot {
   done: boolean;
   /** How many times the webview (re)loaded; hiding and showing the panel must not reload it. */
   readyCount: number;
-  me: string | undefined;
+  /** Each repository's user.email, in repo order (test seam). */
+  me: string[];
   changes: ChangesSnapshot;
   layout: Layout;
 }
@@ -62,8 +63,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private detail = new AbortController();
   private loadingMore = false;
   private readyCount = 0;
-  /** The user's git email (first repository's config), offered as the "Me" author. */
-  private me: string | undefined;
+  /** repo id → that repo's user.email, for the "Me" filter. Read in the background. */
+  private meByRepo = new Map<string, string>();
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -154,23 +155,42 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private postInit(): void {
-    this.post({ type: "init", repos: this.repos, filter: this.filter, me: this.me, layout: this.layout() });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout() });
   }
 
   /** Group by Repository: show or hide the Repositories pane (Log title-bar toggle). */
   async setGroupByRepo(on: boolean): Promise<void> {
     await this.context.globalState.update(HIDE_REPOS_KEY, !on);
     await vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, !on);
+    // Hiding the pane must not leave a repo filter the user can no longer see.
+    const clearing = !on && this.filter.repoIds !== null;
+    if (clearing) {
+      this.filter = { ...this.filter, repoIds: null };
+      void this.context.workspaceState.update(FILTER_KEY, this.filter);
+    }
     this.postInit();
+    if (clearing) await this.reload();
   }
 
   private async loadRepos(): Promise<void> {
     this.repos = await this.deps.discovery.list(this.settings());
-    const first = this.repos[0];
-    if (this.me === undefined && first) {
-      const email = await this.deps.run(first.root, ["config", "user.email"], new AbortController().signal).then((o) => o.trim(), () => "");
-      this.me = email || undefined;
-    }
+    void this.loadMe();
+  }
+
+  /** Each repo's user.email, in the background so it never delays the first paint. */
+  private async loadMe(): Promise<void> {
+    const repos = [...this.repos];
+    const settled = await runPool(repos, this.settings().maxConcurrency,
+      (r, signal) => this.deps.run(r.root, ["config", "user.email"], signal), new AbortController().signal);
+    const me = new Map<string, string>();
+    settled.forEach((s, i) => {
+      if (s.status === "fulfilled" && s.value.trim()) me.set(repos[i].id, s.value.trim());
+    });
+    const changed = [...me].join() !== [...this.meByRepo].join();
+    this.meByRepo = me;
+    if (!changed) return;
+    this.postInit();
+    if (this.filter.mine) await this.reload();
   }
 
   private async refreshRepos(): Promise<void> {
@@ -187,7 +207,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: null, run: this.deps.run, signal: ctl.signal,
+        now: nowSec(), prev: null, run: this.deps.run, signal: ctl.signal, me: this.meByRepo,
       });
       if (ctl.signal.aborted) return;
       this.rows = page.rows;
@@ -209,7 +229,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: this.queryState, run: this.deps.run, signal: ctl.signal,
+        now: nowSec(), prev: this.queryState, run: this.deps.run, signal: ctl.signal, me: this.meByRepo,
       });
       if (ctl.signal.aborted) return;
       this.rows = this.rows.concat(page.rows);
@@ -227,7 +247,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.me, changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), changes: this.deps.changes.snapshot(),
       layout: this.layout(),
     };
   }
