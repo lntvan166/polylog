@@ -1,6 +1,6 @@
 {
   "name": "polylog",
-  "displayName": "Polylog \u2014 Multi-Repo Git Log",
+  "displayName": "Polylog — Multi-Repo Git Log",
   "description": "One git log across every repo in your workspace. Search commits by message across all of them at once, and see the changed files without switching repositories.",
   "version": "0.0.0",
   "publisher": "lntvan166",
@@ -232,7 +232,8 @@
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
-    "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js"
+    "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
+    "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

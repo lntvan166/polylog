@@ -194,3 +194,16 @@ browsable history:
   with File History.
 - **File History dates:** opening it switches the range to All time; closing it restores
   the range the user had before. The menu item reads "Polylog: File History".
+
+## 14. Startup (2026-09-23)
+
+Measured with `npm run perf:startup` (68 repositories, 16,219 commits, one folder, real
+VS Code 1.139): open → first rows went from **4.6 s to 0.43 s**.
+
+- Repository discovery no longer waits for vscode.git (it spent ~3.5 s initialising and
+  opening 68 repos): the first list comes from a walk of the workspace folders; vscode.git
+  starts in the background and its list is adopted once it has been quiet for 1 s, with a
+  reload only if the repo set actually differs.
+- The "Me" emails and branch suggestions (2 × 68 spawns) start after the first page, once
+  per repo set, instead of competing with it.
+- The first fetch starts when the view is created, not when its page reports ready.

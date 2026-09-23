@@ -75,6 +75,7 @@ history, so a rebase or a skewed clock can place a commit out of order.
     npm run compile && npm test          # lint/typecheck: npm run lint, npm run typecheck
     npm run harness                      # webview in a browser: http://localhost:5178/gallery.html
     xvfb-run -a npm run test:integration # real VS Code, three fixture repos
+    xvfb-run -a npm run perf:startup     # time to first rows on a generated 68-repo, 16k-commit workspace
 
 The harness runs the real webview with mock data and theme variables for dark, light,
 and both high-contrast themes (`?theme=…&state=default|many|empty|norepos|failure|slow`).

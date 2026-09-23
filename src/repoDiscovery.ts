@@ -17,17 +17,30 @@ interface GitAPI {
 }
 interface GitExtension { getAPI(version: 1): GitAPI }
 
-const INIT_TIMEOUT_MS = 5000;
+/** vscode.git opens repositories one by one after "initialized"; adopt its list once it has been quiet this long. */
+const SETTLE_MS = 1000;
 
+/**
+ * Lists the workspace's repositories without ever waiting on vscode.git: the
+ * first answer comes from a quick walk of the workspace folders (milliseconds).
+ * vscode.git starts in the background; once it has finished opening
+ * repositories, its list becomes the source (it honours the user's git
+ * settings) and onDidChange fires so the Log can re-check.
+ */
 export class RepoDiscovery implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private readonly disposables: vscode.Disposable[] = [this.emitter];
-  private api: Promise<GitAPI | undefined> | undefined;
+  private started = false;
+  /** vscode.git, once it has settled. */
+  private ready: GitAPI | undefined;
 
   async list(settings: Settings): Promise<Repo[]> {
-    const api = await (this.api ??= this.loadGitApi());
-    let roots = api ? api.repositories.map((r) => r.rootUri.fsPath) : [];
+    if (!this.started) {
+      this.started = true;
+      void this.startGitApi();
+    }
+    let roots = this.ready ? this.ready.repositories.map((r) => r.rootUri.fsPath) : [];
     if (roots.length === 0) {
       const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
       roots = await walkForRepos(folders, settings.scanDepth);
@@ -35,27 +48,31 @@ export class RepoDiscovery implements vscode.Disposable {
     return excludeRepos(labelRepos(roots), settings.excludeRepos);
   }
 
-  private async loadGitApi(): Promise<GitAPI | undefined> {
+  private async startGitApi(): Promise<void> {
     const ext = vscode.extensions.getExtension<GitExtension>("vscode.git");
-    if (!ext) return undefined;
+    if (!ext) return;
+    let api: GitAPI;
     try {
-      const api = (ext.isActive ? ext.exports : await ext.activate()).getAPI(1);
-      if (api.state !== "initialized") {
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(done, INIT_TIMEOUT_MS);
-          const sub = api.onDidChangeState((s) => s === "initialized" && done());
-          function done() {
-            clearTimeout(timer);
-            sub.dispose();
-            resolve();
-          }
-        });
-      }
-      this.disposables.push(api.onDidOpenRepository(() => this.emitter.fire()), api.onDidCloseRepository(() => this.emitter.fire()));
-      return api;
+      api = (ext.isActive ? ext.exports : await ext.activate()).getAPI(1);
     } catch {
-      return undefined; // git disabled or the extension failed; the walk takes over
+      return; // git disabled or the extension failed; the walk stays the source
     }
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settleSoon = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        const first = !this.ready;
+        this.ready = api;
+        if (first || api.repositories.length > 0) this.emitter.fire();
+      }, SETTLE_MS);
+    };
+    this.disposables.push(
+      api.onDidOpenRepository(() => (this.ready ? this.emitter.fire() : settleSoon())),
+      api.onDidCloseRepository(() => (this.ready ? this.emitter.fire() : settleSoon())),
+      api.onDidChangeState((st) => st === "initialized" && settleSoon()),
+      { dispose: () => clearTimeout(timer) },
+    );
+    if (api.state === "initialized") settleSoon();
   }
 
   dispose(): void {

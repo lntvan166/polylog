@@ -45,6 +45,7 @@ export interface LogSnapshot {
   branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
   layout: Layout;
+  stats: { msToFirstRows: number | null; reloads: number; discoveries: number; spawns: number; discoveryMs: number; fetchMs: number; msToResolve: number; msToReady: number };
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -74,6 +75,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
   private branches: BranchName[] = [];
   private branchUse: BranchUse | undefined;
+  /** The repo set the background reads last ran for. */
+  private backgroundFor: string | undefined;
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -81,12 +84,27 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   // The git extension opens repositories in bursts at startup; coalesce them.
   private readonly reposChangedSoon = debounce(() => void this.refreshRepos(), SEARCH_DEBOUNCE_MS);
 
+  /** Startup and load cost, for the perf harness and the integration suite. */
+  private readonly stats = { createdAt: Date.now(), firstRowsAt: 0, reloads: 0, discoveries: 0, spawns: 0, discoveryMs: 0, fetchMs: 0, resolvedAt: 0, readyAt: 0 };
+  private readonly run: RunGit;
+  private firstLoad: Promise<void> | undefined;
+
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
+    this.run = (cwd, args, signal) => {
+      this.stats.spawns++;
+      return deps.run(cwd, args, signal);
+    };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.stats.resolvedAt = Date.now();
+    // Start git while the webview's page is still loading; "ready" replays the result.
+    this.firstLoad ??= (async () => {
+      await this.loadRepos();
+      await this.reload();
+    })();
     this.webviewView = view;
     const out = vscode.Uri.joinPath(this.context.extensionUri, "out");
     view.webview.options = { enableScripts: true, localResourceRoots: [out] };
@@ -108,8 +126,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     switch (m.type) {
       case "ready":
         this.readyCount++;
-        // Also sent when a hidden webview is re-created: replay what we have.
-        await this.loadRepos();
+        if (!this.stats.readyAt) this.stats.readyAt = Date.now();
+        // The first load started when the view was created; wait for it, then
+        // replay. (Also sent when a hidden webview is re-created.)
+        if (this.firstLoad) await this.firstLoad;
+        else await this.loadRepos();
         this.postInit();
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
@@ -130,7 +151,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
       case "refresh":
         this.reloadSoon.cancel();
-        await this.refreshRepos();
+        await this.refreshRepos(true);
         return;
       case "loadMore":
         await this.loadMore();
@@ -244,7 +265,21 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private async loadRepos(): Promise<void> {
+    this.stats.discoveries++;
+    const t = Date.now();
     this.repos = await this.deps.discovery.list(this.settings());
+    this.stats.discoveryMs = Date.now() - t;
+  }
+
+  /**
+   * "Me" emails and branch suggestions are background reads: they start after
+   * the first page is on screen (so they never compete with it) and run once
+   * per set of repositories.
+   */
+  private startBackgroundReads(): void {
+    const key = this.repos.map((r) => r.id).join("\0");
+    if (key === this.backgroundFor) return;
+    this.backgroundFor = key;
     void this.loadMe();
     void this.loadBranches();
   }
@@ -253,7 +288,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async loadBranches(): Promise<void> {
     const repos = [...this.repos];
     const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.deps.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), new AbortController().signal);
+      (r, signal) => this.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), new AbortController().signal);
     const counts = new Map<string, number>();
     for (const s of settled) {
       if (s.status !== "fulfilled") continue;
@@ -269,7 +304,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async loadMe(): Promise<void> {
     const repos = [...this.repos];
     const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.deps.run(r.root, ["config", "user.email"], signal), new AbortController().signal);
+      (r, signal) => this.run(r.root, ["config", "user.email"], signal), new AbortController().signal);
     const me = new Map<string, string>();
     settled.forEach((s, i) => {
       if (s.status === "fulfilled" && s.value.trim()) me.set(repos[i].id, s.value.trim());
@@ -281,21 +316,26 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.filter.mine) await this.reload();
   }
 
-  private async refreshRepos(): Promise<void> {
+  /** Repositories may have changed (vscode.git settled, a repo opened/closed): reload only if they did. */
+  private async refreshRepos(force = false): Promise<void> {
+    const before = this.repos.map((r) => r.id).join("\0");
     await this.loadRepos();
+    const changed = this.repos.map((r) => r.id).join("\0") !== before;
     this.postInit();
-    await this.reload();
+    if (force || changed || this.queryState === null) await this.reload();
   }
 
   private async reload(): Promise<void> {
+    this.stats.reloads++;
     this.query.abort();
     const ctl = (this.query = new AbortController());
     const s = this.settings();
     this.post({ type: "loading" });
+    const t = Date.now();
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: null, run: this.deps.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
+        now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
       if (ctl.signal.aborted) return;
       this.rows = page.rows;
@@ -303,6 +343,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.done = page.done;
       this.queryState = page.state;
       this.branchUse = page.branchUse;
+      if (!this.stats.firstRowsAt && page.rows.length > 0) this.stats.firstRowsAt = Date.now();
+      this.stats.fetchMs = Date.now() - t;
+      this.startBackgroundReads();
       this.clearTreeIfGone();
       this.post({ type: "page", rows: page.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
@@ -318,7 +361,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: this.queryState, run: this.deps.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
+        now: nowSec(), prev: this.queryState, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
       if (ctl.signal.aborted) return;
       this.rows = this.rows.concat(page.rows);
@@ -338,6 +381,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(),
       layout: this.layout(),
+      stats: {
+        msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
+        reloads: this.stats.reloads, discoveries: this.stats.discoveries, spawns: this.stats.spawns,
+        discoveryMs: this.stats.discoveryMs, fetchMs: this.stats.fetchMs,
+        msToResolve: this.stats.resolvedAt - this.stats.createdAt, msToReady: this.stats.readyAt - this.stats.createdAt,
+      },
     };
   }
 
@@ -363,7 +412,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.history && commit.file) void this.openHistoryDiff(commit);
     this.deps.changes.set({ ...base, status: "loading" });
     try {
-      const { files, message } = parseShow(await this.deps.run(repo.root, showArgs(sha), ctl.signal));
+      const { files, message } = parseShow(await this.run(repo.root, showArgs(sha), ctl.signal));
       if (ctl.signal.aborted) return; // a newer selection owns the tree now
       this.deps.changes.set({ ...base, status: "ready", files, message });
       if (this.openWhenLoaded === key) {
