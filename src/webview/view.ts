@@ -1,4 +1,5 @@
 import type { FilterState } from "../filterModel";
+import { commitKey } from "../types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -118,4 +119,16 @@ export function countLabel(n: number): string {
 export function splitPath(p: string): { dir: string; base: string } {
   const i = p.lastIndexOf("/");
   return i < 0 ? { dir: "", base: p } : { dir: p.slice(0, i), base: p.slice(i + 1) };
+}
+
+/**
+ * Where the selection goes when a whole page arrives (a filter change, a
+ * refresh after repositories open or close, a replay): stay on the same commit
+ * if it is still listed, otherwise the first row.
+ */
+export function reselect(prevKey: string | null, rows: readonly { repoId: string; sha: string }[]): number {
+  if (rows.length === 0) return -1;
+  if (prevKey === null) return 0;
+  const i = rows.findIndex((r) => commitKey(r) === prevKey);
+  return i < 0 ? 0 : i;
 }

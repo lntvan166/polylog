@@ -70,6 +70,17 @@ describe("Polylog merged log", () => {
     await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
   });
 
+  it("keeps its state when a diff hides the panel and it comes back", async () => {
+    const before = (await snapshot())!;
+    const c = before.rows.find((r) => r.subject.startsWith("fix: guard nil"))!;
+    await send({ type: "openFile", repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: "client.ts" });
+    await diffTab();
+    await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    await sleep(1500);
+    // A re-created webview sends "ready" again and loses its selection and scroll.
+    assert.strictEqual((await snapshot())!.readyCount, before.readyCount, "the webview was destroyed and re-created");
+  });
+
   it("shows an empty before side for a root commit", async () => {
     const s = (await snapshot())!;
     const c = s.rows.find((r) => r.subject === "feat: scaffold api")!;

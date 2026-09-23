@@ -28,6 +28,8 @@ export interface PanelSnapshot {
   rows: Commit[];
   failures: RepoFailure[];
   done: boolean;
+  /** How many times the webview (re)loaded; a hidden-then-shown panel must not reload. */
+  readyCount: number;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -44,6 +46,10 @@ export class LogPanel implements vscode.Disposable {
     }
     const panel = vscode.window.createWebviewPanel("polylog.log", "Polylog", vscode.ViewColumn.Active, {
       enableScripts: true,
+      // Opening a file's diff puts the panel in the background. Without this the
+      // webview is destroyed and rebuilt, losing selection and scroll on every
+      // file opened — the product's core loop.
+      retainContextWhenHidden: true,
       localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "out")],
     });
     LogPanel.current = new LogPanel(panel, context, deps);
@@ -59,6 +65,7 @@ export class LogPanel implements vscode.Disposable {
   private query = new AbortController();
   private detail = new AbortController();
   private loadingMore = false;
+  private readyCount = 0;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly reloadSoon = debounce(() => void this.reload(), SEARCH_DEBOUNCE_MS);
   // The git extension opens repositories in bursts at startup; coalesce them.
@@ -84,6 +91,7 @@ export class LogPanel implements vscode.Disposable {
   async onMessage(m: WebviewMessage): Promise<void> {
     switch (m.type) {
       case "ready":
+        this.readyCount++;
         // Also sent when a hidden webview is re-created: replay what we have.
         await this.loadRepos();
         this.post({ type: "init", repos: this.repos, filter: this.filter });
@@ -124,7 +132,7 @@ export class LogPanel implements vscode.Disposable {
   }
 
   snapshot(): PanelSnapshot {
-    return { repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done };
+    return { repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done, readyCount: this.readyCount };
   }
 
   private settings() {

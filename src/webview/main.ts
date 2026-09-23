@@ -8,7 +8,7 @@ import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
 import { CommitList } from "./list";
 import { NoticeBar } from "./notices";
-import { countLabel, emptyState, type EmptyAction } from "./view";
+import { countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -87,11 +87,14 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         state.rows = state.rows.concat(m.rows);
         state.failures = m.failures.length > 0 ? state.failures.concat(m.failures) : state.failures;
       } else {
+        const prev = state.rows[state.selected];
+        const next = reselect(prev ? commitKey(prev) : null, m.rows);
+        const kept = prev !== undefined && next >= 0 && commitKey(m.rows[next]) === commitKey(prev);
         state.rows = m.rows;
         state.failures = m.failures;
         state.dismissed = false;
-        list.resetScroll();
-        select(m.rows.length > 0 ? 0 : -1, false);
+        if (!kept) list.resetScroll();
+        select(next, false);
       }
       break;
     case "detail":

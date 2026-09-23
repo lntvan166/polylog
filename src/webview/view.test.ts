@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentIndex, ACCENT_COUNT, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, splitPath, visibleRange,
+  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
 const NOW = 1790164800;
@@ -86,4 +86,12 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.deepStrictEqual(splitPath("internal/upload/upload.go"), { dir: "internal/upload", base: "upload.go" });
   assert.deepStrictEqual(splitPath("README.md"), { dir: "", base: "README.md" });
   console.log("ok - count label and path split");
+}
+{
+  const rows = ["a", "b", "c"].map((sha) => ({ repoId: "/ws/acme-web", sha }));
+  assert.strictEqual(reselect("/ws/acme-web\0b", rows), 1, "a replayed or refreshed page keeps the selected commit");
+  assert.strictEqual(reselect("/ws/acme-web\0gone", rows), 0, "a commit no longer listed falls back to the first row");
+  assert.strictEqual(reselect(null, rows), 0);
+  assert.strictEqual(reselect("/ws/acme-web\0a", []), -1, "no rows, no selection");
+  console.log("ok - reselect keeps the selection across a replay or refresh");
 }
