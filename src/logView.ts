@@ -158,6 +158,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.failures = page.failures;
       this.done = page.done;
       this.queryState = page.state;
+      this.clearTreeIfGone();
       this.post({ type: "page", rows: page.rows, append: false, failures: page.failures, done: page.done, now: nowSec() });
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not read the log: ${messageOf(e)}`);
@@ -202,10 +203,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private async showDetail(repoId: string, sha: string): Promise<void> {
-    this.detail.abort();
-    const ctl = (this.detail = new AbortController());
+    // Validate first: a select that is not a listed commit must not kill the
+    // detail already loading for the one that is.
     const found = this.findCommit(repoId, sha);
     if (!found) return;
+    this.detail.abort();
+    const ctl = (this.detail = new AbortController());
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
@@ -222,6 +225,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } catch (e) {
       if (!isAbortError(e) && !ctl.signal.aborted) this.deps.changes.set({ ...base, status: "error", error: messageOf(e) });
     }
+  }
+
+  /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
+  private clearTreeIfGone(): void {
+    const current = this.deps.changes.current();
+    if (!current) return;
+    const key = commitKey(current.commit);
+    if (this.rows.some((c) => commitKey(c) === key)) return;
+    this.detail.abort();
+    this.openWhenLoaded = null;
+    this.deps.changes.set(null);
   }
 
   private async openFirst(repoId: string, sha: string): Promise<void> {

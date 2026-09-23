@@ -110,6 +110,36 @@ describe("Polylog panel", () => {
     assert.strictEqual(tabCount(), 1, "opened exactly once");
   });
 
+  it("an unknown selection cannot leave the tree stuck loading", async () => {
+    const c = bySubject(await snapshot(), "chore: bump deps");
+    // Not awaited: the bad select arrives while c's detail is in flight.
+    void send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await send({ type: "select", repoId: c.repoId, sha: "f".repeat(40) });
+    await sleep(800);
+    const s = await snapshot();
+    assert.notStrictEqual(s.changes.message, "Loading changed files…", "the in-flight detail was killed by a select that was never valid");
+    assert.ok(s.changes.items[0]?.startsWith("chore: bump deps"));
+  });
+
+  it("clears the tree when the selected commit leaves the list", async () => {
+    const c = bySubject(await snapshot(), "fix: guard nil");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await send({ type: "filter", filter: { ...ALL, text: "no commit says this" } });
+    const s = await until("zero rows", (x) => x.rows.length === 0);
+    assert.strictEqual(s.changes.message, "Select a commit in the Log to see its changed files.");
+    assert.deepStrictEqual(s.changes.items, []);
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("tree files are not worktree URIs (no live git or Problems decorations)", async () => {
+    const c = bySubject(await snapshot(), "feat: add retry");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    const s = await until("the retry tree", (x) => x.changes.items.some((i) => i.includes("upload.go")));
+    assert.ok(s.changes.schemes.length > 0);
+    assert.ok(s.changes.schemes.every((sc) => sc !== "file"), `worktree file: URIs attract live decorations: ${s.changes.schemes}`);
+  });
+
   it("rejects refs that are not SHAs", async () => {
     await closeEditors();
     const c = (await snapshot()).rows[0];

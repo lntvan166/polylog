@@ -1,4 +1,3 @@
-import * as path from "path";
 import * as vscode from "vscode";
 import { describeChanges, type ChangesState, type NodeDesc } from "./changesModel";
 
@@ -13,9 +12,12 @@ export interface OpenDiffArgs {
 export interface ChangesSnapshot {
   message: string | undefined;
   items: string[];
+  /** URI scheme of every node's resourceUri, as VS Code receives it (test seam). */
+  schemes: string[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
+const TREE_SCHEME = "polylog-tree";
 
 /** The native Changes view: a thin adapter from changesModel's descriptors to TreeItems. */
 export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Disposable {
@@ -43,7 +45,12 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Di
   snapshot(): ChangesSnapshot {
     const walk = (nodes: NodeDesc[], depth: number): string[] =>
       nodes.flatMap((n) => [`${"  ".repeat(depth)}${n.label} | ${n.description}`, ...(n.kind === "file" ? [] : walk(n.children, depth + 1))]);
-    return { message: this.message, items: walk(this.roots, 0) };
+    const all = (nodes: NodeDesc[]): NodeDesc[] => nodes.flatMap((n) => [n, ...(n.kind === "file" ? [] : all(n.children))]);
+    const schemes = all(this.roots).flatMap((n) => {
+      const uri = this.getTreeItem(n).resourceUri;
+      return uri ? [uri.scheme] : [];
+    });
+    return { message: this.message, items: walk(this.roots, 0), schemes };
   }
 
   private render(): void {
@@ -70,8 +77,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Di
       item.contextValue = "commit";
       return item;
     }
-    // resourceUri lets the user's file-icon theme pick folder and file icons.
-    item.resourceUri = vscode.Uri.file(path.join(s.repoRoot, node.path));
+    // resourceUri lets the file-icon theme pick icons from the name. A private
+    // scheme, not the worktree file: URI, so live git and Problems decorations
+    // for today's files are not painted onto a historical commit.
+    item.resourceUri = vscode.Uri.from({ scheme: TREE_SCHEME, path: `/${node.path}` });
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
     if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null, path: node.file.path, oldPath: node.file.oldPath };
