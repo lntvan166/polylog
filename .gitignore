@@ -1,0 +1,18 @@
+out/
+node_modules/
+*.vsix
+.vscode/
+.vscode-test/
+.superpowers/
+
+# Impeccable is installed, not vendored:
+#   npx impeccable install --providers=claude --scope=project
+# Keeping its Apache-2.0 payload (and a platform binary) out of this MIT repo
+# avoids mixing licenses and committing a 3rd-party build artifact.
+.claude/skills/impeccable/
+.claude/agents/impeccable-*.md
+.claude/settings.local.json
+PRODUCT.md.bak
+
+# Dev-only browser harness build output (the harness SOURCE is committed)
+dev/harness/dist/
