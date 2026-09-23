@@ -33,6 +33,7 @@ export interface LogSnapshot {
   done: boolean;
   /** How many times the webview (re)loaded; hiding and showing the panel must not reload it. */
   readyCount: number;
+  me: string | undefined;
   changes: ChangesSnapshot;
 }
 
@@ -55,6 +56,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private detail = new AbortController();
   private loadingMore = false;
   private readyCount = 0;
+  /** The user's git email (first repository's config), offered as the "Me" author. */
+  private me: string | undefined;
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -91,7 +94,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.readyCount++;
         // Also sent when a hidden webview is re-created: replay what we have.
         await this.loadRepos();
-        this.post({ type: "init", repos: this.repos, filter: this.filter });
+        this.post({ type: "init", repos: this.repos, filter: this.filter, me: this.me });
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec() });
         return;
@@ -135,11 +138,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async loadRepos(): Promise<void> {
     this.repos = await this.deps.discovery.list(this.settings());
+    const first = this.repos[0];
+    if (this.me === undefined && first) {
+      const email = await this.deps.run(first.root, ["config", "user.email"], new AbortController().signal).then((o) => o.trim(), () => "");
+      this.me = email || undefined;
+    }
   }
 
   private async refreshRepos(): Promise<void> {
     await this.loadRepos();
-    this.post({ type: "init", repos: this.repos, filter: this.filter });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, me: this.me });
     await this.reload();
   }
 
@@ -191,7 +199,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.me, changes: this.deps.changes.snapshot(),
     };
   }
 

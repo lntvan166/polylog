@@ -10,6 +10,8 @@ async function main(): Promise<void> {
   const repoRoot = path.resolve(__dirname, "..", ".."); // out/integration → repo root
   // Throwaway HOME: no real git config, no real VS Code state.
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-itest-home-"));
+  // The user's own identity, which the "Me" author button reads from git config.
+  fs.writeFileSync(path.join(home, ".gitconfig"), "[user]\n\tname = dana\n\temail = dana@example.com\n");
   const ws = path.join(home, "ws");
   for (const [name, commits] of Object.entries(FIXTURE)) makeRepo(path.join(ws, name), commits, home);
   const workspaceFile = path.join(home, "acme.code-workspace");

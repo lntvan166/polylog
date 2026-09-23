@@ -26,6 +26,8 @@ export function renderHtml(o: HtmlOptions): string {
 <div class="app">
   <form id="filters" class="filters" role="search" aria-label="Filter commits">
     <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
+    <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">
+    <button id="me" class="secondary" type="button" title="Only my commits" hidden>Me</button>
     <div class="repo-picker">
       <button id="repo-button" class="dropdown" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="repo-menu">All repositories</button>
       <div id="repo-menu" class="menu" hidden>

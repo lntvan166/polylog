@@ -9,7 +9,7 @@ import { EXPECTED_ORDER } from "./fixture";
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
 const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const ALL = { text: "", repoIds: null, date: "all" as const };
+const ALL = { text: "", author: "", repoIds: null, date: "all" as const };
 
 async function waitFor<T>(what: string, probe: () => PromiseLike<T | undefined> | T | undefined, ms = 20000): Promise<T> {
   const end = Date.now() + ms;
@@ -57,6 +57,23 @@ describe("Polylog panel", () => {
     s = await until("acme-web rows only", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === web.id));
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("filters by author, alone and together with search", async () => {
+    await send({ type: "filter", filter: { ...ALL, author: "DANA" } });
+    let s = await until("dana's three commits", (x) => x.rows.length === 3);
+    assert.ok(s.rows.every((r) => r.author === "dana"));
+    await send({ type: "filter", filter: { ...ALL, author: "rin@example.com", text: "acme-7" } });
+    s = await until("rin's ACME-7 commits", (x) => x.rows.length === 2 && x.rows.every((r) => r.author === "rin"));
+    await send({ type: "filter", filter: { ...ALL, author: "dana", text: "acme-7" } });
+    await until("no rows: dana never mentions ACME-7", (x) => x.rows.length === 0);
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("offers the user's own git email as the Me author", async () => {
+    const s = await snapshot();
+    assert.strictEqual(s.me, "dana@example.com");
   });
 
   it("fills the native Changes tree when a commit is selected", async () => {

@@ -28,6 +28,8 @@ button, input, select { font: inherit; }
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px var(--pad-x); border-bottom: 1px solid var(--vscode-panel-border); }
 .search { flex: 1 1 240px; min-width: 160px; }
+.author-filter { flex: 0 1 160px; min-width: 100px; }
+#me[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 input[type="search"], input[type="date"], select {
   height: 26px; padding: 2px 6px; border-radius: 2px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);

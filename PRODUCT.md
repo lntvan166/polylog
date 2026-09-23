@@ -51,8 +51,8 @@ product; everything else is a non-goal.
 
 - Read-only. No fetch, pull, checkout or any state-changing git operation.
 - No commit graph: commits in unrelated repos share no topology.
-- Filters are text (`--grep`), repo subset, and date range only. No author, branch or path
-  filters in v1.
+- Filters are text (`--grep`), author (`--author`, with a "Me" shortcut), repo subset, and
+  date range. No branch or path filters in v1.
 - No index, cache or database; every filter is pushed down into `git log` flags.
 - Ordering is by committer date and is best-effort across repositories; the date column is
   always visible so ordering is never mysterious.

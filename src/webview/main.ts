@@ -55,6 +55,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "init":
       state.repos = m.repos;
       state.filter = m.filter;
+      filters.setMe(m.me);
       filters.update(m.filter, m.repos);
       break;
     case "loading":
@@ -115,7 +116,8 @@ function runEmptyAction(action: EmptyAction): void {
   const f = state.filter;
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
-    case "allTime": setFilter({ text: f.text, repoIds: f.repoIds, date: "all" }); return;
+    case "clearAuthor": setFilter({ ...f, author: "" }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, repoIds: f.repoIds, date: "all" }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }
@@ -153,6 +155,11 @@ document.addEventListener("keydown", (e) => {
   if (t === searchEl && searchEl.value !== "") {
     e.preventDefault();
     setFilter({ ...state.filter, text: "" });
+    return;
+  }
+  if (t instanceof HTMLInputElement && t.id === "author" && t.value !== "") {
+    e.preventDefault();
+    setFilter({ ...state.filter, author: "" });
     return;
   }
   listEl.focus();

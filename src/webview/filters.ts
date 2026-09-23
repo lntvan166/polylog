@@ -12,6 +12,9 @@ export class FilterBar {
   private filter: FilterState | undefined;
   private repos: readonly Repo[] = [];
   private readonly search = byId<HTMLInputElement>("search");
+  private readonly author = byId<HTMLInputElement>("author");
+  private readonly meButton = byId<HTMLButtonElement>("me");
+  private me: string | undefined;
   private readonly date = byId<HTMLSelectElement>("date");
   private readonly customRange = byId("custom-range");
   private readonly from = byId<HTMLInputElement>("from");
@@ -24,12 +27,16 @@ export class FilterBar {
   constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void) {
     byId("filters").addEventListener("submit", (e) => e.preventDefault());
     this.search.addEventListener("input", () => this.emit({ text: this.search.value }));
+    this.author.addEventListener("input", () => this.emit({ author: this.author.value }));
+    this.meButton.addEventListener("click", () => {
+      if (this.me) this.emit({ author: this.me });
+    });
     this.date.addEventListener("change", () => {
       const date = this.date.value as DatePreset;
-      const { text, repoIds } = this.current();
+      const { text, author, repoIds } = this.current();
       this.onChange(date === "custom"
-        ? { text, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
-        : { text, repoIds, date });
+        ? { text, author, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
+        : { text, author, repoIds, date });
     });
     for (const input of [this.from, this.to]) {
       input.addEventListener("change", () => this.emit({ from: this.from.value || undefined, to: this.to.value || undefined }));
@@ -53,6 +60,8 @@ export class FilterBar {
     this.filter = filter;
     this.repos = repos;
     if (this.search.value !== filter.text) this.search.value = filter.text;
+    if (this.author.value !== filter.author) this.author.value = filter.author;
+    this.meButton.setAttribute("aria-pressed", String(!!this.me && filter.author === this.me));
     this.date.value = filter.date;
     this.customRange.hidden = filter.date !== "custom";
     this.from.value = filter.from ?? "";
@@ -61,6 +70,13 @@ export class FilterBar {
     if (this.menu.hidden) return;
     if (reposChanged) this.renderRepoList();
     else this.syncChecks();
+  }
+
+  /** The user's git email, from the host; shows the Me button when known. */
+  setMe(me: string | undefined): void {
+    this.me = me;
+    this.meButton.hidden = !me;
+    if (me) this.meButton.title = `Only commits by ${me}`;
   }
 
   /** Returns true if a menu was open (so Escape was consumed). */

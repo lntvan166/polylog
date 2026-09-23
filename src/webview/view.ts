@@ -83,7 +83,7 @@ export function dateLabel(f: FilterState): string {
   }
 }
 
-export type EmptyAction = "clearText" | "allTime" | "selectAll" | "settings";
+export type EmptyAction = "clearText" | "clearAuthor" | "allTime" | "selectAll" | "settings";
 
 export interface EmptyState {
   title: string;
@@ -106,8 +106,15 @@ export function emptyState(o: { repoCount: number; filter: FilterState }): Empty
   const k = f.repoIds === null ? o.repoCount : f.repoIds.length;
   const scope = f.repoIds === null ? `${k} ${repoNoun(k)}` : `${k} selected ${repoNoun(k)}`;
   const text = f.text.trim();
+  const author = f.author.trim();
+  if (text && author) {
+    return { title: "No matching commits", body: `No commit by “${author}” contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+  }
   if (text) {
     return { title: "No matching commits", body: `No commit message contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+  }
+  if (author) {
+    return { title: "No matching commits", body: `No commits by “${author}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Author", id: "clearAuthor" } };
   }
   if (f.date !== "all") {
     return { title: "No commits in this date range", body: `No commits in ${scope}${dateLabel(f)}.`, action: { label: "Show All Time", id: "allTime" } };

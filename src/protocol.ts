@@ -3,7 +3,7 @@ import type { Commit, Repo, RepoFailure } from "./types";
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState }
+  | { type: "init"; repos: Repo[]; filter: FilterState; me?: string }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number };
 

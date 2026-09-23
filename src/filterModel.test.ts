@@ -84,18 +84,31 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 {
   assert.deepStrictEqual(sanitizeFilter(undefined), DEFAULT_FILTER);
   assert.deepStrictEqual(sanitizeFilter("garbage"), DEFAULT_FILTER);
-  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", repoIds: ["/a"], date: "30d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "x", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", repoIds: null, date: "7d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "", repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", repoIds: null, date: "custom", from: "2026-09-01" });
+  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", author: "", repoIds: ["/a"], date: "30d" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "x", author: "rin", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", author: "rin", repoIds: null, date: "7d" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "", author: 4, repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", author: "", repoIds: null, date: "custom", from: "2026-09-01" });
   console.log("ok - sanitizeFilter repairs corrupt persisted state");
 }
 
 // ── sameExceptText drives the debounce decision ────────────────────────────
 {
   assert.ok(sameExceptText({ ...ALL, text: "a" }, { ...ALL, text: "ab" }));
+  assert.ok(sameExceptText({ ...ALL, author: "ri" }, { ...ALL, author: "rin" }), "typing an author is debounced like search");
   assert.ok(!sameExceptText(ALL, { ...ALL, date: "7d" }));
   assert.ok(!sameExceptText(ALL, { ...ALL, repoIds: [] }));
   assert.ok(!sameExceptText({ ...ALL, repoIds: ["/a"] }, { ...ALL, repoIds: ["/b"] }));
   assert.ok(!sameExceptText({ ...ALL, date: "custom", from: "2026-09-01" }, { ...ALL, date: "custom", from: "2026-09-02" }));
   console.log("ok - sameExceptText is true only when nothing but the search changed");
+}
+
+// ── Author is pushed down as --author, literal and case-insensitive ────────
+{
+  assert.deepStrictEqual(args({ ...ALL, author: " Rin " }), ["log", LOG_FORMAT, "--max-count=200", "--regexp-ignore-case", "--fixed-strings", "--author=Rin"]);
+  const both = args({ ...ALL, text: "ACME-7", author: "dana@example.com" });
+  assert.deepStrictEqual(both.filter((a) => a === "--fixed-strings").length, 1, "the literal/case flags are given once");
+  assert.ok(both.includes("--grep=ACME-7") && both.includes("--author=dana@example.com"));
+  assert.ok(!args({ ...ALL, author: "  " }).some((a) => a.startsWith("--author")), "blank author adds nothing");
+  const inj = args({ ...ALL, author: "--output=/tmp/pwned" });
+  assert.ok(inj.includes("--author=--output=/tmp/pwned") && !inj.includes("--output=/tmp/pwned"));
+  console.log("ok - author becomes one literal, case-insensitive --author= argument");
 }

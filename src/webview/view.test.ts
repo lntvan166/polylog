@@ -97,3 +97,12 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(reselect("/ws/acme-web\0a", []), -1, "no rows, no selection");
   console.log("ok - reselect keeps the selection across a replay or refresh");
 }
+{
+  const by = emptyState({ repoCount: 3, filter: { ...ALL, author: "rin" } });
+  assert.strictEqual(by.body, "No commits by “rin” in 3 repositories.");
+  assert.deepStrictEqual(by.action, { label: "Clear Author", id: "clearAuthor" });
+  const both = emptyState({ repoCount: 3, filter: { ...DEFAULT_FILTER, text: "ACME-7", author: "dana" } });
+  assert.strictEqual(both.body, "No commit by “dana” contains “ACME-7” in 3 repositories in the last 30 days.");
+  assert.strictEqual(both.action?.id, "clearText");
+  console.log("ok - empty states name the author filter and offer to clear it");
+}

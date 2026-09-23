@@ -50,6 +50,10 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual((await log({ ...ALL, text: "[acme-7]" })).map((c) => c.subject), ["[ACME-7] add retry"]);
     assert.deepStrictEqual(await log({ ...ALL, text: "." }), [], "a literal dot matches nothing here; as a regex it would match all");
     console.log("ok - search is literal and case-insensitive against real git");
+    assert.deepStrictEqual((await log({ ...ALL, author: "RIN" })).map((c) => c.subject), ["café: rename", "fix(api) guard nil response"]);
+    assert.deepStrictEqual((await log({ ...ALL, author: "dana@example.com", text: "retry" })).map((c) => c.subject), ["[ACME-7] add retry"]);
+    assert.deepStrictEqual(await log({ ...ALL, author: "rin", text: "retry" }), [], "author AND search, never OR");
+    console.log("ok - --author matches name or email and combines with --grep as AND");
   }
   {
     git(api, ["config", "i18n.logOutputEncoding", "ISO-8859-1"]);

@@ -45,7 +45,9 @@ Stated explicitly so the plan does not drift into them:
 
 - No writes. No fetch, pull, checkout, cherry-pick, or any git operation that changes state.
 - No commit graph. Commits in unrelated repos share no topology; merged lanes would be meaningless.
-- No author, branch, or path filters. Text, repo and date only.
+- No branch or path filters. Text, author, repo and date only. (Author added 2026-09-23 by
+  maintainer decision: pushed down as `git log --author`, literal and case-insensitive,
+  ANDed with the message search; a "Me" button fills in the user's git email.)
 - No GitHub/GitLab/remote integration, no PR awareness.
 - No submodule-specific handling. A submodule that VS Code reports as a repository is
   treated as any other repository.
