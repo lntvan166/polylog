@@ -20,6 +20,18 @@ body {
   font-weight: var(--vscode-font-weight);
 }
 button, input, select { font: inherit; }
+/* Tell Chromium the page's scheme, so native controls (checkboxes, date pickers,
+   the branch suggestions popup, scrollbars) draw dark in dark themes, not white. */
+body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
+body.vscode-light, body.vscode-high-contrast-light { color-scheme: light; }
+/* Picking a suggestion marks an input as auto-filled; Chromium then paints its own
+   light background over the theme. Keep the theme's input colors instead. */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:autofill {
+  -webkit-text-fill-color: var(--vscode-input-foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--vscode-input-background) inset;
+  caret-color: var(--vscode-input-foreground);
+  transition: background-color 100000s 0s;
+}
 [hidden] { display: none !important; }
 :focus { outline: none; }
 :focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
