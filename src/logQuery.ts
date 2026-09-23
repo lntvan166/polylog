@@ -1,16 +1,15 @@
-import { logArgs, selectRepos, type FilterState, type RepoCursor } from "./filterModel";
-import { parseLog } from "./gitLog";
-import { mergeBatches, type RepoBatch } from "./mergeStream";
+import { logArgs, selectRepos, type FilterState } from "./filterModel";
+import { countRecords, parseLog } from "./gitLog";
+import { takeReady, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
-import { commitKey, type Commit, type Repo, type RepoFailure } from "./types";
+import type { Commit, Repo, RepoFailure } from "./types";
 
 export type RunGit = (cwd: string, args: string[], signal: AbortSignal) => Promise<string>;
 
 export interface QueryState {
   /** Fixed at the first page so --since does not drift while paging. */
   now: number;
-  cursors: Map<string, RepoCursor>;
-  seen: Set<string>;
+  progress: Map<string, RepoProgress>;
 }
 
 export interface PageRequest {
@@ -32,36 +31,54 @@ export interface PageResult {
   done: boolean;
 }
 
+/** Fetch rounds per page; each round drains at least one repo, so this only bounds pathological input. */
+const MAX_ROUNDS = 64;
+
 /**
- * One page of the merged log: one `git log` per repository, every filter pushed
- * down as git flags, merged in memory. No index, no cache.
+ * One page of the merged log: one `git log` per repository that needs more,
+ * every filter pushed down as git flags, merged in memory. No index, no cache —
+ * the pending rows live only as long as this query.
  */
 export async function fetchPage(req: PageRequest): Promise<PageResult> {
-  const { prev } = req;
-  const now = prev?.now ?? req.now;
-  const targets = prev ? req.repos.filter((r) => prev.cursors.has(r.id)) : selectRepos(req.filter, req.repos);
-  const settled = await runPool(
-    targets,
-    req.concurrency,
-    (repo, signal) => req.run(repo.root, logArgs(req.filter, { pageSize: req.pageSize, now, cursor: prev?.cursors.get(repo.id) }), signal),
-    req.signal,
+  const now = req.prev?.now ?? req.now;
+  const byId = new Map(req.repos.map((r) => [r.id, r]));
+  // Copy, so an aborted page leaves the previous state intact.
+  const progress = new Map<string, RepoProgress>(
+    req.prev
+      ? [...req.prev.progress].filter(([id]) => byId.has(id)).map(([id, p]) => [id, { ...p, pending: [...p.pending] }])
+      : selectRepos(req.filter, req.repos).map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
-  if (req.signal.aborted) throw abortError();
-
-  const batches: RepoBatch[] = [];
   const failures: RepoFailure[] = [];
-  settled.forEach((result, i) => {
-    const repo = targets[i];
-    if (result.status === "fulfilled") {
-      const commits = parseLog(result.value, repo.id);
-      batches.push({ repoId: repo.id, commits, full: commits.length >= req.pageSize, cursor: prev?.cursors.get(repo.id) });
-    } else {
-      failures.push({ repoId: repo.id, name: repo.name, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) });
-    }
-  });
 
-  const seen = new Set(prev?.seen);
-  const { rows, cursors } = mergeBatches(batches, seen);
-  for (const c of rows) seen.add(commitKey(c));
-  return { rows, failures, state: { now, cursors, seen }, done: cursors.size === 0 };
+  for (let round = 0; round < MAX_ROUNDS; round++) {
+    const targets = [...progress]
+      .filter(([, p]) => !p.exhausted && p.pending.length < req.pageSize)
+      .map(([id]) => byId.get(id)!);
+    const settled = await runPool(
+      targets,
+      req.concurrency,
+      (repo, signal) => req.run(repo.root, logArgs(req.filter, { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched } }), signal),
+      req.signal,
+    );
+    if (req.signal.aborted) throw abortError();
+
+    settled.forEach((result, i) => {
+      const repo = targets[i];
+      const p = progress.get(repo.id)!;
+      if (result.status === "fulfilled") {
+        const records = countRecords(result.value);
+        p.fetched += records;
+        p.pending.push(...parseLog(result.value, repo.id));
+        if (records < req.pageSize) p.exhausted = true;
+      } else {
+        progress.delete(repo.id);
+        failures.push({ repoId: repo.id, name: repo.name, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) });
+      }
+    });
+
+    const rows = takeReady(progress);
+    const done = [...progress.values()].every((p) => p.exhausted && p.pending.length === 0);
+    if (rows.length > 0 || done) return { rows, failures, state: { now, progress }, done };
+  }
+  return { rows: [], failures, state: { now, progress }, done: false };
 }

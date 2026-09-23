@@ -5,7 +5,7 @@ import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
 const ALL: FilterState = { ...DEFAULT_FILTER, date: "all" };
-const args = (f: FilterState, cursor?: { until: number; skip: number }) => logArgs(f, { pageSize: 200, now: NOW, cursor });
+const args = (f: FilterState, cursor?: { skip: number }) => logArgs(f, { pageSize: 200, now: NOW, cursor });
 const localStart = (day: string) => Math.floor(new Date(`${day}T00:00:00`).getTime() / 1000);
 const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime() / 1000);
 
@@ -60,12 +60,15 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   console.log("ok - custom from/to cover whole local days; malformed dates are ignored");
 }
 
-// ── Cursor: inclusive --until plus --skip for already-consumed ties ────────
+// ── Cursor: a walk position (--skip), never a date ──────────────────────────
 {
-  const a = args(ALL, { until: 1_700_000_000, skip: 3 });
-  assert.ok(a.includes(`--until=${gitDate(1_700_000_000)}`) && a.includes("--skip=3"));
-  assert.ok(!args(ALL, { until: 5, skip: 0 }).some((x) => x.startsWith("--skip")));
-  console.log("ok - a cursor adds --until and, when non-zero, --skip");
+  const a = args(ALL, { skip: 3 });
+  assert.ok(a.includes("--skip=3"));
+  assert.ok(!a.some((x) => x.startsWith("--until")), "paging never adds --until: git's walk order is not date order");
+  assert.ok(!args(ALL, { skip: 0 }).some((x) => x.startsWith("--skip")));
+  const c = args({ ...ALL, date: "custom", to: "2026-09-10" }, { skip: 5 });
+  assert.ok(c.includes(`--until=${gitDate(localEnd("2026-09-10"))}`) && c.includes("--skip=5"), "a custom end date still applies");
+  console.log("ok - a cursor adds only --skip; the custom end date is independent of paging");
 }
 
 // ── Repo subset ─────────────────────────────────────────────────────────────

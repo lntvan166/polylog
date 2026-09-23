@@ -13,9 +13,12 @@ export interface FilterState {
   to?: string;
 }
 
-/** Where the next page for one repository starts: commits at or before `until`, after skipping `skip` of them. */
+/**
+ * Where the next page for one repository starts: a position in git's own walk
+ * order. Never a date — git emits a child before its parents, so a commit with
+ * a backwards clock would make a date cursor skip real history.
+ */
 export interface RepoCursor {
-  until: number;
   skip: number;
 }
 
@@ -42,11 +45,8 @@ export function sinceOf(f: FilterState, now: number): number | undefined {
   return now - PRESET_SECONDS[f.date];
 }
 
-export function untilOf(f: FilterState, cursor?: RepoCursor): number | undefined {
-  const end = f.date === "custom" ? localDay(f.to, "23:59:59") : undefined;
-  if (!cursor) return end;
-  // Every earlier page already respected `end`, so the cursor is never later than it.
-  return end === undefined ? cursor.until : Math.min(end, cursor.until);
+export function untilOf(f: FilterState): number | undefined {
+  return f.date === "custom" ? localDay(f.to, "23:59:59") : undefined;
 }
 
 export function logArgs(f: FilterState, o: { pageSize: number; now: number; cursor?: RepoCursor }): string[] {
@@ -55,7 +55,7 @@ export function logArgs(f: FilterState, o: { pageSize: number; now: number; curs
   if (text) args.push("--regexp-ignore-case", "--fixed-strings", `--grep=${text}`);
   const since = sinceOf(f, o.now);
   if (since !== undefined) args.push(`--since=${gitDate(since)}`);
-  const until = untilOf(f, o.cursor);
+  const until = untilOf(f);
   if (until !== undefined) args.push(`--until=${gitDate(until)}`);
   if (o.cursor && o.cursor.skip > 0) args.push(`--skip=${o.cursor.skip}`);
   return args;

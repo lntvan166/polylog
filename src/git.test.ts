@@ -23,7 +23,7 @@ makeRepo(api, [
   { time: 3000, author: "rin", message: "café: rename", files: { "sp ace é.txt": null, "renamed.txt": "a\n" } },
 ], home);
 
-const log = async (f: FilterState, o: { now?: number; cursor?: { until: number; skip: number } } = {}) =>
+const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } } = {}) =>
   parseLog(await runGit(api, logArgs(f, { pageSize: 50, now: o.now ?? 10_000, cursor: o.cursor })), api);
 
 (async () => {
@@ -36,9 +36,9 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { until: number; 
     console.log("ok - runGit + parseLog read a real repository, newest first");
   }
   {
-    const cs = await log(ALL, { cursor: { until: 2000, skip: 1 } });
-    assert.deepStrictEqual(cs.map((c) => c.subject), ["fix(api) guard nil response", "feat: scaffold api"]);
-    console.log("ok - --until is inclusive of its second and --skip counts after it");
+    const cs = await log(ALL, { cursor: { skip: 1 } });
+    assert.deepStrictEqual(cs.map((c) => c.subject), ["[ACME-7] add retry", "fix(api) guard nil response", "feat: scaffold api"]);
+    console.log("ok - --skip resumes at a walk position");
   }
   {
     const cs = await log({ ...ALL, date: "24h" }, { now: 2500 + 86_400 });

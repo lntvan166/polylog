@@ -20,3 +20,12 @@ export function parseLog(stdout: string, repoId: string): Commit[] {
   }
   return commits;
 }
+
+/**
+ * Records git actually emitted, parseable or not. Paging advances --skip by
+ * this, not by parsed commits, or one malformed record would misalign every
+ * later page.
+ */
+export function countRecords(stdout: string): number {
+  return stdout.split("\x1e").length - 1;
+}

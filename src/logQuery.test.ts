@@ -20,19 +20,33 @@ const mk = (r: Repo, time: number, subject = `${r.name}@${time}`): Commit => ({
 const stdout = (cs: Commit[]) => cs.map((c) => [c.sha, c.time, c.author, c.email, c.subject, c.parents.join(" ")].join("\0") + "\x1e\n").join("");
 const arg = (args: string[], prefix: string) => args.find((a) => a.startsWith(prefix))?.slice(prefix.length);
 
-/** Stands in for git: honours --max-count, --until and --skip exactly as the real flags do. */
+/**
+ * Stands in for git: emits commits in the given array order — git's walk order,
+ * which is NOT date order when a clock is skewed — honouring --skip/--max-count.
+ */
 function fakeRun(data: Record<string, Commit[]>, calls: string[][] = [], failing = new Set<string>()): RunGit {
   return async (cwd, args) => {
     calls.push([cwd, ...args]);
     if (failing.has(cwd)) throw new GitError("shallow clone: history is incomplete", 128);
     const max = Number(arg(args, "--max-count="));
-    const until = arg(args, "--until=");
     const skip = Number(arg(args, "--skip=") ?? 0);
-    let cs = [...(data[cwd] ?? [])].sort(compareCommits);
-    if (until) cs = cs.filter((c) => c.time <= Date.parse(until) / 1000);
-    return stdout(cs.slice(skip, skip + max));
+    return stdout((data[cwd] ?? []).slice(skip, skip + max));
   };
 }
+const newestFirst = (cs: Commit[]) => [...cs].sort(compareCommits);
+async function pageAll(repos: Repo[], data: Record<string, Commit[]>, pageSize: number, calls: string[][] = []) {
+  const run = fakeRun(data, calls);
+  const pages: Commit[][] = [];
+  let prev: QueryState | null = null;
+  for (let guard = 0; guard < 200; guard++) {
+    const page = await fetchPage(req({ repos, pageSize, now: 1_790_164_800 + guard * 1000, prev, run, filter: { ...DEFAULT_FILTER, date: "30d" } }));
+    pages.push(page.rows);
+    prev = page.state;
+    if (page.done) return pages;
+  }
+  throw new Error("paging did not terminate");
+}
+
 const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
   repos: [WEB, API, LIBS], filter: ALL, pageSize: 200, concurrency: 16, now: 1_790_164_800, prev: null,
   run: fakeRun({}), signal: new AbortController().signal, ...over,
@@ -52,7 +66,7 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const page = await fetchPage(req({ run: fakeRun(data, [], new Set([LIBS.root])) }));
     assert.deepStrictEqual(page.rows.map((c) => c.repoId), [WEB.id, API.id]);
     assert.deepStrictEqual(page.failures, [{ repoId: LIBS.id, name: "acme-libs", reason: "shallow clone: history is incomplete" }]);
-    assert.ok(!page.state.cursors.has(LIBS.id), "a failed repo is not retried by Load More");
+    assert.ok(!page.state.progress.has(LIBS.id), "a failed repo is not retried by Load More");
     console.log("ok - one failing repository is reported and excluded, not fatal");
   }
   {
@@ -64,24 +78,37 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
   {
     const data = { [WEB.root]: [mk(WEB, 60), mk(WEB, 40), mk(WEB, 20)], [API.root]: [mk(API, 50), mk(API, 30), mk(API, 10)] };
     const calls: string[][] = [];
-    const run = fakeRun(data, calls);
-    const filter: FilterState = { ...DEFAULT_FILTER, date: "30d" };
-    const now = 1_790_164_800;
-    const all: Commit[] = [];
-    let prev: QueryState | null = null;
-    let pages = 0;
-    for (let guard = 0; guard < 10; guard++) {
-      const page = await fetchPage(req({ repos: [WEB, API], filter, pageSize: 2, now: now + guard * 1000, prev, run }));
-      all.push(...page.rows);
-      pages++;
-      prev = page.state;
-      if (page.done) break;
-    }
-    assert.ok(pages >= 2);
+    const pages = await pageAll([WEB, API], data, 2, calls);
+    const all = pages.flat();
+    assert.ok(pages.length >= 2);
     assert.strictEqual(new Set(all.map(commitKey)).size, 6, "every commit exactly once");
     assert.deepStrictEqual(all.map((c) => c.time), [60, 50, 40, 30, 20, 10]);
     assert.strictEqual(new Set(calls.map((c) => arg(c, "--since="))).size, 1, "--since stays fixed across pages even as time passes");
+    assert.ok(calls.every((c) => !c.some((a) => a.startsWith("--until="))), "paging never uses --until");
     console.log("ok - Load More pages through every repo with a stable --since");
+  }
+  {
+    // git emits a child before its parents; a child with a backwards clock
+    // comes out "too old" in the middle of newer history (review finding).
+    const walk = Array.from({ length: 10 }, (_, i) => mk(WEB, 10_000 - i * 100));
+    walk[6] = { ...walk[6], time: 10_000 - 1_000_000 };
+    const pages = await pageAll([WEB], { [WEB.root]: walk }, 3);
+    const all = pages.flat();
+    assert.strictEqual(all.length, 10, "no commit after the skewed one goes missing");
+    assert.strictEqual(new Set(all.map(commitKey)).size, 10);
+    console.log("ok - a backwards-dated commit cannot hide the rest of its repo");
+  }
+  {
+    const rebased = Array.from({ length: 450 }, () => mk(WEB, 5000));
+    const busy = Array.from({ length: 300 }, (_, i) => mk(API, 6200 - i * 3));
+    const old = Array.from({ length: 5 }, (_, i) => mk(LIBS, 104 - i));
+    const data = { [WEB.root]: rebased, [API.root]: busy, [LIBS.root]: old };
+    const pages = await pageAll([WEB, API, LIBS], data, 200);
+    const flat = pages.flat();
+    assert.ok(pages.length >= 3, `expected several pages, got ${pages.length}`);
+    assert.strictEqual(new Set(flat.map(commitKey)).size, flat.length, "no duplicates");
+    assert.deepStrictEqual(flat.map(commitKey), newestFirst([...rebased, ...busy, ...old]).map(commitKey), "no gaps; global order holds without skew");
+    console.log("ok - a >pageSize same-second rebase pages through with no duplicates or gaps");
   }
   {
     const ctl = new AbortController();
@@ -103,6 +130,21 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
       "feat: add retry to uploader", "fix: guard nil response", "chore: bump deps", "feat: scaffold api", "feat: scaffold web",
     ]);
     console.log("ok - end to end against three real repositories");
+
+    const skewed = { id: path.join(home, "acme-skew"), root: path.join(home, "acme-skew"), name: "acme-skew" };
+    makeRepo(skewed.root, Array.from({ length: 10 }, (_, i) => ({
+      time: i === 6 ? 50 : 1000 + i * 100, author: "rin" as const, message: `c${i}`,
+    })), home);
+    const all: Commit[] = [];
+    let prev: QueryState | null = null;
+    for (let guard = 0; guard < 50; guard++) {
+      const page = await fetchPage({ repos: [skewed], filter: ALL, pageSize: 3, concurrency: 4, now: 5000, prev, run: runGit, signal: new AbortController().signal });
+      all.push(...page.rows);
+      prev = page.state;
+      if (page.done) break;
+    }
+    assert.deepStrictEqual(all.map((c) => c.subject).sort(), Array.from({ length: 10 }, (_, i) => `c${i}`).sort());
+    console.log("ok - real git: one backwards-dated commit does not truncate paging");
   }
 })().catch((e) => {
   console.error(e);

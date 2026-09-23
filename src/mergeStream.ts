@@ -1,19 +1,13 @@
-import type { RepoCursor } from "./filterModel";
-import { commitKey, type Commit } from "./types";
+import type { Commit } from "./types";
 
-export interface RepoBatch {
-  repoId: string;
-  commits: Commit[];
-  /** The query returned a full page, so the repository may have more. */
-  full: boolean;
-  /** The cursor this batch was fetched with (absent on the first page). */
-  cursor?: RepoCursor;
-}
-
-export interface MergeResult {
-  rows: Commit[];
-  /** Next-page cursors, only for repositories with more to show. */
-  cursors: Map<string, RepoCursor>;
+/** One repository's place in the merged log for the life of one query. */
+export interface RepoProgress {
+  /** Records consumed from git's walk so far — the next page's --skip. */
+  fetched: number;
+  /** Fetched but not shown yet: held back by the horizon. */
+  pending: Commit[];
+  /** git returned a short page: nothing more to fetch. */
+  exhausted: boolean;
 }
 
 export function compareCommits(a: Commit, b: Commit): number {
@@ -22,34 +16,24 @@ export function compareCommits(a: Commit, b: Commit): number {
   return a.repoId < b.repoId ? -1 : a.repoId > b.repoId ? 1 : 0;
 }
 
-export function mergeBatches(batches: readonly RepoBatch[], seen: ReadonlySet<string>): MergeResult {
-  // The horizon: no row older than the oldest commit of any repository that may
-  // still have unfetched history, or that history would later land above it.
+/**
+ * Moves every pending commit at or above the horizon into the returned rows,
+ * newest first. The horizon is the highest "oldest pending commit" among
+ * repositories that may still have unfetched history: nothing below it can be
+ * shown yet, or that history could later land above it. Rows below the horizon
+ * stay pending — held, never dropped — so a commit with a skewed clock sinks to
+ * its date instead of truncating its repository.
+ */
+export function takeReady(progress: ReadonlyMap<string, RepoProgress>): Commit[] {
   let horizon = -Infinity;
-  for (const b of batches) {
-    if (b.full && b.commits.length > 0) horizon = Math.max(horizon, b.commits.reduce((m, c) => Math.min(m, c.time), Infinity));
+  for (const p of progress.values()) {
+    if (!p.exhausted && p.pending.length > 0) horizon = Math.max(horizon, p.pending.reduce((m, c) => Math.min(m, c.time), Infinity));
   }
-
   const rows: Commit[] = [];
-  const cursors = new Map<string, RepoCursor>();
-  for (const b of batches) {
-    let cut = false;
-    let atHorizon = 0;
-    for (const c of b.commits) {
-      if (c.time < horizon) {
-        cut = true;
-        continue;
-      }
-      if (c.time === horizon) atHorizon++;
-      if (!seen.has(commitKey(c))) rows.push(c);
-    }
-    if (b.full || cut) {
-      // --until is inclusive, so skip the commits at exactly `horizon` already
-      // consumed — including those skipped by this batch's own cursor.
-      const carried = b.cursor && b.cursor.until === horizon ? b.cursor.skip : 0;
-      cursors.set(b.repoId, { until: horizon, skip: carried + atHorizon });
-    }
+  for (const p of progress.values()) {
+    const held: Commit[] = [];
+    for (const c of p.pending) (c.time >= horizon ? rows : held).push(c);
+    p.pending = held;
   }
-  rows.sort(compareCommits);
-  return { rows, cursors };
+  return rows.sort(compareCommits);
 }
