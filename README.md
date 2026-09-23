@@ -32,12 +32,15 @@ nothing for a database to improve on.
 
 ## Using it
 
-Run **Polylog: Open Merged Log** from the Command Palette.
+Run **Polylog: Open Merged Log** from the Command Palette. Polylog opens as a tab in the
+bottom panel, next to Terminal: the **Log** on the left, the native **Changes** tree on the
+right. Clicking a file opens its diff in the editor area above. Right-click the commit in
+Changes to copy its SHA or message.
 
 | Key | Action |
 |---|---|
 | `↑` / `↓`, `Home` / `End`, `PageUp` / `PageDown` | Move the selection; the changed files follow |
-| `Enter` | Open the selected commit's first changed file in the diff editor |
+| `Enter` | Open the selected commit's first changed file in the editor area |
 | `/` or `Ctrl/Cmd+F` | Search commit messages |
 | `Esc` | Clear the search, then return to the list |
 

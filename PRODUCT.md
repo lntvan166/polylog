@@ -6,7 +6,7 @@
 
 web
 
-A VS Code webview rendered in an editor tab. It also renders in a plain browser through the
+A VS Code panel view (Log webview beside a native Changes tree), next to Terminal. It also renders in a plain browser through the
 dev harness (spec §6), which is where design iteration and detectors run.
 
 ## Stack
@@ -38,7 +38,8 @@ product; everything else is a non-goal.
 
 ## Operating Context
 
-- Lives in an editor tab next to the user's code; opened on demand via `polylog.open`.
+- Lives in the bottom panel beside Terminal; diffs open in the editor area above. Opened on
+  demand via `polylog.open`.
 - Workspaces range from a handful of repos to dozens (designed against 68 repos, 16k
   commits).
 - Keyboard-driven audience: ↑/↓ selection, Enter to open, `/` or Ctrl/Cmd+F to search,
