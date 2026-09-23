@@ -1,10 +1,14 @@
 {
   "name": "polylog",
   "displayName": "Polylog — Multi-Repo Git Log",
-  "description": "One git log across every repo in your workspace. Search commits by message across all of them at once, and see the changed files without switching repositories.",
+  "description": "One git log across every repository in your workspace. Search commit messages, filter by author, branch and date across all of them at once, and open any change in the native diff editor.",
   "version": "0.0.0",
   "publisher": "lntvan166",
   "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1c0e0b",
+    "theme": "dark"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -13,6 +17,7 @@
   "bugs": {
     "url": "https://github.com/lntvan166/polylog/issues"
   },
+  "homepage": "https://github.com/lntvan166/polylog#readme",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -28,7 +33,12 @@
     "polyrepo",
     "multi-root",
     "commits",
-    "workspace"
+    "workspace",
+    "git log",
+    "git history",
+    "file history",
+    "multi repository",
+    "search commits"
   ],
   "activationEvents": [
     "onCommand:polylog.fileHistory",
