@@ -52,14 +52,13 @@ export function renderHtml(o: HtmlOptions): string {
     <button id="refresh" class="icon-button" type="button" aria-label="Refresh" title="Refresh">${REFRESH_ICON}</button>
   </form>
   <div id="notices" class="notices"></div>
-  <main class="split">
+  <main class="main">
     <section class="list-pane" aria-label="Commits">
       <div id="list" class="list" role="grid" aria-label="Commits" aria-rowcount="0" tabindex="0">
         <div id="rows" class="rows" role="rowgroup"></div>
       </div>
       <div id="empty" class="empty" hidden></div>
     </section>
-    <aside id="detail" class="detail" aria-label="Changed files"></aside>
   </main>
   <footer class="footer">
     <button id="more" class="secondary" type="button" hidden>Load More</button>

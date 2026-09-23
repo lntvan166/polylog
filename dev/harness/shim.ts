@@ -4,7 +4,7 @@
 import { DEFAULT_FILTER, type FilterState } from "../../src/filterModel";
 import type { HostMessage, WebviewMessage } from "../../src/protocol";
 import type { Commit } from "../../src/types";
-import { mockCommits, mockFiles, mockRepos, NOW } from "./mock";
+import { mockCommits, mockRepos, NOW } from "./mock";
 
 const params = new URLSearchParams(location.search);
 const theme = params.get("theme") ?? "dark";
@@ -65,14 +65,7 @@ function handle(m: WebviewMessage): void {
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
-    case "select": {
-      const subject = all.find((c) => c.sha === m.sha)?.subject ?? "";
-      const n = parseInt(m.sha.slice(0, 4), 16) % 900;
-      const message = `${subject}\n\nfunc: ACME_SYNC_${String(n).padStart(3, "0")}\ntask: ACME-${n}`;
-      send({ type: "detail", repoId: m.repoId, sha: m.sha, files: mockFiles(m.sha), message });
-      return;
-    }
-    case "openFile": console.info("[harness] openFile", m); return;
+    case "select": case "openFirst": console.info(`[harness] ${m.type}`, m); return;
     case "openSettings": console.info("[harness] openSettings"); return;
   }
 }

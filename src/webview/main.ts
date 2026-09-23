@@ -1,8 +1,7 @@
 import "./styles.css";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import type { HostMessage, WebviewMessage } from "../protocol";
-import { commitKey, type Commit, type FileChange, type Repo, type RepoFailure } from "../types";
-import { DetailPane } from "./detail";
+import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
@@ -16,13 +15,6 @@ const post = (m: WebviewMessage): void => vscode.postMessage(m);
 /** A 25 ms query should never flash a skeleton. */
 const SKELETON_DELAY_MS = 150;
 
-interface Detail {
-  key: string;
-  files?: FileChange[] | null;
-  message?: string;
-  error?: string;
-}
-
 const state = {
   repos: [] as Repo[],
   filter: DEFAULT_FILTER as FilterState,
@@ -34,8 +26,6 @@ const state = {
   skeleton: false,
   selected: -1,
   now: Math.floor(Date.now() / 1000),
-  detail: null as Detail | null,
-  openWhenLoaded: false,
 };
 
 const listEl = byId("list");
@@ -43,10 +33,6 @@ const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
 const list = new CommitList(listEl, byId("rows"), (i) => select(i), openFirstFile);
-const detail = new DetailPane(byId("detail"), (f) => {
-  const c = state.rows[state.selected];
-  if (c) openFile(c, f);
-});
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
   render();
@@ -54,6 +40,7 @@ const notices = new NoticeBar(byId("notices"), () => {
 const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }));
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
+let selectedKey: string | null = null;
 
 moreEl.addEventListener("click", () => {
   if (state.loading) return;
@@ -98,15 +85,6 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         select(next, false);
       }
       break;
-    case "detail":
-      if (state.detail?.key === commitKey(m)) {
-        state.detail = { key: state.detail.key, files: m.files, message: m.message, error: m.error };
-        if (state.openWhenLoaded) {
-          state.openWhenLoaded = false;
-          openFirstFile();
-        }
-      }
-      break;
   }
   render();
 });
@@ -114,30 +92,16 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
 function select(index: number, andRender = true): void {
   state.selected = index;
   const c = state.rows[index];
-  if (!c) {
-    state.detail = null;
-  } else if (state.detail?.key !== commitKey(c)) {
-    state.detail = { key: commitKey(c) };
-    state.openWhenLoaded = false;
-    post({ type: "select", repoId: c.repoId, sha: c.sha });
-  }
+  const key = c ? commitKey(c) : null;
+  if (c && key !== selectedKey) post({ type: "select", repoId: c.repoId, sha: c.sha });
+  selectedKey = key;
   if (andRender) render();
 }
 
-function openFile(c: Commit, f: FileChange): void {
-  post({ type: "openFile", repoId: c.repoId, sha: c.sha, parent: c.parents[0] ?? null, path: f.path, oldPath: f.oldPath });
-}
-
-/** Enter: open the selected commit's first text file, waiting for its file list if needed. */
+/** Enter: the host opens the selected commit's first text file in the editor area. */
 function openFirstFile(): void {
   const c = state.rows[state.selected];
-  if (!c || !state.detail) return;
-  if (state.detail.files === undefined) {
-    state.openWhenLoaded = true;
-    return;
-  }
-  const f = state.detail.files?.find((x) => x.added !== null);
-  if (f) openFile(c, f);
+  if (c) post({ type: "openFirst", repoId: c.repoId, sha: c.sha });
 }
 
 function setFilter(f: FilterState): void {
@@ -165,8 +129,6 @@ function render(): void {
     skeleton: state.skeleton && state.rows.length === 0,
   });
   empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter }) : null);
-  const c = state.rows[state.selected] ?? null;
-  detail.render(c, c ? names.get(c.repoId) ?? c.repoId : "", state.detail?.files, state.detail?.error, state.detail?.message);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;

@@ -1,6 +1,6 @@
 {
   "name": "polylog",
-  "displayName": "Polylog — Multi-Repo Git Log",
+  "displayName": "Polylog \u2014 Multi-Repo Git Log",
   "description": "One git log across every repo in your workspace. Search commits by message across all of them at once, and see the changed files without switching repositories.",
   "version": "0.0.0",
   "publisher": "lntvan166",
@@ -30,20 +30,87 @@
     "workspace"
   ],
   "activationEvents": [
-    "onCommand:polylog.open"
+    "onCommand:polylog.open",
+    "onView:polylog.log",
+    "onView:polylog.changes"
   ],
   "main": "./out/extension.js",
   "extensionKind": [
     "workspace"
   ],
   "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "polylog",
+          "title": "Polylog",
+          "icon": "media/polylog.svg"
+        }
+      ]
+    },
+    "views": {
+      "polylog": [
+        {
+          "type": "webview",
+          "id": "polylog.log",
+          "name": "Log"
+        },
+        {
+          "id": "polylog.changes",
+          "name": "Changes"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "polylog.open",
         "title": "Open Merged Log",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.openDiff",
+        "title": "Open Diff",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.copySha",
+        "title": "Copy SHA",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.copyMessage",
+        "title": "Copy Message",
+        "category": "Polylog"
       }
     ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "polylog.copySha",
+          "when": "view == polylog.changes && viewItem == commit",
+          "group": "copy@1"
+        },
+        {
+          "command": "polylog.copyMessage",
+          "when": "view == polylog.changes && viewItem == commit",
+          "group": "copy@2"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "polylog.openDiff",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copySha",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copyMessage",
+          "when": "false"
+        }
+      ]
+    },
     "configuration": {
       "title": "Polylog",
       "properties": {

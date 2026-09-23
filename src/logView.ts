@@ -1,6 +1,8 @@
 import { randomBytes } from "crypto";
 import * as path from "path";
 import * as vscode from "vscode";
+import { firstOpenable } from "./changesModel";
+import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
@@ -10,52 +12,39 @@ import type { HostMessage, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 import { readSettings } from "./settings";
-import { isSha, type Commit, type Repo, type RepoFailure } from "./types";
+import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
 
-export interface PanelDeps {
+export interface LogDeps {
   discovery: RepoDiscovery;
   run: RunGit;
+  changes: ChangesTree;
 }
 
-export interface PanelSnapshot {
+export interface LogSnapshot {
   repos: Repo[];
   filter: FilterState;
   rows: Commit[];
   failures: RepoFailure[];
   done: boolean;
-  /** How many times the webview (re)loaded; a hidden-then-shown panel must not reload. */
+  /** How many times the webview (re)loaded; hiding and showing the panel must not reload it. */
   readyCount: number;
+  changes: ChangesSnapshot;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const toUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision(r) });
 
-export class LogPanel implements vscode.Disposable {
-  static current: LogPanel | undefined;
+/** The Log view in the Polylog panel. Registered with retainContextWhenHidden (extension.ts). */
+export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
+  static readonly id = "polylog.log";
 
-  static show(context: vscode.ExtensionContext, deps: PanelDeps): LogPanel {
-    if (LogPanel.current) {
-      LogPanel.current.panel.reveal();
-      return LogPanel.current;
-    }
-    const panel = vscode.window.createWebviewPanel("polylog.log", "Polylog", vscode.ViewColumn.Active, {
-      enableScripts: true,
-      // Opening a file's diff puts the panel in the background. Without this the
-      // webview is destroyed and rebuilt, losing selection and scroll on every
-      // file opened — the product's core loop.
-      retainContextWhenHidden: true,
-      localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, "out")],
-    });
-    LogPanel.current = new LogPanel(panel, context, deps);
-    return LogPanel.current;
-  }
-
+  private webviewView: vscode.WebviewView | undefined;
   private repos: Repo[] = [];
   private filter: FilterState;
   private rows: Commit[] = [];
@@ -66,25 +55,33 @@ export class LogPanel implements vscode.Disposable {
   private detail = new AbortController();
   private loadingMore = false;
   private readyCount = 0;
+  /** Enter arrived before the selected commit's files: open the first one when they land. */
+  private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly reloadSoon = debounce(() => void this.reload(), SEARCH_DEBOUNCE_MS);
   // The git extension opens repositories in bursts at startup; coalesce them.
   private readonly reposChangedSoon = debounce(() => void this.refreshRepos(), SEARCH_DEBOUNCE_MS);
 
-  private constructor(private readonly panel: vscode.WebviewPanel, private readonly context: vscode.ExtensionContext, private readonly deps: PanelDeps) {
+  constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
-    const webview = panel.webview;
-    const out = vscode.Uri.joinPath(context.extensionUri, "out");
-    webview.html = renderHtml({
-      cspSource: webview.cspSource,
+    this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
+  }
+
+  resolveWebviewView(view: vscode.WebviewView): void {
+    this.webviewView = view;
+    const out = vscode.Uri.joinPath(this.context.extensionUri, "out");
+    view.webview.options = { enableScripts: true, localResourceRoots: [out] };
+    view.webview.html = renderHtml({
+      cspSource: view.webview.cspSource,
       nonce: randomBytes(16).toString("hex"),
-      scriptUri: webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.js")).toString(),
-      styleUri: webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.css")).toString(),
+      scriptUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.js")).toString(),
+      styleUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.css")).toString(),
     });
     this.disposables.push(
-      webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
-      deps.discovery.onDidChange(() => this.reposChangedSoon()),
-      panel.onDidDispose(() => this.dispose()),
+      view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
+      view.onDidDispose(() => {
+        if (this.webviewView === view) this.webviewView = undefined;
+      }),
     );
   }
 
@@ -122,17 +119,13 @@ export class LogPanel implements vscode.Disposable {
       case "select":
         await this.showDetail(m.repoId, m.sha);
         return;
-      case "openFile":
-        await this.openFile(m);
+      case "openFirst":
+        await this.openFirst(m.repoId, m.sha);
         return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "scan depth");
         return;
     }
-  }
-
-  snapshot(): PanelSnapshot {
-    return { repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done, readyCount: this.readyCount };
   }
 
   private settings() {
@@ -194,30 +187,73 @@ export class LogPanel implements vscode.Disposable {
     }
   }
 
+  snapshot(): LogSnapshot {
+    return {
+      repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
+      readyCount: this.readyCount, changes: this.deps.changes.snapshot(),
+    };
+  }
+
+  private findCommit(repoId: string, sha: string): { commit: Commit; repo: Repo } | undefined {
+    if (!isSha(sha)) return undefined;
+    const repo = this.repos.find((r) => r.id === repoId);
+    const commit = this.rows.find((c) => c.repoId === repoId && c.sha === sha);
+    return repo && commit ? { commit, repo } : undefined;
+  }
+
   private async showDetail(repoId: string, sha: string): Promise<void> {
     this.detail.abort();
     const ctl = (this.detail = new AbortController());
-    const repo = this.repos.find((r) => r.id === repoId);
-    if (!repo || !isSha(sha)) return;
+    const found = this.findCommit(repoId, sha);
+    if (!found) return;
+    const { commit, repo } = found;
+    const key = commitKey(commit);
+    if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
+    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "" };
+    this.deps.changes.set({ ...base, status: "loading" });
     try {
       const { files, message } = parseShow(await this.deps.run(repo.root, showArgs(sha), ctl.signal));
-      this.post({ type: "detail", repoId, sha, files, message });
+      if (ctl.signal.aborted) return; // a newer selection owns the tree now
+      this.deps.changes.set({ ...base, status: "ready", files, message });
+      if (this.openWhenLoaded === key) {
+        this.openWhenLoaded = null;
+        await this.openFirstOf(commit);
+      }
     } catch (e) {
-      if (!isAbortError(e)) this.post({ type: "detail", repoId, sha, files: null, error: messageOf(e) });
+      if (!isAbortError(e) && !ctl.signal.aborted) this.deps.changes.set({ ...base, status: "error", error: messageOf(e) });
     }
   }
 
-  private async openFile(m: Extract<WebviewMessage, { type: "openFile" }>): Promise<void> {
-    const repo = this.repos.find((r) => r.id === m.repoId);
-    // Refs come from the webview: validate before they reach git.
-    if (!repo || !isSha(m.sha) || !(m.parent === null || isSha(m.parent)) || typeof m.path !== "string") return;
-    const { before, after } = diffSides(repo.root, { sha: m.sha, parents: m.parent ? [m.parent] : [] }, m);
-    const title = `${path.posix.basename(m.path)} (${m.sha.slice(0, 7)}) — ${repo.name}`;
+  private async openFirst(repoId: string, sha: string): Promise<void> {
+    const found = this.findCommit(repoId, sha);
+    if (!found) return;
+    const current = this.deps.changes.current();
+    if (current && commitKey(current.commit) === commitKey(found.commit) && current.status === "ready") {
+      await this.openFirstOf(found.commit);
+      return;
+    }
+    this.openWhenLoaded = commitKey(found.commit);
+    if (!current || commitKey(current.commit) !== commitKey(found.commit)) await this.showDetail(repoId, sha);
+  }
+
+  private async openFirstOf(commit: Commit): Promise<void> {
+    const f = firstOpenable(this.deps.changes.current()?.files ?? []);
+    if (!f) return;
+    await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath });
+  }
+
+  async openDiff(a: OpenDiffArgs): Promise<void> {
+    const repo = this.repos.find((r) => r.id === a?.repoId);
+    // Refs come from the webview or a command argument: validate before they reach git.
+    if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
+    const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, a);
+    const title = `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
+    // A panel view is not an editor group, so this always opens in the editor area above.
     await vscode.commands.executeCommand("vscode.diff", toUri(before), toUri(after), title, { preview: true });
   }
 
   private post(m: HostMessage): void {
-    void this.panel.webview.postMessage(m);
+    void this.webviewView?.webview.postMessage(m);
   }
 
   dispose(): void {
@@ -226,6 +262,5 @@ export class LogPanel implements vscode.Disposable {
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
     for (const d of this.disposables) d.dispose();
-    if (LogPanel.current === this) LogPanel.current = undefined;
   }
 }

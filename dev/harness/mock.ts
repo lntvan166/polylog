@@ -1,5 +1,5 @@
 // Dev-only mock data. Neutral names only (CLAUDE.md constraint 3).
-import type { Commit, FileChange, Repo } from "../../src/types";
+import type { Commit, Repo } from "../../src/types";
 
 /** 2026-09-23T12:00:00Z — fixed so screenshots are reproducible. */
 export const NOW = 1790164800;
@@ -55,21 +55,4 @@ export function mockCommits(repos: Repo[], scenario: string): Commit[] {
     }
   });
   return out.sort((a, b) => b.time - a.time || (a.sha < b.sha ? -1 : 1));
-}
-
-export function mockFiles(commitSha: string): FileChange[] {
-  const sets: FileChange[][] = [
-    [
-      { path: "internal/upload/upload.go", added: 42, deleted: 7 },
-      { path: "internal/upload/upload_test.go", added: 88, deleted: 0 },
-    ],
-    [
-      { path: "src/client.ts", added: 3, deleted: 3 },
-      { path: "assets/logo.png", added: null, deleted: null },
-      { path: "docs/releases.md", oldPath: "docs/release.md", added: 0, deleted: 0 },
-    ],
-    [{ path: "package.json", added: 1, deleted: 1 }],
-    Array.from({ length: 30 }, (_, i) => ({ path: `src/components/table/cells/cell-${i}.ts`, added: i, deleted: 30 - i })),
-  ];
-  return sets[parseInt(commitSha.slice(0, 2), 16) % sets.length];
 }

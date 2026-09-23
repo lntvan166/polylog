@@ -78,8 +78,8 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .notice-text { flex: 1; overflow-wrap: anywhere; }
 
 /* ── List and detail ────────────────────────────────────────────────────── */
-.split { display: grid; grid-template-columns: minmax(0, 3fr) minmax(260px, 2fr); min-height: 0; }
-.list-pane { display: grid; min-height: 0; border-right: 1px solid var(--vscode-panel-border); }
+.main { display: grid; min-height: 0; }
+.list-pane { display: grid; min-height: 0; }
 .list-pane > * { grid-area: 1 / 1; }
 .list { overflow-y: auto; min-height: 0; }
 .rows { position: relative; }
@@ -123,41 +123,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 .empty h2 { margin: 0 0 6px; font-size: 1.1em; font-weight: 600; }
 .empty p { margin: 0 0 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
 
-/* Detail: file tree on top, the full commit message underneath. */
-.detail { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
-.detail-files { overflow-y: auto; min-height: 0; padding: 8px 0; }
-.files-count { padding: 0 var(--pad-x) 4px; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
-.tree { list-style: none; margin: 0; padding: 0; }
-.tree .tree { padding-left: 14px; }
-.folder > summary {
-  display: flex; align-items: baseline; gap: 8px; padding: 2px var(--pad-x); cursor: pointer;
-  color: var(--vscode-foreground);
-}
-.folder > summary:hover { background: var(--vscode-list-hoverBackground); }
-.folder > summary { list-style: none; }
-.folder > summary::-webkit-details-marker { display: none; }
-.folder > summary::before { content: "▾"; width: 1ch; flex: none; color: var(--vscode-icon-foreground); }
-.folder:not([open]) > summary::before { content: "▸"; }
-.folder-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.folder-count { margin-left: auto; font-size: 0.9em; color: var(--vscode-descriptionForeground); }
-.file {
-  display: flex; align-items: baseline; gap: 8px; width: 100%; height: auto; padding: 2px var(--pad-x) 2px calc(var(--pad-x) + 14px);
-  border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--vscode-foreground); text-align: left;
-}
-.file:hover { background: var(--vscode-list-hoverBackground); }
-.file:disabled { opacity: 1; color: var(--vscode-disabledForeground); }
-.file .base { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.file .dir { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.92em; color: var(--vscode-descriptionForeground); }
-.file .stat { margin-left: auto; white-space: nowrap; font-family: var(--vscode-editor-font-family); font-size: 0.9em; }
-.added { color: var(--vscode-gitDecoration-addedResourceForeground); }
-.deleted { color: var(--vscode-gitDecoration-deletedResourceForeground); }
-.detail-message {
-  max-height: 45vh; overflow-y: auto; padding: 8px var(--pad-x) 10px;
-  border-top: 1px solid var(--vscode-panel-border);
-}
-.message-text { white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--vscode-editor-font-family); font-size: 0.95em; line-height: 1.45; }
-.message-meta { margin-top: 8px; font-size: 0.92em; color: var(--vscode-descriptionForeground); overflow-wrap: anywhere; }
-.sha { font-family: var(--vscode-editor-font-family); }
 .hint { padding: 0 var(--pad-x); color: var(--vscode-descriptionForeground); }
 .error { padding: 0 var(--pad-x); color: var(--vscode-errorForeground); }
 
@@ -168,17 +133,13 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 
 /* ── High contrast: hover and selection are outlines, not fills ─────────── */
 body.vscode-high-contrast .row:hover,
-body.vscode-high-contrast .file:hover,
 body.vscode-high-contrast .repo-option:hover,
-body.vscode-high-contrast .folder > summary:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {
-  .split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }
-  .list-pane { border-right: 0; border-bottom: 1px solid var(--vscode-panel-border); }
   .row { grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 8ch; }
   .row .author { display: none; }
 }
