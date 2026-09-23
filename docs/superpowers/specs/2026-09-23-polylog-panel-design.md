@@ -132,3 +132,15 @@ they are unit-tested without VS Code.
 ## 9. Out of Scope
 
 A staged/unstaged split, a commit graph, per-file history, blame. None serves the merged log.
+
+## 10. Amendment: Group by Repository (2026-09-23, maintainer decision)
+
+The panel gains a third, native **Repositories** view on the left, so it reads
+Repositories | Log | Changes, like the JetBrains VCS Log. This reverses the v1 spec's
+rejection of a permanent repo sidebar.
+
+- "All repositories" then every repo, each name colored with its Log chip's chart hue.
+- Clicking (Ctrl/Cmd for several) sets the Log's repo filter, the same filter as the
+  dropdown and still passed to git; changing the dropdown moves the tree's selection.
+- **Group by Repository** is on by default; the Log's title bar toggles it
+  (`polylog.showRepos` / `polylog.hideRepos`, context key `polylog.hideRepos`, persisted).

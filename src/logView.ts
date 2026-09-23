@@ -10,6 +10,7 @@ import { fetchPage, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError } from "./pool";
 import type { HostMessage, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
+import { HIDE_REPOS_KEY, type ReposTree, type RepoTreeSnapshot } from "./reposTree";
 import { encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
@@ -23,6 +24,7 @@ export interface LogDeps {
   discovery: RepoDiscovery;
   run: RunGit;
   changes: ChangesTree;
+  reposTree: ReposTree;
 }
 
 export interface LogSnapshot {
@@ -35,6 +37,9 @@ export interface LogSnapshot {
   readyCount: number;
   me: string | undefined;
   changes: ChangesSnapshot;
+  repoTree: RepoTreeSnapshot;
+  /** Group by Repository: the Repositories pane is shown. */
+  groupByRepo: boolean;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -68,6 +73,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
+    deps.reposTree.onPick = (repoIds) => void this.applyRepoFilter(repoIds);
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -102,6 +108,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         const next = sanitizeFilter(m.filter);
         const textOnly = sameExceptText(next, this.filter);
         this.filter = next;
+        void this.deps.reposTree.select(next.repoIds);
         void this.context.workspaceState.update(FILTER_KEY, next);
         this.query.abort(); // kill superseded spawns now, not after the debounce
         if (textOnly) {
@@ -136,8 +143,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return readSettings((key) => config.get(key));
   }
 
+  /** A pick in the Repositories pane: the same repo filter as the Log's dropdown. */
+  private async applyRepoFilter(repoIds: string[] | null): Promise<void> {
+    const same = (a: string[] | null, b: string[] | null) => (a === null || b === null ? a === b : a.join("\0") === b.join("\0"));
+    if (same(repoIds, this.filter.repoIds)) return;
+    const filter = { ...this.filter, repoIds };
+    this.post({ type: "init", repos: this.repos, filter, me: this.me });
+    await this.onMessage({ type: "filter", filter });
+  }
+
   private async loadRepos(): Promise<void> {
     this.repos = await this.deps.discovery.list(this.settings());
+    this.deps.reposTree.setRepos(this.repos, this.filter.repoIds);
     const first = this.repos[0];
     if (this.me === undefined && first) {
       const email = await this.deps.run(first.root, ["config", "user.email"], new AbortController().signal).then((o) => o.trim(), () => "");
@@ -200,6 +217,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
       readyCount: this.readyCount, me: this.me, changes: this.deps.changes.snapshot(),
+      repoTree: this.deps.reposTree.snapshot(), groupByRepo: !this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false),
     };
   }
 

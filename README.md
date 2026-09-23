@@ -37,6 +37,10 @@ bottom panel, next to Terminal: the **Log** on the left, the native **Changes** 
 right. Clicking a file opens its diff in the editor area above. Right-click the commit in
 Changes to copy its SHA or message.
 
+The **Repositories** pane on the left (Group by Repository, on by default; toggle it from the
+Log's title bar) filters the Log to the repos you pick. Filters: message search, author
+(with **Me**), repositories, and date range.
+
 | Key | Action |
 |---|---|
 | `↑` / `↓`, `Home` / `End`, `PageUp` / `PageDown` | Move the selection; the changed files follow |
