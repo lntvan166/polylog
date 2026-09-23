@@ -99,8 +99,7 @@
       },
       {
         "command": "polylog.fileHistory",
-        "title": "File History",
-        "category": "Polylog",
+        "title": "Polylog: File History",
         "icon": "$(history)"
       }
     ],

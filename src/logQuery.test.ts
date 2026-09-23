@@ -130,6 +130,34 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     console.log("ok - file history queries one repository with --follow and keeps each commit's path");
   }
   {
+    const calls: string[][] = [];
+    const data = { [WEB.root]: [mk(WEB, 30), mk(WEB, 20), mk(WEB, 10)], [API.root]: [mk(API, 25)], [LIBS.root]: [mk(LIBS, 15)] };
+    const inner = fakeRun(data, calls);
+    // acme-web and acme-libs have origin/prod; acme-api does not.
+    const run: RunGit = async (cwd, args, signal) => {
+      if (args[0] === "rev-parse") {
+        calls.push([cwd, ...args]);
+        if (cwd === API.root) throw new GitError("", 1);
+        return "abc\n";
+      }
+      return inner(cwd, args, signal);
+    };
+    const filter = { ...ALL, branch: "origin/prod" };
+    let page = await fetchPage(req({ filter, pageSize: 2, run }));
+    assert.deepStrictEqual(calls.filter((c) => c[1] === "rev-parse").map((c) => [c[0], c.at(-1)]).sort(),
+      [[API.root, "origin/prod^{commit}"], [LIBS.root, "origin/prod^{commit}"], [WEB.root, "origin/prod^{commit}"]].sort());
+    const logs = calls.filter((c) => c[1] === "log");
+    assert.strictEqual(logs.find((c) => c[0] === WEB.root)!.at(-1), "origin/prod");
+    assert.ok(!logs.find((c) => c[0] === API.root)!.includes("--end-of-options"), "a repo without the branch uses its current branch");
+    assert.deepStrictEqual(page.branchUse, { branch: "origin/prod", found: 2, fallback: 1 });
+    assert.deepStrictEqual(page.rows.map((r) => r.ref), ["origin/prod", "current branch", "origin/prod"].slice(0, page.rows.length));
+    const before = calls.length;
+    page = await fetchPage(req({ filter, pageSize: 2, run, prev: page.state }));
+    assert.ok(calls.slice(before).every((c) => c[1] !== "rev-parse"), "Load More reuses the resolution");
+    assert.strictEqual(calls.slice(before).find((c) => c[0] === WEB.root)!.at(-1), "origin/prod");
+    console.log("ok - each repo uses the branch if it has it, else its current branch, resolved once per query");
+  }
+  {
     const ctl = new AbortController();
     ctl.abort();
     const calls: string[][] = [];

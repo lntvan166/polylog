@@ -108,7 +108,7 @@ export class CommitList {
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
     }, [
-      h("span", { class: `chip accent-${accent}`, role: "gridcell" }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
+      h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${this.props.repoNames.get(c.repoId) ?? c.repoId} — ${c.ref}` : undefined }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
       h("span", { class: "subject", role: "gridcell", title: c.subject }, [
         c.subject,
         // File history: the file had another name in this commit.

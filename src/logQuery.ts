@@ -28,7 +28,15 @@ export interface PageRequest {
   history?: { repoId: string; path: string } | null;
 }
 
+/** Branch mode: how many repositories have the branch, and how many fell back to their current branch. */
+export interface BranchUse {
+  branch: string;
+  found: number;
+  fallback: number;
+}
+
 export interface PageResult {
+  branchUse?: BranchUse;
   rows: Commit[];
   failures: RepoFailure[];
   state: QueryState;
@@ -56,6 +64,22 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
           .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
   const failures: RepoFailure[] = [];
+  const branch = req.filter.branch;
+
+  // Branch mode, first page: does each repo have the branch? Exit code only
+  // (rev-parse --verify --quiet), so no localized error text is parsed.
+  if (branch && !req.prev) {
+    const repos = [...progress.keys()].map((id) => byId.get(id)!);
+    const found = await runPool(repos, req.concurrency,
+      (repo, signal) => req.run(repo.root, ["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], signal), req.signal);
+    if (req.signal.aborted) throw abortError();
+    found.forEach((f, i) => { progress.get(repos[i].id)!.ref = f.status === "fulfilled" ? branch : null; });
+  }
+  const branchUse = (): BranchUse | undefined => {
+    if (!branch) return undefined;
+    const refs = [...progress.values()].map((p) => p.ref);
+    return { branch, found: refs.filter((x) => x).length, fallback: refs.filter((x) => !x).length };
+  };
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const targets = [...progress]
@@ -65,7 +89,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       targets,
       req.concurrency,
       (repo, signal) => {
-        const o = { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched }, me: req.me?.get(repo.id) };
+        const p = progress.get(repo.id)!;
+        const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), ref: p.ref ?? undefined };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, path: req.history.path }) : logArgs(req.filter, o), signal);
       },
       req.signal,
@@ -78,7 +103,9 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       if (result.status === "fulfilled") {
         const records = countRecords(result.value);
         p.fetched += records;
-        p.pending.push(...(req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id)));
+        const commits = req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id);
+        if (branch) for (const c of commits) c.ref = p.ref ?? "current branch";
+        p.pending.push(...commits);
         if (records < req.pageSize) p.exhausted = true;
       } else {
         progress.delete(repo.id);
@@ -88,7 +115,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
 
     const rows = takeReady(progress);
     const done = [...progress.values()].every((p) => p.exhausted && p.pending.length === 0);
-    if (rows.length > 0 || done) return { rows, failures, state: { now, progress }, done };
+    if (rows.length > 0 || done) return { rows, failures, state: { now, progress }, done, branchUse: branchUse() };
   }
-  return { rows: [], failures, state: { now, progress }, done: false };
+  return { rows: [], failures, state: { now, progress }, done: false, branchUse: branchUse() };
 }

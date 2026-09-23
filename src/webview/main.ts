@@ -10,7 +10,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH } from "./repoPaneModel";
-import { countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { branchUseLabel, countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -36,6 +36,7 @@ const listEl = byId("list");
 const searchEl = byId<HTMLInputElement>("search");
 const moreEl = byId<HTMLButtonElement>("more");
 const countEl = byId("count");
+const branchUseEl = byId("branch-use");
 const list = new CommitList(listEl, byId("rows"), (i) => select(i), openFirstFile);
 const notices = new NoticeBar(byId("notices"), () => {
   state.dismissed = true;
@@ -79,6 +80,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.repos = m.repos;
       state.filter = m.filter;
       filters.setMe(m.hasMe);
+      filters.setBranches(m.branches);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
@@ -101,6 +103,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.loading = false;
       state.skeleton = false;
       state.now = m.now;
+      branchUseEl.textContent = branchUseLabel(m.branchUse);
       state.done = m.done;
       if (m.append) {
         state.rows = state.rows.concat(m.rows);
@@ -148,7 +151,7 @@ function runEmptyAction(action: EmptyAction): void {
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
     case "clearAuthor": setFilter({ ...f, author: "", mine: false }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, repoIds: f.repoIds, date: "all" }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }
@@ -188,6 +191,12 @@ document.addEventListener("keydown", (e) => {
   if (t instanceof HTMLInputElement && t.id === "author" && t.value !== "") {
     e.preventDefault();
     setFilter({ ...state.filter, author: "" });
+    return;
+  }
+  if (t instanceof HTMLInputElement && t.id === "branch" && t.value !== "") {
+    e.preventDefault();
+    t.value = "";
+    setFilter({ ...state.filter, branch: "" });
     return;
   }
   listEl.focus();

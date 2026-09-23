@@ -136,6 +136,13 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   };
 }
 
+export function branchUseLabel(u: { branch: string; found: number; fallback: number } | undefined): string {
+  if (!u) return "";
+  if (u.fallback === 0) return `${u.branch} in all ${u.found} repos`;
+  if (u.found === 0) return `no repo has ${u.branch} · current branch in ${u.fallback}`;
+  return `${u.branch} in ${u.found} repos · current branch in ${u.fallback}`;
+}
+
 export function countLabel(n: number): string {
   return `${n} ${n === 1 ? "commit" : "commits"}`;
 }

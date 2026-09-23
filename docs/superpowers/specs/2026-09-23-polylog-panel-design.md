@@ -179,3 +179,18 @@ browsable history:
   (renames resolved per commit) in one preview tab with `preserveFocus`, so ↑/↓ steps
   through revisions; Enter opens it focused. The Changes tree shows the whole commit with
   the file selected. Rows where the file had another name show `— old/path`.
+
+## 13. Amendment: default range, branches, history dates (2026-09-23, maintainer decision)
+
+- **Default range** is the last 24 hours (a saved choice per workspace still wins).
+- **Branch box** (filter bar; empty = each repo's current branch), for cases like "show the
+  prod branch of every repo". Suggestions list local and remote-tracking branch names
+  across repos with how many repos have each, read in the background. A branch applies on
+  Enter / pick / leaving the box. Per repo, `git rev-parse --verify --quiet <b>^{commit}`
+  (exit code only) decides on the first page whether the repo walks the branch or falls
+  back to its current branch; Load More reuses that. The ref is validated (ref-name rules)
+  and passed after `--end-of-options`. The footer says "origin/prod in 52 repos · current
+  branch in 16"; a row's chip tooltip names its ref. Combines with every other filter and
+  with File History.
+- **File History dates:** opening it switches the range to All time; closing it restores
+  the range the user had before. The menu item reads "Polylog: File History".

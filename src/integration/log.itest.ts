@@ -9,7 +9,7 @@ import { EXPECTED_ORDER } from "./fixture";
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
 const send = (m: WebviewMessage) => vscode.commands.executeCommand("polylog._itest.send", m);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const ALL = { text: "", author: "", mine: false, repoIds: null, date: "all" as const };
+const ALL = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" as const };
 
 async function waitFor<T>(what: string, probe: () => PromiseLike<T | undefined> | T | undefined, ms = 20000): Promise<T> {
   const end = Date.now() + ms;
@@ -212,18 +212,43 @@ describe("Polylog panel", () => {
 
   it("File History lists one file's commits and the diff follows the selection", async () => {
     await closeEditors();
+    await send({ type: "filter", filter: { ...ALL, date: "7d" } });
     const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
     await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    assert.strictEqual(s.filter.date, "all", "file history shows all time");
     assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"]);
-    const first = s.rows[1];
-    await send({ type: "select", repoId: first.repoId, sha: first.sha });
-    const input = await diffTab();
-    assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n", "selecting a row opened that revision's diff of the file");
-    s = await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go");
+    // Opening a history shows its newest revision straight away (the Log selects row 0).
+    await until("the newest revision is shown", (x) => x.changes.items[0]?.startsWith("feat: add retry") === true);
+    const older = s.rows[1];
+    await send({ type: "select", repoId: older.repoId, sha: older.sha });
+    const input = await waitFor("the older revision's diff", () => {
+      const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+      return tab instanceof vscode.TabInputTextDiff && tab.modified.scheme === "polylog" && tab.modified.query.includes(older.sha) ? tab : undefined;
+    });
+    assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n");
+    await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go" && x.changes.items[0]?.startsWith("feat: scaffold api") === true);
     await send({ type: "exitHistory" });
-    s = await until("all commits again", (x) => x.history === null && x.rows.length === 6);
+    s = await until("all commits again", (x) => x.history === null);
+    assert.strictEqual(s.filter.date, "7d", "closing the history restores the previous date range");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
     await closeEditors();
+  });
+
+  it("a branch is used where it exists, the current branch elsewhere", async () => {
+    await send({ type: "filter", filter: { ...ALL, branch: "prod" } });
+    const s = await until("prod in acme-api only", (x) => x.rows.length === 5 && x.branchUse?.found === 1);
+    assert.deepStrictEqual(s.branchUse, { branch: "prod", found: 1, fallback: 2 });
+    assert.ok(!s.rows.some((r) => r.subject.startsWith("feat: add retry")), "acme-api shows prod, which is one commit behind");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("offers branch names found across repositories", async () => {
+    const s = await until("branch suggestions", (x) => x.branches.length > 0);
+    assert.deepStrictEqual(s.branches.find((b) => b.name === "main"), { name: "main", count: 3 });
+    assert.deepStrictEqual(s.branches.find((b) => b.name === "prod"), { name: "prod", count: 1 });
   });
 
   it("keeps the Log alive when the panel shows another tab", async () => {

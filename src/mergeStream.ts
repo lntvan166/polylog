@@ -8,6 +8,8 @@ export interface RepoProgress {
   pending: Commit[];
   /** git returned a short page: nothing more to fetch. */
   exhausted: boolean;
+  /** Branch mode: the ref this repo walks (null = its current branch), resolved on the first page. */
+  ref?: string | null;
 }
 
 export function compareCommits(a: Commit, b: Commit): number {

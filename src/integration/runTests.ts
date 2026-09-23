@@ -17,6 +17,8 @@ async function main(): Promise<void> {
   for (const [name, commits] of Object.entries(FIXTURE)) makeRepo(path.join(ws, name), commits, home);
   // A repo-local identity, like a personal repo inside a work workspace.
   execFileSync("git", ["config", "user.email", "rin@example.com"], { cwd: path.join(ws, "acme-libs"), env: gitEnv(home) });
+  // Only acme-api has a "prod" branch, one commit behind main.
+  execFileSync("git", ["branch", "prod", "HEAD~1"], { cwd: path.join(ws, "acme-api"), env: gitEnv(home) });
   const workspaceFile = path.join(home, "acme.code-workspace");
   fs.writeFileSync(workspaceFile, JSON.stringify({ folders: Object.keys(FIXTURE).map((n) => ({ path: path.join(ws, n) })) }));
   const env = gitEnv(home);

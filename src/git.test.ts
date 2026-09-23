@@ -60,6 +60,12 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
       ["feat: scaffold api", "sp ace é.txt", "A"],
     ], "history follows the rename back to the file's first name");
     console.log("ok - real git: file history follows a rename");
+    git(api, ["branch", "release-1.4", "HEAD~2"]);
+    assert.deepStrictEqual((await runGit(api, ["rev-parse", "--verify", "--quiet", "release-1.4^{commit}"])).trim().length, 40);
+    await assert.rejects(runGit(api, ["rev-parse", "--verify", "--quiet", "origin/nope^{commit}"]), GitError);
+    const onBranch = parseLog(await runGit(api, logArgs(ALL, { pageSize: 50, now: 10_000, ref: "release-1.4" })), api);
+    assert.deepStrictEqual(onBranch.map((c) => c.subject), ["fix(api) guard nil response", "feat: scaffold api"]);
+    console.log("ok - real git: a branch's history, and rev-parse tells a missing branch by exit code");
   }
   {
     git(api, ["config", "i18n.logOutputEncoding", "ISO-8859-1"]);

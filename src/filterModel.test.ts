@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { DEFAULT_FILTER, gitDate, historyArgs, logArgs, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, gitDate, historyArgs, isValidRef, logArgs, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -84,9 +84,9 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
 {
   assert.deepStrictEqual(sanitizeFilter(undefined), DEFAULT_FILTER);
   assert.deepStrictEqual(sanitizeFilter("garbage"), DEFAULT_FILTER);
-  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", author: "", mine: false, repoIds: ["/a"], date: "30d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "x", author: "rin", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", author: "rin", mine: false, repoIds: null, date: "7d" });
-  assert.deepStrictEqual(sanitizeFilter({ text: "", author: 4, mine: "yes", repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", author: "", mine: false, repoIds: null, date: "custom", from: "2026-09-01" });
+  assert.deepStrictEqual(sanitizeFilter({ text: 7, repoIds: ["/a", 3], date: "forever" }), { text: "", author: "", mine: false, branch: "", repoIds: ["/a"], date: "24h" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "x", author: "rin", repoIds: null, date: "7d", from: "2026-09-01" }), { text: "x", author: "rin", mine: false, branch: "", repoIds: null, date: "7d" });
+  assert.deepStrictEqual(sanitizeFilter({ text: "", author: 4, mine: "yes", repoIds: null, date: "custom", from: "2026-09-01", to: "nope" }), { text: "", author: "", mine: false, branch: "", repoIds: null, date: "custom", from: "2026-09-01" });
   console.log("ok - sanitizeFilter repairs corrupt persisted state");
 }
 
@@ -132,4 +132,27 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, path: "--output=/tmp/x" });
   assert.deepStrictEqual(inj.slice(-2), ["--", "--output=/tmp/x"], "a path can never be read as an option");
   console.log("ok - historyArgs adds --follow and the path after --");
+}
+
+// ── Default range and branch ────────────────────────────────────────────────
+{
+  assert.strictEqual(DEFAULT_FILTER.date, "24h", "new workspaces start at the last 24 hours");
+  assert.strictEqual(DEFAULT_FILTER.branch, "", "and on each repository's current branch");
+  console.log("ok - the default filter is the last 24 hours on the current branch");
+}
+{
+  for (const ok of ["origin/prod", "prod", "release-1.4", "origin/release/1.4", "feature/acme_7", "v1.2.3"]) assert.ok(isValidRef(ok), ok);
+  for (const bad of ["", "-x", "--output=/tmp/x", "a..b", "a b", "a~1", "a^", "a:b", "a?", "a*", "a[", "a\\b", "@{u}", "a.lock", "a/", "a.", "/a"]) assert.ok(!isValidRef(bad), `rejects ${bad}`);
+  console.log("ok - isValidRef accepts branch names and rejects options and revision syntax");
+}
+{
+  const a = logArgs(ALL, { pageSize: 5, now: NOW, ref: "origin/prod" });
+  assert.deepStrictEqual(a.slice(-2), ["--end-of-options", "origin/prod"], "the ref comes last, after --end-of-options");
+  const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, path: "a.ts", ref: "origin/prod" });
+  assert.deepStrictEqual(h.slice(-8), ["--follow", "--name-status", "-z", "-M", "--end-of-options", "origin/prod", "--", "a.ts"], "history options stay before the ref");
+  assert.ok(!logArgs(ALL, { pageSize: 5, now: NOW }).includes("--end-of-options"), "current branch: no ref at all");
+  assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
+  assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
+  assert.ok(!sameExceptText(ALL, { ...ALL, branch: "origin/prod" }), "a branch change applies at once, not debounced");
+  console.log("ok - a branch becomes one revision argument after --end-of-options");
 }

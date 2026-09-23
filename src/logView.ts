@@ -6,9 +6,9 @@ import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
-import { fetchPage, type QueryState, type RunGit } from "./logQuery";
+import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { HostMessage, Layout, WebviewMessage } from "./protocol";
+import type { BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 import { readSettings } from "./settings";
@@ -41,6 +41,8 @@ export interface LogSnapshot {
   /** Each repository's user.email, in repo order (test seam). */
   me: string[];
   history: { repoId: string; path: string } | null;
+  branches: BranchName[];
+  branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
   layout: Layout;
 }
@@ -68,6 +70,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private meByRepo = new Map<string, string>();
   /** File history mode: one file of one repository. */
   private history: { repoId: string; path: string } | null = null;
+  private dateBeforeHistory: Pick<FilterState, "date" | "from" | "to"> | null = null;
+  /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
+  private branches: BranchName[] = [];
+  private branchUse: BranchUse | undefined;
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -106,7 +112,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         await this.loadRepos();
         this.postInit();
         if (this.queryState === null) await this.reload();
-        else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec() });
+        else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
       case "filter": {
         const next = sanitizeFilter(m.filter);
@@ -163,7 +169,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches });
   }
 
   /**
@@ -204,7 +210,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return inside ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
   }
 
+  /**
+   * File history shows all time; closing it restores the date range the user
+   * had before (even if they changed it while in history).
+   */
   private async setHistory(history: { repoId: string; path: string } | null): Promise<void> {
+    if (history && !this.history) {
+      const { date, from, to } = this.filter;
+      this.dateBeforeHistory = { date, from, to };
+      this.filter = { ...this.filter, date: "all", from: undefined, to: undefined };
+    } else if (!history && this.history && this.dateBeforeHistory) {
+      this.filter = { ...this.filter, ...this.dateBeforeHistory };
+      this.dateBeforeHistory = null;
+    }
+    void this.context.workspaceState.update(FILTER_KEY, this.filter);
     this.history = history;
     this.postInit();
     await this.reload();
@@ -227,6 +246,23 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async loadRepos(): Promise<void> {
     this.repos = await this.deps.discovery.list(this.settings());
     void this.loadMe();
+    void this.loadBranches();
+  }
+
+  /** Branch names across repositories (local and remote-tracking), most shared first. */
+  private async loadBranches(): Promise<void> {
+    const repos = [...this.repos];
+    const settled = await runPool(repos, this.settings().maxConcurrency,
+      (r, signal) => this.deps.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), new AbortController().signal);
+    const counts = new Map<string, number>();
+    for (const s of settled) {
+      if (s.status !== "fulfilled") continue;
+      const names = new Set(s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter((n) => n && !n.endsWith("/HEAD")));
+      for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    this.branches = [...counts].map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 300);
+    this.postInit();
   }
 
   /** Each repo's user.email, in the background so it never delays the first paint. */
@@ -266,8 +302,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.failures = page.failures;
       this.done = page.done;
       this.queryState = page.state;
+      this.branchUse = page.branchUse;
       this.clearTreeIfGone();
-      this.post({ type: "page", rows: page.rows, append: false, failures: page.failures, done: page.done, now: nowSec() });
+      this.post({ type: "page", rows: page.rows, append: false, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not read the log: ${messageOf(e)}`);
     }
@@ -288,7 +325,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.failures = this.failures.concat(page.failures);
       this.done = page.done;
       this.queryState = page.state;
-      this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec() });
+      this.post({ type: "page", rows: page.rows, append: true, failures: page.failures, done: page.done, now: nowSec(), branchUse: page.branchUse });
     } catch (e) {
       if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not load more commits: ${messageOf(e)}`);
     } finally {
@@ -299,7 +336,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(),
       layout: this.layout(),
     };
   }

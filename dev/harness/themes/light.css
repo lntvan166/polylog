@@ -52,4 +52,5 @@
   --vscode-inputOption-activeBackground: #bed6ed;
   --vscode-inputOption-activeBorder: #007acc;
   --vscode-inputOption-activeForeground: #000000;
+  --vscode-inputValidation-errorBorder: #be1100;
 }

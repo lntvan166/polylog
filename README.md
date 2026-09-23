@@ -39,11 +39,15 @@ Changes to copy its SHA or message.
 
 The **Repositories** pane on the left (Group by Repository, on by default; toggle it from the
 Log's title bar) filters the Log to the repos you pick. Filters: message search, author
-(with **Me**), repositories, and date range.
+(with **Me**), branch, repositories, and date range (last 24 hours by default).
 
 **File history:** right-click a file (Explorer, editor, tab, or a file in Changes) →
 **Polylog: File History**. The Log shows only that file's commits, following renames, and
-the diff follows your selection, so ↑/↓ steps through its revisions.
+the diff follows your selection, so ↑/↓ steps through its revisions. It always shows all time; closing it
+restores your date range.
+
+**Branch:** type or pick a branch (for example `origin/prod`) to see it in every repository
+that has it; the others show their current branch, and the footer says how many of each.
 
 | Key | Action |
 |---|---|

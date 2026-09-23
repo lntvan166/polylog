@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentIndex, ACCENT_COUNT, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentIndex, ACCENT_COUNT, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -70,7 +70,7 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.match(emptyState({ repoCount: 0, filter: ALL }).body, /polylog\.scanDepth/);
   assert.deepStrictEqual(emptyState({ repoCount: 3, filter: { ...ALL, repoIds: [] } }).action?.id, "selectAll");
   const text = emptyState({ repoCount: 3, filter: { ...DEFAULT_FILTER, text: "ACME-7" } });
-  assert.strictEqual(text.body, "No commit message contains “ACME-7” in 3 repositories in the last 30 days.");
+  assert.strictEqual(text.body, "No commit message contains “ACME-7” in 3 repositories in the last 24 hours.");
   assert.strictEqual(text.action?.id, "clearText");
   const date = emptyState({ repoCount: 1, filter: { ...ALL, date: "24h" } });
   assert.strictEqual(date.body, "No commits in 1 repository in the last 24 hours.");
@@ -102,14 +102,21 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(by.body, "No commits by “rin” in 3 repositories.");
   assert.deepStrictEqual(by.action, { label: "Clear Author", id: "clearAuthor" });
   const both = emptyState({ repoCount: 3, filter: { ...DEFAULT_FILTER, text: "ACME-7", author: "dana" } });
-  assert.strictEqual(both.body, "No commit by “dana” contains “ACME-7” in 3 repositories in the last 30 days.");
+  assert.strictEqual(both.body, "No commit by “dana” contains “ACME-7” in 3 repositories in the last 24 hours.");
   assert.strictEqual(both.action?.id, "clearText");
   console.log("ok - empty states name the author filter and offer to clear it");
 }
 {
   const h = emptyState({ repoCount: 3, filter: DEFAULT_FILTER, history: "src/client.ts" });
-  assert.strictEqual(h.body, "No commits to src/client.ts in the last 30 days.");
+  assert.strictEqual(h.body, "No commits to src/client.ts in the last 24 hours.");
   assert.strictEqual(h.action?.id, "allTime");
   assert.strictEqual(emptyState({ repoCount: 3, filter: { ...ALL, text: "zzz" }, history: "a.ts" }).body, "No commit to a.ts contains “zzz”.");
   console.log("ok - file history has its own empty state");
+}
+{
+  assert.strictEqual(branchUseLabel({ branch: "origin/prod", found: 52, fallback: 16 }), "origin/prod in 52 repos · current branch in 16");
+  assert.strictEqual(branchUseLabel({ branch: "origin/prod", found: 3, fallback: 0 }), "origin/prod in all 3 repos");
+  assert.strictEqual(branchUseLabel({ branch: "prod", found: 0, fallback: 2 }), "no repo has prod · current branch in 2");
+  assert.strictEqual(branchUseLabel(undefined), "");
+  console.log("ok - the footer says which repos use the branch and which fell back");
 }

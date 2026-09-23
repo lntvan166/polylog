@@ -67,6 +67,8 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
 .search { flex: 1 1 180px; min-width: 120px; }
 .author-filter { flex: 0 1 140px; min-width: 90px; }
+.branch-filter { flex: 0 1 150px; min-width: 100px; }
+input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 #me[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
 /* In high contrast both button backgrounds are black: show "pressed" as an outline. */
 body.vscode-high-contrast #me[aria-pressed="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
