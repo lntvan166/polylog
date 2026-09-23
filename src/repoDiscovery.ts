@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
-import { excludeRepos, labelRepos } from "./repos";
+import { excludeRepos, labelRepos, mergeRoots } from "./repos";
 import type { Settings } from "./settings";
 import type { Repo } from "./types";
 
@@ -40,12 +40,10 @@ export class RepoDiscovery implements vscode.Disposable {
       this.started = true;
       void this.startGitApi();
     }
-    let roots = this.ready ? this.ready.repositories.map((r) => r.rootUri.fsPath) : [];
-    if (roots.length === 0) {
-      const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
-      roots = await walkForRepos(folders, settings.scanDepth);
-    }
-    return excludeRepos(labelRepos(roots), settings.excludeRepos);
+    const folders = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
+    const walk = await walkForRepos(folders, settings.scanDepth);
+    const git = this.ready ? this.ready.repositories.map((r) => r.rootUri.fsPath) : [];
+    return excludeRepos(labelRepos(mergeRoots(walk, git, folders)), settings.excludeRepos);
   }
 
   private async startGitApi(): Promise<void> {

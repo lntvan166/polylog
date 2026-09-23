@@ -236,6 +236,54 @@ describe("Polylog panel", () => {
     await closeEditors();
   });
 
+  it("stepping through a history keeps one diff tab even with preview editors off", async () => {
+    await closeEditors();
+    const cfg = vscode.workspace.getConfiguration("workbench.editor");
+    await cfg.update("enablePreview", false, vscode.ConfigurationTarget.Global);
+    try {
+      const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+      await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+      const s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+      for (const row of [s.rows[1], s.rows[0], s.rows[1]]) {
+        await send({ type: "select", repoId: row.repoId, sha: row.sha });
+        await waitFor(`the diff for ${row.subject}`, () => {
+          const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+          return tab instanceof vscode.TabInputTextDiff && tab.modified.query.includes(row.sha) ? tab : undefined;
+        });
+      }
+      await sleep(300);
+      const diffs = vscode.window.tabGroups.all.flatMap((g) => g.tabs).filter((t) => t.input instanceof vscode.TabInputTextDiff);
+      assert.strictEqual(diffs.length, 1, "each step replaced the previous history diff");
+      await send({ type: "exitHistory" });
+      await until("all commits again", (x) => x.history === null);
+    } finally {
+      await cfg.update("enablePreview", undefined, vscode.ConfigurationTarget.Global);
+      await closeEditors();
+    }
+  });
+
+  it("File History never overwrites the saved date range, and ends if its repo leaves", async () => {
+    await send({ type: "filter", filter: { ...ALL, date: "7d" } });
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    let s = await until("history", (x) => x.history !== null);
+    assert.strictEqual(s.filter.date, "all");
+    assert.strictEqual(s.persistedFilter?.date, "7d", "a window reload now would bring back 7 days, not all time");
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    await cfg.update("excludeRepos", ["acme-api"], vscode.ConfigurationTarget.Global);
+    try {
+      await send({ type: "refresh" });
+      s = await until("history ended", (x) => x.history === null && x.repos.length === 2);
+      assert.strictEqual(s.filter.date, "7d", "and the previous range is back");
+    } finally {
+      await cfg.update("excludeRepos", undefined, vscode.ConfigurationTarget.Global);
+      await send({ type: "refresh" });
+      await until("three repos again", (x) => x.repos.length === 3);
+      await send({ type: "filter", filter: ALL });
+      await until("six rows again", (x) => x.rows.length === 6);
+    }
+  });
+
   it("a branch is used where it exists, the current branch elsewhere", async () => {
     await send({ type: "filter", filter: { ...ALL, branch: "prod" } });
     const s = await until("prod in acme-api only", (x) => x.rows.length === 5 && x.branchUse?.found === 1);

@@ -56,13 +56,14 @@ export function untilOf(f: FilterState): number | undefined {
 }
 
 /**
- * A branch or remote-branch name, per git's ref-name rules; anything else
- * (options, revision syntax like a~1 or a..b, spaces) is refused, and the ref
- * is also passed after --end-of-options.
+ * git's ref-name rules (git check-ref-format), so any real branch is accepted —
+ * "feature@x", "fix/#12", "fix/ü" — while options and revision syntax are not.
+ * The ref is also passed after --end-of-options and before --.
  */
 export function isValidRef(ref: string): boolean {
-  return /^[A-Za-z0-9_][A-Za-z0-9._\/+-]*$/.test(ref)
-    && !ref.includes("..") && !ref.includes("//") && !ref.endsWith("/") && !ref.endsWith(".") && !ref.endsWith(".lock");
+  if (!ref || ref === "@" || ref.startsWith("-") || ref.startsWith("/") || ref.endsWith("/") || ref.endsWith(".")) return false;
+  if (/[\x00-\x20\x7f~^:?*[\\]/.test(ref) || ref.includes("..") || ref.includes("@{") || ref.includes("//")) return false;
+  return ref.split("/").every((part) => part !== "" && !part.startsWith(".") && !part.endsWith(".lock"));
 }
 
 interface ArgOptions {
@@ -75,7 +76,7 @@ interface ArgOptions {
   ref?: string;
 }
 
-function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], pathspec?: string): string[] {
+function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonly string[], paths: readonly string[] = []): string[] {
   const args = ["log", format, `--max-count=${o.pageSize}`];
   const text = f.text.trim();
   // Me uses the repository user.email (callers skip repos that have none).
@@ -90,9 +91,10 @@ function buildArgs(format: string, f: FilterState, o: ArgOptions, extra: readonl
   if (until !== undefined) args.push(`--until=${gitDate(until)}`);
   if (o.cursor && o.cursor.skip > 0) args.push(`--skip=${o.cursor.skip}`);
   args.push(...extra);
-  // Everything after --end-of-options is a revision, never an option.
+  // After --end-of-options: revisions, never options. After --: paths, never
+  // revisions, so a branch named like a folder ("docs") is not ambiguous.
   if (o.ref) args.push("--end-of-options", o.ref);
-  if (pathspec !== undefined) args.push("--", pathspec);
+  args.push("--", ...paths);
   return args;
 }
 
@@ -100,9 +102,40 @@ export function logArgs(f: FilterState, o: ArgOptions): string[] {
   return buildArgs(LOG_FORMAT, f, o, []);
 }
 
-/** The same filters for one file's history, followed across renames. The path always comes after `--`. */
-export function historyArgs(f: FilterState, o: ArgOptions & { path: string }): string[] {
-  return buildArgs(HISTORY_FORMAT, f, o, ["--follow", "--name-status", "-z", "-M"], o.path);
+/**
+ * One file's history with the Log's filters: every name the file has had is a
+ * pathspec (see historyPathsArgs). No --follow: it cannot page with --skip, and
+ * it stops following when the rename commit itself is filtered out.
+ */
+export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[] }): string[] {
+  return buildArgs(HISTORY_FORMAT, f, o, ["--name-status", "-z", "-M"], o.paths);
+}
+
+/** Unfiltered, unpaged --follow walk that only collects the names a file has had. */
+export function historyPathsArgs(path: string, ref?: string): string[] {
+  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...(ref ? ["--end-of-options", ref] : []), "--", path];
+}
+
+/** The file's names, newest first; always starts with its current path. */
+export function parseHistoryPaths(stdout: string, path: string): string[] {
+  const names = [path];
+  const add = (p: string | undefined) => {
+    if (p && !names.includes(p)) names.push(p);
+  };
+  const t = stdout.split(/[\x00\x1e]/);
+  for (let i = 0; i < t.length; i++) {
+    const m = /^\n*([AMDRCT])\d*$/.exec(t[i]);
+    if (!m) continue;
+    if (m[1] === "R" || m[1] === "C") {
+      add(t[i + 1]);
+      add(t[i + 2]);
+      i += 2;
+    } else {
+      add(t[i + 1]);
+      i += 1;
+    }
+  }
+  return names;
 }
 
 export function selectRepos(f: FilterState, repos: readonly Repo[]): Repo[] {

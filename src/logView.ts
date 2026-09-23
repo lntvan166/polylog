@@ -11,6 +11,7 @@ import { isAbortError, runPool } from "./pool";
 import type { BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
+import { branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
 import { renderHtml } from "./webview/html";
@@ -41,6 +42,8 @@ export interface LogSnapshot {
   /** Each repository's user.email, in repo order (test seam). */
   me: string[];
   history: { repoId: string; path: string } | null;
+  /** What a window reload would restore. */
+  persistedFilter: FilterState | undefined;
   branches: BranchName[];
   branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
@@ -71,6 +74,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private meByRepo = new Map<string, string>();
   /** File history mode: one file of one repository. */
   private history: { repoId: string; path: string } | null = null;
+  /** The history diff currently open (its modified-side URI), replaced on each step. */
+  private historyTab: string | undefined;
   private dateBeforeHistory: Pick<FilterState, "date" | "from" | "to"> | null = null;
   /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
   private branches: BranchName[] = [];
@@ -139,7 +144,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         const next = sanitizeFilter(m.filter);
         const textOnly = sameExceptText(next, this.filter);
         this.filter = next;
-        void this.context.workspaceState.update(FILTER_KEY, next);
+        this.persistFilter();
         this.query.abort(); // kill superseded spawns now, not after the debounce
         if (textOnly) {
           this.reloadSoon();
@@ -231,6 +236,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return inside ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
   }
 
+  /** Save the filter; while File History forces all time, save the range the user will come back to. */
+  private persistFilter(): void {
+    const saved = this.history && this.dateBeforeHistory ? { ...this.filter, ...this.dateBeforeHistory } : this.filter;
+    void this.context.workspaceState.update(FILTER_KEY, saved);
+  }
+
+  /** Leave File History without reloading: restore the date range. */
+  private leaveHistory(): void {
+    if (this.dateBeforeHistory) this.filter = { ...this.filter, ...this.dateBeforeHistory };
+    this.dateBeforeHistory = null;
+    this.history = null;
+    this.persistFilter();
+  }
+
   /**
    * File history shows all time; closing it restores the date range the user
    * had before (even if they changed it while in history).
@@ -240,12 +259,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const { date, from, to } = this.filter;
       this.dateBeforeHistory = { date, from, to };
       this.filter = { ...this.filter, date: "all", from: undefined, to: undefined };
-    } else if (!history && this.history && this.dateBeforeHistory) {
-      this.filter = { ...this.filter, ...this.dateBeforeHistory };
-      this.dateBeforeHistory = null;
+      this.history = history;
+    } else if (!history) {
+      this.leaveHistory();
+    } else {
+      this.history = history;
     }
-    void this.context.workspaceState.update(FILTER_KEY, this.filter);
-    this.history = history;
+    this.persistFilter();
     this.postInit();
     await this.reload();
   }
@@ -258,7 +278,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const clearing = !on && this.filter.repoIds !== null;
     if (clearing) {
       this.filter = { ...this.filter, repoIds: null };
-      void this.context.workspaceState.update(FILTER_KEY, this.filter);
+      this.persistFilter();
     }
     this.postInit();
     if (clearing) await this.reload();
@@ -289,14 +309,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const repos = [...this.repos];
     const settled = await runPool(repos, this.settings().maxConcurrency,
       (r, signal) => this.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), new AbortController().signal);
-    const counts = new Map<string, number>();
-    for (const s of settled) {
-      if (s.status !== "fulfilled") continue;
-      const names = new Set(s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter((n) => n && !n.endsWith("/HEAD")));
-      for (const n of names) counts.set(n, (counts.get(n) ?? 0) + 1);
-    }
-    this.branches = [...counts].map(([name, count]) => ({ name, count }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 300);
+    const lists = settled.map((s) => s.status === "fulfilled"
+      ? s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter(Boolean)
+      : []);
+    this.branches = branchSuggestions(lists);
     this.postInit();
   }
 
@@ -320,7 +336,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async refreshRepos(force = false): Promise<void> {
     const before = this.repos.map((r) => r.id).join("\0");
     await this.loadRepos();
-    const changed = this.repos.map((r) => r.id).join("\0") !== before;
+    let changed = this.repos.map((r) => r.id).join("\0") !== before;
+    // File History's repository left the list (excluded, closed): end it, or the Log is stuck with no exit.
+    if (this.history && !this.repos.some((r) => r.id === this.history!.repoId)) {
+      this.leaveHistory();
+      changed = true;
+    }
     this.postInit();
     if (force || changed || this.queryState === null) await this.reload();
   }
@@ -379,7 +400,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(),
       layout: this.layout(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
@@ -437,7 +458,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private async openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
     const f = commit.file!;
-    await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
+    const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
+    // Stepping through a history reuses one tab. VS Code's preview tab does that
+    // unless the user turned preview editors off; then close the previous one.
+    const previous = this.historyTab;
+    this.historyTab = opened;
+    if (!previous || previous === opened || vscode.workspace.getConfiguration("workbench.editor").get("enablePreview", true)) return;
+    const tab = vscode.window.tabGroups.all.flatMap((g) => g.tabs)
+      .find((t) => t.input instanceof vscode.TabInputTextDiff && t.input.modified.toString() === previous && !t.isDirty && !t.isPinned);
+    if (tab) await vscode.window.tabGroups.close(tab, true);
   }
 
   private async openFirst(repoId: string, sha: string): Promise<void> {
@@ -459,14 +488,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath });
   }
 
-  async openDiff(a: OpenDiffArgs, preserveFocus = false): Promise<void> {
+  /** Opens the diff; returns its modified-side URI (as a string), or undefined when refused. */
+  async openDiff(a: OpenDiffArgs, preserveFocus = false): Promise<string | undefined> {
     const repo = this.repos.find((r) => r.id === a?.repoId);
     // Refs come from the webview or a command argument: validate before they reach git.
     if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
     const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, a);
     const title = `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
     // A panel view is not an editor group, so this always opens in the editor area above.
-    await vscode.commands.executeCommand("vscode.diff", toUri(before), toUri(after), title, { preview: true, preserveFocus });
+    const modified = toUri(after);
+    await vscode.commands.executeCommand("vscode.diff", toUri(before), modified, title, { preview: true, preserveFocus });
+    return modified.toString();
   }
 
   private post(m: HostMessage): void {

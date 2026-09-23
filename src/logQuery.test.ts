@@ -121,10 +121,12 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
   {
     const calls: string[][] = [];
     const out = "\x1e" + [mk(API, 9).sha, "9", "rin", "rin@example.com", "feat: add retry", ""].join("\0") + "\0\nM\0upload.go\0";
-    const run: RunGit = async (cwd, args) => { calls.push([cwd, ...args]); return out; };
+    const names = "\x1e\x00\nM\x00upload.go\x00\x1e\x00\nR100\x00up.go\x00upload.go\x00";
+    const run: RunGit = async (cwd, args) => { calls.push([cwd, ...args]); return args.includes("--follow") ? names : out; };
     const page = await fetchPage(req({ run, history: { repoId: API.id, path: "upload.go" } }));
-    assert.deepStrictEqual(calls.map((c) => c[0]), [API.root], "history asks only the file's repository");
-    assert.ok(calls[0].includes("--follow") && calls[0].at(-1) === "upload.go");
+    assert.deepStrictEqual(calls.map((c) => c[0]), [API.root, API.root], "history asks only the file's repository");
+    assert.ok(calls[0].includes("--follow"), "first: every name the file has had");
+    assert.ok(!calls[1].includes("--follow") && calls[1].slice(-3).join() === "--,upload.go,up.go", "then: all those names, without --follow");
     assert.deepStrictEqual(page.rows.map((c) => c.file), [{ path: "upload.go", status: "M" }]);
     assert.strictEqual(page.done, true);
     console.log("ok - file history queries one repository with --follow and keeps each commit's path");
@@ -147,14 +149,14 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     assert.deepStrictEqual(calls.filter((c) => c[1] === "rev-parse").map((c) => [c[0], c.at(-1)]).sort(),
       [[API.root, "origin/prod^{commit}"], [LIBS.root, "origin/prod^{commit}"], [WEB.root, "origin/prod^{commit}"]].sort());
     const logs = calls.filter((c) => c[1] === "log");
-    assert.strictEqual(logs.find((c) => c[0] === WEB.root)!.at(-1), "origin/prod");
+    assert.deepStrictEqual(logs.find((c) => c[0] === WEB.root)!.slice(-3), ["--end-of-options", "origin/prod", "--"]);
     assert.ok(!logs.find((c) => c[0] === API.root)!.includes("--end-of-options"), "a repo without the branch uses its current branch");
     assert.deepStrictEqual(page.branchUse, { branch: "origin/prod", found: 2, fallback: 1 });
     assert.deepStrictEqual(page.rows.map((r) => r.ref), ["origin/prod", "current branch", "origin/prod"].slice(0, page.rows.length));
     const before = calls.length;
     page = await fetchPage(req({ filter, pageSize: 2, run, prev: page.state }));
     assert.ok(calls.slice(before).every((c) => c[1] !== "rev-parse"), "Load More reuses the resolution");
-    assert.strictEqual(calls.slice(before).find((c) => c[0] === WEB.root)!.at(-1), "origin/prod");
+    assert.ok(calls.slice(before).find((c) => c[0] === WEB.root)!.includes("origin/prod"));
     console.log("ok - each repo uses the branch if it has it, else its current branch, resolved once per query");
   }
   {

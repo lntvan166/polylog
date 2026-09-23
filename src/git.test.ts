@@ -4,7 +4,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
-import { DEFAULT_FILTER, historyArgs, logArgs, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
@@ -54,18 +54,32 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual((await log({ ...ALL, author: "dana@example.com", text: "retry" })).map((c) => c.subject), ["[ACME-7] add retry"]);
     assert.deepStrictEqual(await log({ ...ALL, author: "rin", text: "retry" }), [], "author AND search, never OR");
     console.log("ok - --author matches name or email and combines with --grep as AND");
-    const hist = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, path: "renamed.txt" })), api, "renamed.txt");
+    const paths = parseHistoryPaths(await runGit(api, historyPathsArgs("renamed.txt")), "renamed.txt");
+    assert.deepStrictEqual(paths, ["renamed.txt", "sp ace é.txt"]);
+    const hist = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, paths })), api, "renamed.txt");
     assert.deepStrictEqual(hist.map((c) => [c.subject, c.file?.path, c.file?.status]), [
       ["café: rename", "renamed.txt", "R"],
       ["feat: scaffold api", "sp ace é.txt", "A"],
     ], "history follows the rename back to the file's first name");
     console.log("ok - real git: file history follows a rename");
+    // Paging across the rename, and a filter that excludes the rename commit itself (review findings).
+    const page2 = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 1, now: 10_000, cursor: { skip: 1 }, paths })), api, "renamed.txt");
+    assert.deepStrictEqual(page2.map((c) => c.subject), ["feat: scaffold api"], "page 2 continues before the rename");
+    const byDana = parseHistory(await runGit(api, historyArgs({ ...ALL, author: "dana" }, { pageSize: 50, now: 10_000, paths })), api, "renamed.txt");
+    assert.deepStrictEqual(byDana.map((c) => c.subject), ["feat: scaffold api"], "dana's pre-rename commit survives a filter that drops rin's rename");
+    console.log("ok - real git: history pages across a rename and filters never cut it");
     git(api, ["branch", "release-1.4", "HEAD~2"]);
     assert.deepStrictEqual((await runGit(api, ["rev-parse", "--verify", "--quiet", "release-1.4^{commit}"])).trim().length, 40);
     await assert.rejects(runGit(api, ["rev-parse", "--verify", "--quiet", "origin/nope^{commit}"]), GitError);
     const onBranch = parseLog(await runGit(api, logArgs(ALL, { pageSize: 50, now: 10_000, ref: "release-1.4" })), api);
     assert.deepStrictEqual(onBranch.map((c) => c.subject), ["fix(api) guard nil response", "feat: scaffold api"]);
     console.log("ok - real git: a branch's history, and rev-parse tells a missing branch by exit code");
+    const docsRepo = path.join(home, "acme-docs");
+    makeRepo(docsRepo, [{ time: 500, author: "dana", message: "docs: add x", files: { "docs/x.md": "x\n" } }], home);
+    git(docsRepo, ["branch", "docs"]);
+    const docs = parseLog(await runGit(docsRepo, logArgs(ALL, { pageSize: 50, now: 10_000, ref: "docs" })), docsRepo);
+    assert.strictEqual(docs[0].subject, "docs: add x", "a branch named like a folder is not ambiguous");
+    console.log("ok - real git: a branch named like a top-level folder works");
   }
   {
     git(api, ["config", "i18n.logOutputEncoding", "ISO-8859-1"]);

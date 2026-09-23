@@ -1,4 +1,4 @@
-import { historyArgs, logArgs, selectRepos, type FilterState } from "./filterModel";
+import { historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, type FilterState } from "./filterModel";
 import { countRecords, parseHistory, parseLog } from "./gitLog";
 import { takeReady, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
@@ -10,6 +10,8 @@ export interface QueryState {
   /** Fixed at the first page so --since does not drift while paging. */
   now: number;
   progress: Map<string, RepoProgress>;
+  /** File history: every name the file has had, learned on the first page. */
+  historyPaths?: string[];
 }
 
 export interface PageRequest {
@@ -75,6 +77,23 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     if (req.signal.aborted) throw abortError();
     found.forEach((f, i) => { progress.get(repos[i].id)!.ref = f.status === "fulfilled" ? branch : null; });
   }
+  // File history, first page: learn every name the file has had (one unfiltered
+  // --follow walk), then query all of them like any other log.
+  let historyPaths = req.prev?.historyPaths;
+  if (req.history && !historyPaths) {
+    const repo = byId.get(req.history.repoId);
+    const p = repo && progress.get(repo.id);
+    if (repo && p) {
+      try {
+        historyPaths = parseHistoryPaths(await req.run(repo.root, historyPathsArgs(req.history.path, p.ref ?? undefined), req.signal), req.history.path);
+      } catch (e) {
+        if (req.signal.aborted) throw abortError();
+        progress.delete(repo.id);
+        failures.push({ repoId: repo.id, name: repo.name, reason: e instanceof Error ? e.message : String(e) });
+      }
+    }
+  }
+
   const branchUse = (): BranchUse | undefined => {
     if (!branch) return undefined;
     const refs = [...progress.values()].map((p) => p.ref);
@@ -91,7 +110,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       (repo, signal) => {
         const p = progress.get(repo.id)!;
         const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), ref: p.ref ?? undefined };
-        return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, path: req.history.path }) : logArgs(req.filter, o), signal);
+        return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);
       },
       req.signal,
     );
@@ -115,7 +134,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
 
     const rows = takeReady(progress);
     const done = [...progress.values()].every((p) => p.exhausted && p.pending.length === 0);
-    if (rows.length > 0 || done) return { rows, failures, state: { now, progress }, done, branchUse: branchUse() };
+    if (rows.length > 0 || done) return { rows, failures, state: { now, progress, historyPaths }, done, branchUse: branchUse() };
   }
-  return { rows: [], failures, state: { now, progress }, done: false, branchUse: branchUse() };
+  return { rows: [], failures, state: { now, progress, historyPaths }, done: false, branchUse: branchUse() };
 }

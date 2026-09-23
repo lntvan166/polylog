@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { excludeRepos, globToRegExp, labelRepos } from "./repos";
+import { branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots } from "./repos";
 
 {
   const repos = labelRepos(["/w/acme-web", "/w/acme-api", "/w/acme-web"]);
@@ -37,4 +37,19 @@ import { excludeRepos, globToRegExp, labelRepos } from "./repos";
   assert.deepStrictEqual(excludeRepos(repos, ["**/vendor/**"]).map((r) => r.root).includes("/ws/vendor/acme-libs"), false);
   assert.deepStrictEqual(excludeRepos(repos, ["C:/ws/*"]).map((r) => r.root).includes("C:\\ws\\acme-docs"), false);
   console.log("ok - excludeRepos matches folder name or full path (slashes normalized)");
+}
+{
+  const folders = ["/w"];
+  assert.deepStrictEqual(mergeRoots(["/w/acme-web", "/w/group/acme-api"], ["/w/acme-web"], folders), ["/w/acme-web", "/w/group/acme-api"],
+    "a repo vscode.git did not open (deeper, or detection limited) is kept");
+  assert.deepStrictEqual(mergeRoots(["/w/acme-web"], ["/w/acme-web", "/w/acme-web/vendor/acme-libs"], folders), ["/w/acme-web", "/w/acme-web/vendor/acme-libs"],
+    "a repo vscode.git found (a submodule) is added");
+  assert.deepStrictEqual(mergeRoots(["/w/acme-web"], ["/elsewhere/acme-api"], folders), ["/w/acme-web"], "repos outside the workspace folders stay out");
+  assert.deepStrictEqual(mergeRoots([], ["/w"], ["/w"]), ["/w"], "a workspace folder that is itself a repo");
+  console.log("ok - discovery merges the folder walk and vscode.git, so the list never shrinks");
+}
+{
+  const lists = [["main", "origin/main", "origin/prod", "origin/HEAD", "bad name"], ["main", "origin/prod", "fix/ü"], ["main"]];
+  assert.deepStrictEqual(branchSuggestions(lists), [{ name: "main", count: 3 }, { name: "origin/prod", count: 2 }, { name: "fix/ü", count: 1 }, { name: "origin/main", count: 1 }]);
+  console.log("ok - branch suggestions are counted per repo, most shared first, and never offer a name the box refuses");
 }

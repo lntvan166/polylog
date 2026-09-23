@@ -1,3 +1,5 @@
+import { isValidRef } from "./filterModel";
+import type { BranchName } from "./protocol";
 import type { Repo } from "./types";
 
 const segments = (p: string) => p.split(/[\\/]+/).filter(Boolean);
@@ -52,4 +54,30 @@ export function excludeRepos(repos: readonly Repo[], patterns: readonly string[]
     const root = r.root.replace(/\\/g, "/");
     return !res.some((re) => re.test(baseName(r.root)) || re.test(root));
   });
+}
+
+const inside = (p: string, folder: string) => p === folder || p.startsWith(folder.endsWith("/") || folder.endsWith("\\") ? folder : folder + "/") || p.startsWith(folder + "\\");
+
+/**
+ * The folder walk plus the repositories vscode.git opened inside the workspace
+ * folders. A union, so the list never shrinks when vscode.git sees fewer
+ * (shallower scan depth, detection limited to open editors).
+ */
+export function mergeRoots(walk: readonly string[], git: readonly string[], folders: readonly string[]): string[] {
+  const roots = [...walk];
+  for (const g of git) if (!roots.includes(g) && folders.some((f) => inside(g, f))) roots.push(g);
+  return roots;
+}
+
+/** Branch names across repositories (one list per repo), most shared first; only names the Branch box accepts. */
+export function branchSuggestions(lists: readonly (readonly string[])[], limit = 300): BranchName[] {
+  const counts = new Map<string, number>();
+  for (const list of lists) {
+    for (const name of new Set(list)) {
+      if (name.endsWith("/HEAD") || !isValidRef(name)) continue;
+      counts.set(name, (counts.get(name) ?? 0) + 1);
+    }
+  }
+  return [...counts].map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)).slice(0, limit);
 }
