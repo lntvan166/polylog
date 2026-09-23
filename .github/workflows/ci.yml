@@ -51,8 +51,25 @@ jobs:
       - run: npm run compile
       - run: npm test
 
+  # CLAUDE.md constraint 2 and spec §6: no literal colors or fonts, and
+  # impeccable's detector rules (contrast, focus states, gray-on-color, nested
+  # cards) run against the real webview source.
+  design:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run check:theme
+      - run: npm run harness:build
+      - run: npm run check:design
+
   package:
-    needs: [denylist, test]
+    needs: [denylist, test, design]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
