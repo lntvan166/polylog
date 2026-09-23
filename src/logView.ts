@@ -10,7 +10,7 @@ import { fetchPage, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import type { HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
-import { encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
+import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
 import { renderHtml } from "./webview/html";
@@ -40,6 +40,7 @@ export interface LogSnapshot {
   readyCount: number;
   /** Each repository's user.email, in repo order (test seam). */
   me: string[];
+  history: { repoId: string; path: string } | null;
   changes: ChangesSnapshot;
   layout: Layout;
 }
@@ -65,6 +66,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private readyCount = 0;
   /** repo id → that repo's user.email, for the "Me" filter. Read in the background. */
   private meByRepo = new Map<string, string>();
+  /** File history mode: one file of one repository. */
+  private history: { repoId: string; path: string } | null = null;
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
@@ -132,6 +135,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "openFirst":
         await this.openFirst(m.repoId, m.sha);
         return;
+      case "exitHistory":
+        await this.setHistory(null);
+        return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
         return;
@@ -155,7 +161,53 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   private postInit(): void {
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout() });
+    const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
+    const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history });
+  }
+
+  /**
+   * "Polylog: File History" from the Explorer, an editor, a diff or the Changes
+   * tree. Accepts a file: URI, a polylog: revision URI, a Changes file node, or
+   * nothing (the active editor).
+   */
+  async fileHistory(arg?: unknown): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+    let target: { repoId: string; path: string } | undefined;
+    const current = this.deps.changes.current();
+    if (arg && typeof arg === "object" && (arg as { kind?: unknown }).kind === "file" && current) {
+      target = { repoId: current.commit.repoId, path: (arg as { path: string }).path };
+    } else {
+      const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
+      if (uri?.scheme === SCHEME) {
+        const rev = decodeRevision(uri.path, uri.query);
+        const repo = this.repos.find((r) => r.root === rev.root);
+        if (repo) target = { repoId: repo.id, path: rev.path };
+      } else if (uri?.scheme === "file") {
+        target = this.locate(uri.fsPath);
+      }
+    }
+    if (!target) {
+      void vscode.window.showInformationMessage("Polylog: this file is not in a repository of this workspace.");
+      return;
+    }
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    await this.setHistory(target);
+  }
+
+  /** The workspace repository containing a file (innermost first), and its repo-relative path. */
+  private locate(fsPath: string): { repoId: string; path: string } | undefined {
+    const inside = this.repos
+      .map((r) => ({ r, rel: path.relative(r.root, fsPath) }))
+      .filter((x) => x.rel !== "" && !x.rel.startsWith("..") && !path.isAbsolute(x.rel))
+      .sort((a, b) => a.rel.length - b.rel.length)[0];
+    return inside ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
+  }
+
+  private async setHistory(history: { repoId: string; path: string } | null): Promise<void> {
+    this.history = history;
+    this.postInit();
+    await this.reload();
   }
 
   /** Group by Repository: show or hide the Repositories pane (Log title-bar toggle). */
@@ -207,7 +259,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: null, run: this.deps.run, signal: ctl.signal, me: this.meByRepo,
+        now: nowSec(), prev: null, run: this.deps.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
       if (ctl.signal.aborted) return;
       this.rows = page.rows;
@@ -229,7 +281,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
-        now: nowSec(), prev: this.queryState, run: this.deps.run, signal: ctl.signal, me: this.meByRepo,
+        now: nowSec(), prev: this.queryState, run: this.deps.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
       if (ctl.signal.aborted) return;
       this.rows = this.rows.concat(page.rows);
@@ -247,7 +299,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, changes: this.deps.changes.snapshot(),
       layout: this.layout(),
     };
   }
@@ -269,7 +321,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const { commit, repo } = found;
     const key = commitKey(commit);
     if (this.openWhenLoaded !== key) this.openWhenLoaded = null;
-    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "" };
+    const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path };
+    // File history: the diff follows the selection, in one preview tab, keeping focus in the Log.
+    if (this.history && commit.file) void this.openHistoryDiff(commit);
     this.deps.changes.set({ ...base, status: "loading" });
     try {
       const { files, message } = parseShow(await this.deps.run(repo.root, showArgs(sha), ctl.signal));
@@ -295,9 +349,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.deps.changes.set(null);
   }
 
+  private async openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
+    const f = commit.file!;
+    await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
+  }
+
   private async openFirst(repoId: string, sha: string): Promise<void> {
     const found = this.findCommit(repoId, sha);
     if (!found) return;
+    if (this.history && found.commit.file) return this.openHistoryDiff(found.commit, false);
     const current = this.deps.changes.current();
     if (current && commitKey(current.commit) === commitKey(found.commit) && current.status === "ready") {
       await this.openFirstOf(found.commit);
@@ -313,14 +373,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath });
   }
 
-  async openDiff(a: OpenDiffArgs): Promise<void> {
+  async openDiff(a: OpenDiffArgs, preserveFocus = false): Promise<void> {
     const repo = this.repos.find((r) => r.id === a?.repoId);
     // Refs come from the webview or a command argument: validate before they reach git.
     if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
     const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, a);
     const title = `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
     // A panel view is not an editor group, so this always opens in the editor area above.
-    await vscode.commands.executeCommand("vscode.diff", toUri(before), toUri(after), title, { preview: true });
+    await vscode.commands.executeCommand("vscode.diff", toUri(before), toUri(after), title, { preview: true, preserveFocus });
   }
 
   private post(m: HostMessage): void {

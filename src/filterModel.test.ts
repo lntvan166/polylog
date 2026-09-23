@@ -1,6 +1,6 @@
 import * as assert from "assert";
-import { LOG_FORMAT } from "./gitLog";
-import { DEFAULT_FILTER, gitDate, logArgs, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
+import { DEFAULT_FILTER, gitDate, historyArgs, logArgs, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -121,4 +121,15 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.ok(both.includes("--author=dana@example.com") && !both.includes("--author=rin"), "Me replaces the typed author");
   assert.ok(sanitizeFilter({ ...ALL, mine: true }).mine);
   console.log("ok - Me becomes --author=<that repository's user.email>");
+}
+
+// ── File history: the same filters, one path, followed across renames ──────
+{
+  const a = historyArgs({ ...ALL, text: "fix" }, { pageSize: 200, now: NOW, cursor: { skip: 5 }, path: "src/client.ts" });
+  assert.strictEqual(a[1], HISTORY_FORMAT);
+  assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
+  assert.deepStrictEqual(a.slice(-6), ["--follow", "--name-status", "-z", "-M", "--", "src/client.ts"], "the path is always after --");
+  const inj = historyArgs(ALL, { pageSize: 1, now: NOW, path: "--output=/tmp/x" });
+  assert.deepStrictEqual(inj.slice(-2), ["--", "--output=/tmp/x"], "a path can never be read as an option");
+  console.log("ok - historyArgs adds --follow and the path after --");
 }

@@ -9,7 +9,7 @@ export interface Layout {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number };
 
@@ -22,4 +22,5 @@ export type WebviewMessage =
   | { type: "select"; repoId: string; sha: string }
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth: number }
+  | { type: "exitHistory" }
   | { type: "openSettings" };

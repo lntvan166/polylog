@@ -8,6 +8,8 @@ export interface ListProps {
   repoIds: readonly string[] | null;
   /** Every repository id in workspace order; each repo's color comes from its place here. */
   repoOrder: readonly string[];
+  /** File history: the file's current path, to flag rows where it had another name. */
+  historyPath?: string;
   selected: number;
   now: number;
   skeleton: boolean;
@@ -22,7 +24,7 @@ const SKELETON_ROWS = 8;
  */
 export class CommitList {
   private rowHeight = 0;
-  private props: ListProps = { rows: [], repoNames: new Map(), repoIds: null, repoOrder: [], selected: -1, now: 0, skeleton: false };
+  private props: ListProps = { rows: [], repoNames: new Map(), repoIds: null, repoOrder: [], historyPath: undefined, selected: -1, now: 0, skeleton: false };
 
   constructor(
     private readonly root: HTMLElement,
@@ -107,7 +109,11 @@ export class CommitList {
       "data-index": String(i),
     }, [
       h("span", { class: `chip accent-${accent}`, role: "gridcell" }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
-      h("span", { class: "subject", role: "gridcell", title: c.subject }, [c.subject]),
+      h("span", { class: "subject", role: "gridcell", title: c.subject }, [
+        c.subject,
+        // File history: the file had another name in this commit.
+        this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null,
+      ]),
       h("span", { class: "author", role: "gridcell" }, [c.author]),
       h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
     ]);

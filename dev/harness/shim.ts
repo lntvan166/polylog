@@ -26,6 +26,7 @@ const latency = scenario === "slow" ? 1500 : 25;
 const repos = mockRepos(scenario);
 const all = mockCommits(repos, scenario);
 let filter: FilterState = DEFAULT_FILTER;
+let history: { repoName: string; path: string } | null = params.get("history") ? { repoName: "acme-web", path: params.get("history")! } : null;
 let matched: Commit[] = [];
 let offset = 0;
 
@@ -62,7 +63,8 @@ function reload(): void {
 
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" } }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history }, 0); reload(); return;
+    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history }, 0); reload(); return;
     case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;

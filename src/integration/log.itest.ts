@@ -210,6 +210,22 @@ describe("Polylog panel", () => {
     assert.strictEqual(tabCount(), 0);
   });
 
+  it("File History lists one file's commits and the diff follows the selection", async () => {
+    await closeEditors();
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"]);
+    const first = s.rows[1];
+    await send({ type: "select", repoId: first.repoId, sha: first.sha });
+    const input = await diffTab();
+    assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n", "selecting a row opened that revision's diff of the file");
+    s = await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go");
+    await send({ type: "exitHistory" });
+    s = await until("all commits again", (x) => x.history === null && x.rows.length === 6);
+    await closeEditors();
+  });
+
   it("keeps the Log alive when the panel shows another tab", async () => {
     const before = (await snapshot()).readyCount;
     await vscode.commands.executeCommand("workbench.action.terminal.focus");

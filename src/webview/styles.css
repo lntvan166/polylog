@@ -28,7 +28,19 @@ button, input, select { font: inherit; }
 .app { display: grid; grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr); height: 100vh; }
 .app.no-repos { grid-template-columns: minmax(0, 1fr); }
 .app.no-repos .repo-pane, .app.no-repos .splitter { display: none; }
-.log { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-width: 0; min-height: 0; }
+.log { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.log > .main { flex: 1 1 auto; min-height: 0; }
+
+/* ── Mode bar (file history) ─────────────────────────────────────────── */
+.modebar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.mode { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; }
+button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
+.mode.active { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder, transparent); color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); min-width: 0; }
+.history-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
+.mode-close { width: 20px; height: 20px; margin-left: 2px; font-size: 14px; }
+.was-path { color: var(--vscode-descriptionForeground); }
+/* A file lives in one repository: the pane is just context while viewing its history. */
+.app.history .repo-pane { opacity: 0.5; pointer-events: none; }
 
 /* ── Repositories pane ──────────────────────────────────────────────────── */
 .repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }

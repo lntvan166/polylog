@@ -13,6 +13,8 @@ export interface ChangesState {
   /** Full commit message; "" until loaded. */
   message: string;
   error?: string;
+  /** File history: the file to highlight in the tree. */
+  focusPath?: string;
 }
 
 interface Base {

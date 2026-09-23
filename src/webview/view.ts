@@ -91,8 +91,15 @@ export interface EmptyState {
   action?: { label: string; id: EmptyAction };
 }
 
-export function emptyState(o: { repoCount: number; filter: FilterState }): EmptyState {
+export function emptyState(o: { repoCount: number; filter: FilterState; history?: string }): EmptyState {
   const f = o.filter;
+  if (o.history !== undefined) {
+    const p = o.history;
+    const text = f.text.trim();
+    if (text) return { title: "No matching commits", body: `No commit to ${p} contains “${text}”.`, action: { label: "Clear Search", id: "clearText" } };
+    if (f.date !== "all") return { title: "No commits in this date range", body: `No commits to ${p}${dateLabel(f)}.`, action: { label: "Show All Time", id: "allTime" } };
+    return { title: "No matching commits", body: `No commits to ${p} match these filters.`, action: { label: "Clear Author", id: "clearAuthor" } };
+  }
   if (o.repoCount === 0) {
     return {
       title: "No git repositories found",

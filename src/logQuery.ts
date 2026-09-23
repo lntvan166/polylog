@@ -1,5 +1,5 @@
-import { logArgs, selectRepos, type FilterState } from "./filterModel";
-import { countRecords, parseLog } from "./gitLog";
+import { historyArgs, logArgs, selectRepos, type FilterState } from "./filterModel";
+import { countRecords, parseHistory, parseLog } from "./gitLog";
 import { takeReady, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
 import type { Commit, Repo, RepoFailure } from "./types";
@@ -24,6 +24,8 @@ export interface PageRequest {
   signal: AbortSignal;
   /** repo id → that repo's user.email, for the "Me" filter. */
   me?: ReadonlyMap<string, string>;
+  /** File history: only this repository, only this path (followed across renames). */
+  history?: { repoId: string; path: string } | null;
 }
 
 export interface PageResult {
@@ -48,7 +50,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   const progress = new Map<string, RepoProgress>(
     req.prev
       ? [...req.prev.progress].filter(([id]) => byId.has(id)).map(([id, p]) => [id, { ...p, pending: [...p.pending] }])
-      : selectRepos(req.filter, req.repos)
+      : (req.history ? req.repos.filter((r) => r.id === req.history!.repoId) : selectRepos(req.filter, req.repos))
           // Me: a repo with no user.email has no commits that are "mine".
           .filter((r) => !req.filter.mine || req.me?.has(r.id))
           .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
@@ -62,7 +64,10 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     const settled = await runPool(
       targets,
       req.concurrency,
-      (repo, signal) => req.run(repo.root, logArgs(req.filter, { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched }, me: req.me?.get(repo.id) }), signal),
+      (repo, signal) => {
+        const o = { pageSize: req.pageSize, now, cursor: { skip: progress.get(repo.id)!.fetched }, me: req.me?.get(repo.id) };
+        return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, path: req.history.path }) : logArgs(req.filter, o), signal);
+      },
       req.signal,
     );
     if (req.signal.aborted) throw abortError();
@@ -73,7 +78,7 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
       if (result.status === "fulfilled") {
         const records = countRecords(result.value);
         p.fetched += records;
-        p.pending.push(...parseLog(result.value, repo.id));
+        p.pending.push(...(req.history ? parseHistory(result.value, repo.id, req.history.path) : parseLog(result.value, repo.id)));
         if (records < req.pageSize) p.exhausted = true;
       } else {
         progress.delete(repo.id);

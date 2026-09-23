@@ -119,6 +119,17 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     console.log("ok - Me asks each repository for its own user.email and skips repos without one");
   }
   {
+    const calls: string[][] = [];
+    const out = "\x1e" + [mk(API, 9).sha, "9", "rin", "rin@example.com", "feat: add retry", ""].join("\0") + "\0\nM\0upload.go\0";
+    const run: RunGit = async (cwd, args) => { calls.push([cwd, ...args]); return out; };
+    const page = await fetchPage(req({ run, history: { repoId: API.id, path: "upload.go" } }));
+    assert.deepStrictEqual(calls.map((c) => c[0]), [API.root], "history asks only the file's repository");
+    assert.ok(calls[0].includes("--follow") && calls[0].at(-1) === "upload.go");
+    assert.deepStrictEqual(page.rows.map((c) => c.file), [{ path: "upload.go", status: "M" }]);
+    assert.strictEqual(page.done, true);
+    console.log("ok - file history queries one repository with --follow and keeps each commit's path");
+  }
+  {
     const ctl = new AbortController();
     ctl.abort();
     const calls: string[][] = [];

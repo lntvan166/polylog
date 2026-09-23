@@ -106,3 +106,10 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(both.action?.id, "clearText");
   console.log("ok - empty states name the author filter and offer to clear it");
 }
+{
+  const h = emptyState({ repoCount: 3, filter: DEFAULT_FILTER, history: "src/client.ts" });
+  assert.strictEqual(h.body, "No commits to src/client.ts in the last 30 days.");
+  assert.strictEqual(h.action?.id, "allTime");
+  assert.strictEqual(emptyState({ repoCount: 3, filter: { ...ALL, text: "zzz" }, history: "a.ts" }).body, "No commit to a.ts contains “zzz”.");
+  console.log("ok - file history has its own empty state");
+}

@@ -162,3 +162,20 @@ between them, so the Repositories pane moved into the Log webview:
   Changes 450, matching the maintainer's reference layout.
 - The webview paints `panel.background`, the same surface as the native tree beside it.
 - Group by Repository now shows or hides this pane.
+
+## 12. Amendment: File History mode (2026-09-23, maintainer decision)
+
+Replaces VS Code's "Open Changes with Previous Revision" (one click per revision) with a
+browsable history:
+
+- **Entry points:** `polylog.fileHistory` ("Polylog: File History") in the Explorer and editor
+  context menus, the editor tab and title bar, and on file nodes of the Changes tree. It
+  accepts a `file:` URI, a `polylog:` revision URI (from a Polylog diff) or a Changes node.
+- **Mode bar in the Log:** `All commits | File history: <path> · <repo> ×`. The Log lists
+  only commits touching that file, via `git log --follow --name-status -z -- <path>` in
+  that one repository (pushed to git; paged by `--skip`). Search, author, Me and date still
+  apply; the repo pane is dimmed. × or "All commits" returns to the normal log.
+- **The diff follows the selection:** selecting a row opens that commit's diff of the file
+  (renames resolved per commit) in one preview tab with `preserveFocus`, so ↑/↓ steps
+  through revisions; Enter opens it focused. The Changes tree shows the whole commit with
+  the file selected. Rows where the file had another name show `— old/path`.

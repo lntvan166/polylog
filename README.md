@@ -41,6 +41,10 @@ The **Repositories** pane on the left (Group by Repository, on by default; toggl
 Log's title bar) filters the Log to the repos you pick. Filters: message search, author
 (with **Me**), repositories, and date range.
 
+**File history:** right-click a file (Explorer, editor, tab, or a file in Changes) →
+**Polylog: File History**. The Log shows only that file's commits, following renames, and
+the diff follows your selection, so ↑/↓ steps through its revisions.
+
 | Key | Action |
 |---|---|
 | `↑` / `↓`, `Home` / `End`, `PageUp` / `PageDown` | Move the selection; the changed files follow |

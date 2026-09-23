@@ -21,6 +21,7 @@ const SKELETON_DELAY_MS = 150;
 const state = {
   repos: [] as Repo[],
   filter: DEFAULT_FILTER as FilterState,
+  history: null as { repoName: string; path: string } | null,
   rows: [] as Commit[],
   failures: [] as RepoFailure[],
   dismissed: false,
@@ -44,6 +45,11 @@ const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
 const appEl = byId("app");
+const modebar = byId("modebar");
+const historyPath = byId("history-path");
+const exitHistory = () => post({ type: "exitHistory" });
+byId("mode-all").addEventListener("click", exitHistory);
+byId("history-close").addEventListener("click", exitHistory);
 const splitter = byId("splitter");
 let paneWidth = DEFAULT_REPO_PANE_WIDTH;
 
@@ -76,6 +82,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
+      state.history = m.history;
+      modebar.hidden = !m.history;
+      appEl.classList.toggle("history", !!m.history);
+      historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
     case "loading":
@@ -148,10 +158,11 @@ function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   list.update({
     rows: state.rows, repoNames: names, repoIds: state.filter.repoIds, repoOrder: state.repos.map((r) => r.id),
+    historyPath: state.history?.path,
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
-  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter }) : null);
+  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;

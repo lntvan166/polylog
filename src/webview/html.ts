@@ -30,6 +30,12 @@ export function renderHtml(o: HtmlOptions): string {
   </aside>
   <div id="splitter" class="splitter" role="separator" aria-orientation="vertical" aria-label="Resize the repositories pane" tabindex="0"></div>
   <div class="log">
+    <div id="modebar" class="modebar" role="toolbar" aria-label="Log mode" hidden>
+      <button id="mode-all" class="mode" type="button">All commits</button>
+      <span class="mode active" aria-current="true"><svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="5.5" fill="none" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3.2l2.2 1.4" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg><span>File history:</span><span id="history-path" class="history-path"></span>
+        <button id="history-close" class="icon-button mode-close" type="button" aria-label="Close file history" title="Back to all commits">×</button>
+      </span>
+    </div>
     <form id="filters" class="filters" role="search" aria-label="Filter commits">
       <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
       <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">

@@ -4,10 +4,10 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
-import { DEFAULT_FILTER, logArgs, type FilterState } from "./filterModel";
+import { DEFAULT_FILTER, historyArgs, logArgs, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
-import { parseLog } from "./gitLog";
+import { parseHistory, parseLog } from "./gitLog";
 import { isAbortError } from "./pool";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-git-test-"));
@@ -54,6 +54,12 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual((await log({ ...ALL, author: "dana@example.com", text: "retry" })).map((c) => c.subject), ["[ACME-7] add retry"]);
     assert.deepStrictEqual(await log({ ...ALL, author: "rin", text: "retry" }), [], "author AND search, never OR");
     console.log("ok - --author matches name or email and combines with --grep as AND");
+    const hist = parseHistory(await runGit(api, historyArgs(ALL, { pageSize: 50, now: 10_000, path: "renamed.txt" })), api, "renamed.txt");
+    assert.deepStrictEqual(hist.map((c) => [c.subject, c.file?.path, c.file?.status]), [
+      ["café: rename", "renamed.txt", "R"],
+      ["feat: scaffold api", "sp ace é.txt", "A"],
+    ], "history follows the rename back to the file's first name");
+    console.log("ok - real git: file history follows a rename");
   }
   {
     git(api, ["config", "i18n.logOutputEncoding", "ISO-8859-1"]);

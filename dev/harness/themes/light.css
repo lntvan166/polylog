@@ -49,4 +49,7 @@
   --vscode-sash-hoverBorder: #005fb8;
   --vscode-list-focusBackground: #e8e8e880;
   --vscode-list-highlightForeground: #0066bf;
+  --vscode-inputOption-activeBackground: #bed6ed;
+  --vscode-inputOption-activeBorder: #007acc;
+  --vscode-inputOption-activeForeground: #000000;
 }

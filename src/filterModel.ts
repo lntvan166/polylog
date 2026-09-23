@@ -1,4 +1,4 @@
-import { LOG_FORMAT } from "./gitLog";
+import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
 import type { Repo } from "./types";
 
 export type DatePreset = "24h" | "7d" | "30d" | "all" | "custom";
@@ -68,6 +68,13 @@ export function logArgs(f: FilterState, o: { pageSize: number; now: number; curs
   if (until !== undefined) args.push(`--until=${gitDate(until)}`);
   if (o.cursor && o.cursor.skip > 0) args.push(`--skip=${o.cursor.skip}`);
   return args;
+}
+
+/** The same filters for one file's history, followed across renames. The path always comes after `--`. */
+export function historyArgs(f: FilterState, o: { pageSize: number; now: number; cursor?: RepoCursor; me?: string; path: string }): string[] {
+  const args = logArgs(f, o);
+  args[1] = HISTORY_FORMAT;
+  return [...args, "--follow", "--name-status", "-z", "-M", "--", o.path];
 }
 
 export function selectRepos(f: FilterState, repos: readonly Repo[]): Repo[] {

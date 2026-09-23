@@ -17,6 +17,7 @@ export function activate(context: vscode.ExtensionContext): void {
     discovery,
     changes,
     vscode.window.registerFileDecorationProvider(changes),
+    vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(arg)),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     log,

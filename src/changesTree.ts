@@ -16,6 +16,8 @@ export interface ChangesSnapshot {
   schemes: string[];
   /** "<file> <badge> <theme color>" for every decorated file (test seam). */
   decorations: string[];
+  /** File history: the highlighted file's label. */
+  focused: string | undefined;
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -33,6 +35,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private state: ChangesState | null = null;
   private roots: NodeDesc[] = [];
   private message: string | undefined;
+  private parents = new Map<NodeDesc, NodeDesc>();
+  private focused: NodeDesc | undefined;
 
   constructor() {
     this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true });
@@ -62,7 +66,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, items: walk(this.roots, 0), schemes, decorations };
+    return { message: this.message, items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label };
   }
 
   private render(): void {
@@ -77,8 +81,19 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       if (dec) this.decorations.set(this.uriFor(n.path).toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
     });
     files(this.roots);
+    this.parents = new Map();
+    this.focused = undefined;
+    const index = (nodes: NodeDesc[], parent?: NodeDesc): void => nodes.forEach((n) => {
+      if (parent) this.parents.set(n, parent);
+      if (n.kind === "file" && n.path === this.state?.focusPath) this.focused = n;
+      if (n.kind !== "file") index(n.children, n);
+    });
+    index(this.roots);
     this.emitter.fire(undefined);
     this.decorationsChanged.fire(undefined);
+    // File history: select the file this history is about, without taking focus from the Log.
+    const target = this.focused;
+    if (target && this.view.visible) setTimeout(() => void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined), 0);
   }
 
   /**
@@ -91,6 +106,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
     return uri.scheme === TREE_SCHEME ? this.decorations.get(uri.toString()) : undefined;
+  }
+
+  getParent(node: NodeDesc): NodeDesc | undefined {
+    return this.parents.get(node);
   }
 
   getChildren(node?: NodeDesc): NodeDesc[] {
@@ -114,6 +133,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     // for today's files are not painted onto a historical commit.
     item.resourceUri = this.uriFor(node.path);
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
+    if (node.kind === "file") item.contextValue = "file";
     if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null, path: node.file.path, oldPath: node.file.oldPath };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };

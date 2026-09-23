@@ -15,6 +15,8 @@ export interface Commit {
   email: string;
   subject: string;
   parents: string[];
+  /** File history only: the file as it was in this commit (it may have been renamed since). */
+  file?: { path: string; oldPath?: string; status?: ChangeStatus };
 }
 
 /** What a commit did to a file, from `git show --raw`: Added, Modified, Deleted, Renamed, Copied, Type-changed. */

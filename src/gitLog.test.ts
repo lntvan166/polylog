@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { LOG_FORMAT, parseLog } from "./gitLog";
+import { HISTORY_FORMAT, LOG_FORMAT, parseHistory, parseLog } from "./gitLog";
 import { commitKey, isSha } from "./types";
 
 const A = "a".repeat(40);
@@ -73,4 +73,24 @@ const rec = (sha: string, ct: number, an: string, subject: string, parents: stri
   assert.ok(isSha(A) && isSha("d".repeat(64)));
   assert.ok(!isSha("--output=/tmp/x") && !isSha(A.toUpperCase()) && !isSha("a".repeat(39)) && !isSha(undefined));
   console.log("ok - commitKey separates repos; isSha accepts only 40/64 lowercase hex");
+}
+
+// ── File history: RS starts each record; the file's status follows it ──────
+// Byte shape from git 2.43: RS <fields NUL-separated> NUL "\n" <STATUS> NUL <path> NUL [<new> NUL]
+{
+  assert.strictEqual(HISTORY_FORMAT, "--format=%x1e%H%x00%ct%x00%an%x00%ae%x00%s%x00%P");
+  const hrec = (sha: string, ct: number, subject: string, status: string, ...paths: string[]) =>
+    "\x1e" + [sha, String(ct), "dana", "dana@example.com", subject, ""].join("\0") + "\0\n" + status + "\0" + paths.join("\0") + "\0";
+  const out = hrec(A, 400, "edit new", "M", "src/new.ts") + hrec(B, 300, "rename", "R100", "src/old.ts", "src/new.ts") + hrec(C, 200, "edit old", "M", "src/old.ts");
+  assert.deepStrictEqual(parseHistory(out, REPO, "src/new.ts").map((c) => [c.subject, c.file]), [
+    ["edit new", { path: "src/new.ts", status: "M" }],
+    ["rename", { path: "src/new.ts", oldPath: "src/old.ts", status: "R" }],
+    ["edit old", { path: "src/old.ts", status: "M" }],
+  ]);
+  assert.deepStrictEqual(parseHistory("", REPO, "x"), []);
+  const cut = hrec(A, 1, "whole", "M", "a.ts") + "\x1e" + [B, "2", "da"].join("\0");
+  assert.deepStrictEqual(parseHistory(cut, REPO, "a.ts").map((c) => c.subject), ["whole"], "a record cut off by a kill is dropped");
+  const merge = "\x1e" + [C, "5", "rin", "rin@example.com", "merge", `${A} ${B}`].join("\0") + "\0";
+  assert.deepStrictEqual(parseHistory(merge, REPO, "a.ts")[0].file, { path: "a.ts" }, "a record with no status keeps the file's current path");
+  console.log("ok - parseHistory reads each commit's path and status, following renames");
 }
