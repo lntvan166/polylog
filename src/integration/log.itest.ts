@@ -359,6 +359,43 @@ describe("Polylog panel", () => {
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
   });
 
+  it("switching git.path takes effect at once, and a path that cannot run falls back", async function () {
+    if (process.platform === "win32") this.skip(); // the wrapper is a shell script
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const os = require("os") as typeof import("os");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-gitpath-"));
+    const calls = path.join(dir, "calls.log");
+    const wrapper = path.join(dir, "git-wrapper");
+    // Records every call, then runs the real git from PATH.
+    fs.writeFileSync(wrapper, `#!/bin/sh\necho "$@" >> "${calls}"\nexec git "$@"\n`, { mode: 0o755 });
+    const cfg = vscode.workspace.getConfiguration("git");
+    const reloads = async () => (await snapshot()).stats.reloads;
+    try {
+      let before = await reloads();
+      await cfg.update("path", wrapper, vscode.ConfigurationTarget.Global);
+      let s = await until("a reload through the new git", (x) => x.stats.reloads > before && x.rows.length > 0 && !x.failures.length);
+      await waitFor("the wrapper to be used", () => (fs.existsSync(calls) && /log /.test(fs.readFileSync(calls, "utf8")) ? true : undefined));
+      assert.ok(s.rows.length > 0, "the Log still lists commits through the wrapper");
+
+      before = await reloads();
+      await cfg.update("path", path.join(dir, "no-such-git"), vscode.ConfigurationTarget.Global);
+      s = await until("a reload after switching to a path that cannot run", (x) => x.stats.reloads > before && x.rows.length > 0);
+      assert.deepStrictEqual(s.failures, [], "falls back to a git that runs instead of failing every repo");
+
+      before = await reloads();
+      await cfg.update("path", undefined, vscode.ConfigurationTarget.Global);
+      await until("a reload after clearing git.path", (x) => x.stats.reloads > before && x.rows.length > 0);
+      fs.writeFileSync(calls, "");
+      await send({ type: "refresh" });
+      await until("a refresh", (x) => x.rows.length > 0);
+      await sleep(300);
+      assert.strictEqual(fs.readFileSync(calls, "utf8"), "", "the old git.path is no longer used");
+    } finally {
+      await cfg.update("path", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   // Last: it leaves Changes hidden for the rest of the session, as a user who hid it wants.
   it("Hide 'Changes' is undone once as an accident, then respected", async () => {
     const c = bySubject(await snapshot(), "feat: add retry");

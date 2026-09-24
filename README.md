@@ -150,7 +150,7 @@ skewed clock can place a commit out of order.
 | Requirement | Notes |
 |---|---|
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
-| `git` on your `PATH` | Polylog runs `git` from `PATH`; it does not read `git.path` |
+| Git | The same git as VS Code: your `git.path` setting, then the git VS Code's Git extension found, then `git` on `PATH`. Changing `git.path` takes effect at once |
 
 Polylog only reads history. It never runs a command that changes a repository.
 

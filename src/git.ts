@@ -20,10 +20,14 @@ function firstLine(stderr: string): string {
   return line.replace(/^(fatal|error): /, "").trim();
 }
 
-/** Async only: the extension host is shared with every other extension. */
-export function runGit(cwd: string, args: string[], signal?: AbortSignal): Promise<string> {
+/** Spawn failures that mean "this binary cannot run here", so the next candidate is tried. */
+const NOT_RUNNABLE = new Set(["ENOENT", "EACCES", "ENOTDIR", "EISDIR"]);
+
+class NotRunnable extends Error {}
+
+function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn("git", [...CONFIG, ...args], {
+    const child = spawn(binary, [...CONFIG, ...args], {
       cwd,
       signal,
       windowsHide: true,
@@ -36,7 +40,7 @@ export function runGit(cwd: string, args: string[], signal?: AbortSignal): Promi
     child.stderr.on("data", (d: Buffer) => err.push(d));
     child.on("error", (e: NodeJS.ErrnoException) => {
       if (e.name === "AbortError") reject(e);
-      else if (e.code === "ENOENT") reject(new GitError("git was not found on PATH", null));
+      else if (e.code && NOT_RUNNABLE.has(e.code)) reject(new NotRunnable(e.code));
       else reject(e);
     });
     child.on("close", (code) => {
@@ -46,3 +50,53 @@ export function runGit(cwd: string, args: string[], signal?: AbortSignal): Promi
     });
   });
 }
+
+/**
+ * Runs git with the first binary that can run: VS Code's `git.path`, then the path VS
+ * Code's Git extension found, then git on PATH (gitBinary.ts). The working binary is
+ * remembered until reset(), which the extension calls when `git.path` changes.
+ * Async only: the extension host is shared with every other extension.
+ */
+export class GitRunner {
+  private resolved: string | undefined;
+
+  constructor(private readonly candidates: () => string[]) {}
+
+  /** The binary in use, once one has run. */
+  binary(): string | undefined {
+    return this.resolved;
+  }
+
+  reset(): void {
+    this.resolved = undefined;
+  }
+
+  readonly run = async (cwd: string, args: string[], signal?: AbortSignal): Promise<string> => {
+    if (this.resolved) {
+      try {
+        return await spawnGit(this.resolved, cwd, args, signal);
+      } catch (e) {
+        if (!(e instanceof NotRunnable)) throw e;
+        this.resolved = undefined; // it ran before and stopped: look again
+      }
+    }
+    const tried: string[] = [];
+    for (const binary of this.candidates()) {
+      try {
+        const out = await spawnGit(binary, cwd, args, signal);
+        this.resolved = binary;
+        return out;
+      } catch (e) {
+        if (!(e instanceof NotRunnable)) {
+          this.resolved = binary; // it ran; the error is git's own
+          throw e;
+        }
+        tried.push(binary);
+      }
+    }
+    throw new GitError(`git was not found (tried: ${tried.join(", ")}). Check the git.path setting.`, null);
+  };
+}
+
+/** git from PATH only: tests and callers with no VS Code settings. */
+export const runGit = new GitRunner(() => ["git"]).run;

@@ -367,3 +367,25 @@ Chips were capped at 15ch and cut at the end. Repos that share a prefix
   - Open File is hidden on deleted files.
   - A file named `..x` counts as inside the repo.
   - `ThirdPartyNotices.txt` is checked against `package-lock.json`.
+
+## 21. Amendments for 0.2.0 (2026-09-24, maintainer request)
+
+### 21.1 VS Code's git binary
+
+Polylog ran plain `git` from PATH. Users with `git.path` set, or with Git installed but not
+on PATH (common on Windows), got "git was not found" while VS Code's own Git worked.
+
+- `GitRunner` (git.ts) tries candidates in order (`gitCandidates`, gitBinary.ts):
+  1. `git.path`, a string or an array, in order;
+  2. the binary VS Code's Git extension found (`api.git.path`);
+  3. `git` on PATH.
+- It uses the first that can run: a spawn failure (ENOENT, EACCES, …) moves on to the
+  next candidate, while git's own errors are reported as they are. The working binary is
+  remembered.
+- If none runs, the error names every path tried.
+- Polylog still never waits for the Git extension at startup. The first calls use
+  `git.path` or PATH; when the extension reports its binary and nothing has run yet, the
+  Log is read again.
+- **Switching `git.path` at runtime** takes effect at once: the runner forgets its binary,
+  in-flight git processes are killed, and the page, the selected commit and the
+  background reads (Me, branch suggestions) are read again.

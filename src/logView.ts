@@ -337,6 +337,21 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
+  /**
+   * The git binary changed (git.path, or VS Code's Git extension reported its own). Kill
+   * git processes still running on the old binary, and read everything again: the page,
+   * the selected commit, and the background reads (Me, branch suggestions).
+   */
+  async gitChanged(): Promise<void> {
+    this.query.abort();
+    this.detail.abort();
+    this.reloadSoon.cancel();
+    this.backgroundFor = undefined;
+    await this.reload();
+    const current = this.deps.changes.current();
+    if (current) await this.showDetail(current.commit.repoId, current.commit.sha);
+  }
+
   /** Group by Repository: show or hide the Repositories pane (Log title-bar toggle). */
   async setGroupByRepo(on: boolean): Promise<void> {
     await this.context.globalState.update(HIDE_REPOS_KEY, !on);
