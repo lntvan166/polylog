@@ -1,6 +1,6 @@
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
-import { fitName } from "./measure";
+import { fitName, textStyle } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
 import { accentOf, assignAccents } from "./view";
 
@@ -25,6 +25,15 @@ export class RepoPane {
   private active = 0;
 
   constructor(private readonly onChange: (repoIds: string[] | null) => void) {
+    // A press on a box would focus its inner input, inside an aria-hidden element that the
+    // re-render then destroys, leaving focus on <body> and the arrow keys dead. Keep focus on
+    // the list; the click still ticks the box.
+    this.list.addEventListener("mousedown", (e) => {
+      if ((e.target as Element).closest(".repo-check")) {
+        e.preventDefault();
+        this.list.focus();
+      }
+    });
     // Dragging the divider resizes the pane without a window resize.
     new ResizeObserver(() => this.fitNames()).observe(this.list);
     this.filterInput.addEventListener("input", () => {
@@ -92,12 +101,15 @@ export class RepoPane {
    */
   private fitNames(): void {
     if (this.filterInput.value.trim()) return;
-    for (const span of this.list.querySelectorAll<HTMLElement>(".repo-name")) {
-      const name = span.dataset.name;
-      if (!name) continue;
-      span.textContent = name;
-      if (span.scrollWidth > span.clientWidth) span.textContent = fitName(span, name, span.clientWidth);
-    }
+    const spans = [...this.list.querySelectorAll<HTMLElement>(".repo-name[data-name]")];
+    if (spans.length === 0) return;
+    // Write, read, write: one layout for the whole list instead of one per row.
+    for (const span of spans) span.textContent = span.dataset.name ?? "";
+    const room = spans.map((span) => (span.scrollWidth > span.clientWidth ? span.clientWidth : -1));
+    const { font } = textStyle(spans[0]);
+    spans.forEach((span, i) => {
+      if (room[i] >= 0) span.textContent = fitName(font, span.dataset.name ?? "", room[i]);
+    });
   }
 
   /** The name with the letters the fuzzy search matched wrapped for highlighting. */
@@ -147,6 +159,8 @@ export class RepoPane {
         "aria-selected": String(checked),
         "data-row": String(i),
         title: row.id ?? "Show commits from every repository",
+        // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
+        "aria-label": row.id === null ? `${row.name}, ${count}` : row.name,
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),

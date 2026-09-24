@@ -60,8 +60,9 @@ function hashName(name: string): number {
  * so ticking repositories never recolors the others. Each repo starts from a hue derived
  * from its name; when that hue is taken, it moves on to the next one that is least used,
  * in name order. Up to six repositories therefore get six different hues, discovery order
- * does not matter, and a new repository only moves the repos it clashes with. Past six,
- * hues are shared evenly. The color is only a marker: the name is always printed beside it.
+ * does not matter, and past six hues are shared evenly. Adding a repository can move repos
+ * that sort after it (the assignment is greedy); filtering never moves anything. The color
+ * is only a marker: the name is always printed beside it.
  */
 export function assignAccents(repos: readonly { id: string; name: string }[]): Map<string, number> {
   const sorted = [...repos].sort((a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
@@ -100,11 +101,13 @@ export function repoColumnChars(names: readonly string[]): number {
  * (acme-mobile-…) usually differ at the end, so both ends stay visible.
  */
 export function middleTruncate(name: string, max: number): string {
-  if (name.length <= max) return name;
+  // By character, not UTF-16 unit: an emoji is never split in half.
+  const chars = Array.from(name);
+  if (chars.length <= max) return name;
   if (max <= 1) return "…";
   const keep = max - 1;
   const head = Math.ceil(keep / 2);
-  return `${name.slice(0, head)}…${name.slice(name.length - (keep - head))}`;
+  return `${chars.slice(0, head).join("")}…${chars.slice(chars.length - (keep - head)).join("")}`;
 }
 
 /**
@@ -114,7 +117,7 @@ export function middleTruncate(name: string, max: number): string {
 export function fitMiddle(name: string, fits: (text: string) => boolean): string {
   if (fits(name)) return name;
   let lo = 1;
-  let hi = name.length - 1;
+  let hi = Array.from(name).length - 1;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
     if (fits(middleTruncate(name, mid))) lo = mid;

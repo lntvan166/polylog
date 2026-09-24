@@ -358,4 +358,20 @@ describe("Polylog panel", () => {
     await sleep(1000);
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
   });
+
+  // Last: it leaves Changes hidden for the rest of the session, as a user who hid it wants.
+  it("Hide 'Changes' is undone once as an accident, then respected", async () => {
+    const c = bySubject(await snapshot(), "feat: add retry");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await until("Changes showing the commit", (x) => x.changesVisible && x.changes.items.some((i) => i.includes("upload.go")));
+    await vscode.commands.executeCommand("polylog.changes.removeView");
+    await until("the first hide undone", (x) => x.changesVisible);
+    await sleep(700); // a person hiding it again; the reveal has finished by then
+    await vscode.commands.executeCommand("polylog.changes.removeView");
+    await sleep(800);
+    assert.strictEqual((await snapshot()).changesVisible, false, "hidden again right away: the user means it");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await sleep(800);
+    assert.strictEqual((await snapshot()).changesVisible, false, "and a later selection does not bring it back");
+  });
 });

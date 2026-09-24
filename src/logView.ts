@@ -47,6 +47,8 @@ export interface LogSnapshot {
   branches: BranchName[];
   branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
+  /** The native Changes view is expanded and on screen (keepExpanded test seam). */
+  changesVisible: boolean;
   layout: Layout;
   stats: { msToFirstRows: number | null; reloads: number; discoveries: number; spawns: number; discoveryMs: number; fetchMs: number; msToResolve: number; msToReady: number };
 }
@@ -142,8 +144,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Expand the Log again (keepExpanded.ts); show(true) keeps focus where it is. */
   expand(): void {
-    if (this.webviewView) this.webviewView.show(true);
-    else void vscode.commands.executeCommand(`${LogView.id}.focus`);
+    this.webviewView?.show(true);
+  }
+
+  /** show(true) needs the resolved view; a Log never loaded cannot be expanded quietly. */
+  get canExpand(): boolean {
+    return this.webviewView !== undefined;
   }
 
   async onMessage(m: WebviewMessage): Promise<void> {
@@ -290,7 +296,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private locate(fsPath: string): { repoId: string; path: string } | undefined {
     const inside = this.repos
       .map((r) => ({ r, rel: path.relative(r.root, fsPath) }))
-      .filter((x) => x.rel !== "" && !x.rel.startsWith("..") && !path.isAbsolute(x.rel))
+      .filter((x) => x.rel !== "" && x.rel !== ".." && !x.rel.startsWith(`..${path.sep}`) && !path.isAbsolute(x.rel))
       .sort((a, b) => a.rel.length - b.rel.length)[0];
     return inside ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
   }
@@ -461,7 +467,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(),
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,

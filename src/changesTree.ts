@@ -52,11 +52,15 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return this.view.onDidChangeVisibility;
   }
 
+  /** Revealing needs a node: with no commit selected there is nothing to reveal quietly. */
+  get canExpand(): boolean {
+    return this.roots.length > 0;
+  }
+
   /** Expand the view again without taking focus or changing the selection. */
   expand(): void {
     const root = this.roots[0];
     if (root) void this.view.reveal(root, { select: false, focus: false }).then(undefined, () => undefined);
-    else void vscode.commands.executeCommand("polylog.changes.focus");
   }
 
   set(state: ChangesState | null): void {
@@ -149,7 +153,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     // for today's files are not painted onto a historical commit.
     item.resourceUri = this.uriFor(node.path);
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
-    if (node.kind === "file") item.contextValue = "file";
+    // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
+    if (node.kind === "file") item.contextValue = node.file.status === "D" ? "fileDeleted" : "file";
     if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null, path: node.file.path, oldPath: node.file.oldPath };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };

@@ -1,4 +1,5 @@
 import * as assert from "assert";
+import * as nodePath from "path";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 
 const SHA = "a".repeat(40);
@@ -25,11 +26,14 @@ const SHA = "a".repeat(40);
   console.log("ok - decodeRevision rejects non-SHA refs (option injection) and malformed queries");
 }
 {
-  const ref = { root: "/ws/acme-web", ref: SHA };
-  assert.strictEqual(workingFile({ ...ref, path: "src/checkout/PaymentStep.tsx" }, ["/ws/acme-web"]), "/ws/acme-web/src/checkout/PaymentStep.tsx");
-  assert.strictEqual(workingFile({ ...ref, path: "../../etc/passwd" }, ["/ws/acme-web"]), undefined, "never leaves the repository");
-  assert.strictEqual(workingFile({ ...ref, path: "a/../../b" }, ["/ws/acme-web"]), undefined);
-  assert.strictEqual(workingFile({ ...ref, path: "" }, ["/ws/acme-web"]), undefined);
-  assert.strictEqual(workingFile({ ...ref, path: "a.ts" }, ["/ws/acme-api"]), undefined, "only a repository of this workspace");
+  // Built with path.resolve so the test holds on Windows (D:\\ws\\…) as well as POSIX.
+  const root = nodePath.resolve("/ws/acme-web");
+  const ref = { root, ref: SHA };
+  assert.strictEqual(workingFile({ ...ref, path: "src/checkout/PaymentStep.tsx" }, [root]), nodePath.join(root, "src", "checkout", "PaymentStep.tsx"));
+  assert.strictEqual(workingFile({ ...ref, path: "../../etc/passwd" }, [root]), undefined, "never leaves the repository");
+  assert.strictEqual(workingFile({ ...ref, path: "a/../../b" }, [root]), undefined);
+  assert.strictEqual(workingFile({ ...ref, path: "" }, [root]), undefined);
+  assert.strictEqual(workingFile({ ...ref, path: "..notes.md" }, [root]), nodePath.join(root, "..notes.md"), "a file whose name starts with .. is still inside");
+  assert.strictEqual(workingFile({ ...ref, path: "a.ts" }, [nodePath.resolve("/ws/acme-api")]), undefined, "only a repository of this workspace");
   console.log("ok - Open File maps a revision to its working-tree file, inside a workspace repository only");
 }

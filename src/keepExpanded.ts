@@ -12,3 +12,31 @@ export function collapsedPeer(log: boolean | undefined, changes: boolean): "log"
   if (log && !changes) return "changes";
   return null;
 }
+
+type View = "log" | "changes";
+
+/**
+ * collapsedPeer, with a way out. The rule "one view shows, the other does not" cannot tell a
+ * header click from "Hide 'Changes'", or from Changes dragged to another container while the
+ * panel closes. So each view is expanded again at most once per `window`: hidden again within
+ * it, the user means it, and that view is left alone until the window reloads.
+ */
+export class UndoCollapse {
+  private readonly lastUndo = new Map<View, number>();
+  private readonly gaveUp = new Set<View>();
+
+  constructor(private readonly window: number) {}
+
+  /** `can`: which views can be expanded right now without taking focus. */
+  decide(log: boolean | undefined, changes: boolean, now: number, enabled: boolean, can: Record<View, boolean> = { log: true, changes: true }): View | null {
+    const which = enabled ? collapsedPeer(log, changes) : null;
+    if (!which || this.gaveUp.has(which) || !can[which]) return null;
+    const last = this.lastUndo.get(which);
+    if (last !== undefined && now - last < this.window) {
+      this.gaveUp.add(which);
+      return null;
+    }
+    this.lastUndo.set(which, now);
+    return which;
+  }
+}

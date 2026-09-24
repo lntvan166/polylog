@@ -1,13 +1,12 @@
 import { fitMiddle } from "./view";
 
-// Real text width, in the element's own font: a canvas measures without touching layout.
+// Real text width in a given font: a canvas measures without touching layout.
 const ctx = document.createElement("canvas").getContext("2d");
 const cache = new Map<string, string>();
 
-/** `name`, cut in the middle to fit `maxPx` in `el`'s font (el must be in the document). */
-export function fitName(el: HTMLElement, name: string, maxPx: number): string {
+/** `name`, cut in the middle to fit `maxPx` in `font` (a CSS font shorthand). */
+export function fitName(font: string, name: string, maxPx: number): string {
   if (!ctx || maxPx <= 0) return name;
-  const font = getComputedStyle(el).font;
   const key = `${font}|${Math.floor(maxPx)}|${name}`;
   let fitted = cache.get(key);
   if (fitted === undefined) {
@@ -19,8 +18,8 @@ export function fitName(el: HTMLElement, name: string, maxPx: number): string {
   return fitted;
 }
 
-/** The space an element's text has: its box minus horizontal padding. */
-export function textRoom(el: HTMLElement, box = el.getBoundingClientRect().width): number {
+/** An element's font and horizontal padding. Read once per list, not once per row. */
+export function textStyle(el: HTMLElement): { font: string; paddingX: number } {
   const s = getComputedStyle(el);
-  return box - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight);
+  return { font: s.font, paddingX: parseFloat(s.paddingLeft) + parseFloat(s.paddingRight) };
 }

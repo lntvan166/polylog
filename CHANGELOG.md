@@ -31,13 +31,15 @@ The first release.
   Clicking a file opens its diff in VS Code's diff editor above the panel. Right-click the
   commit to copy its SHA or message.
 - **Open File** on a Polylog diff, or on a file in Changes, opens the file as it is in the
-  workspace now, at the same line.
+  workspace now, at the same line number (the file may have changed since).
 - **File History.** Right-click a file in the Explorer, an editor, a tab or the Changes
   tree and choose **Polylog: File History**. The Log shows that file's commits, following
   renames. The diff follows the selection, so `↑`/`↓` steps through its revisions. It
   opens on all time, and closing it restores your date range.
-- **The Log and Changes stay open.** Clicking either header no longer collapses it,
-  and a view collapsed in an earlier session opens again.
+- **The Log and Changes stay open.** A click on either header collapses it, and Polylog
+  expands it again straight away. Hiding a view again right after (**Hide 'Changes'**, or
+  moving a view out of the panel) is respected until the window reloads, and
+  `polylog.keepViewsExpanded` turns this off.
 - **Keyboard navigation:** `↑`/`↓`, `Home`/`End`, `PageUp`/`PageDown` to move, `Enter` to
   open the first changed file, `/` to search, `Esc` to clear.
 - **Every color comes from your theme**, in light, dark and both high-contrast themes.

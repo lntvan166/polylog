@@ -47,9 +47,9 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(ACCENT_COUNT, 6);
   assert.strictEqual(new Set(six.map((r) => a.get(r.id))).size, 6, "six repositories get six different hues");
   assert.deepStrictEqual(assignAccents([...six].reverse()), a, "the order repositories were discovered in does not matter");
-  const withNew = assignAccents([...six, repo("acme-zeta")]);
-  const moved = six.filter((r) => withNew.get(r.id) !== a.get(r.id));
-  assert.ok(moved.length <= 1, `adding a repository moves at most the one it clashes with, not everyone: ${moved.map((r) => r.name)}`);
+  const withLast = assignAccents([...six, repo("acme-zeta")]);
+  assert.ok(six.every((r) => withLast.get(r.id) === a.get(r.id)), "a repository that sorts last moves nobody");
+  // Honest limit (spec §18): one that sorts early can move repos after it in name order.
   const many = Array.from({ length: 20 }, (_, i) => repo(`svc-${i}`));
   const m = assignAccents(many);
   const counts = new Map<number, number>();
@@ -135,6 +135,7 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(middleTruncate("acme-mobile-shipper-ops", 16).length, 16);
   assert.notStrictEqual(middleTruncate("acme-mobile-shipper-ops", 16), middleTruncate("acme-mobile-shipper-app", 16), "names that share a start stay apart");
   assert.strictEqual(middleTruncate("abcdef", 1), "…");
+  assert.strictEqual(middleTruncate("😀😀😀😀😀", 3), "😀…😀", "never splits a character made of two UTF-16 units");
   console.log("ok - long repo names are cut in the middle, so the part that tells them apart stays");
 }
 {

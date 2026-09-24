@@ -321,8 +321,12 @@ be learned.
   it moves forward to the next least-used hue, with repos taken in name order. So:
   - up to six repos get six different hues;
   - discovery order does not matter;
-  - adding a repo moves only repos it clashes with;
   - past six, hues are shared evenly.
+- **Limit (corrected after review, 2026-09-24):** the assignment is greedy in name order.
+  A repo added at the end of the order moves nobody, but one that sorts earlier can move
+  repos after it (measured: 3 of 6; 23 of 70). This is rare in practice, because the repo
+  set is settled once discovery ends at startup. Only persisting assignments would remove
+  it.
 - A pure hash was rejected: with six hues, six repos would share a color about 98% of the
   time.
 - The chip tint is 24% in light themes (16% elsewhere), because 16% of a hue is pale on a
@@ -343,3 +347,23 @@ Chips were capped at 15ch and cut at the end. Repos that share a prefix
 - Both re-fit when a divider is dragged (ResizeObserver).
 - The chip's tooltip and accessible name are always the full name, plus the branch in
   branch mode.
+
+## 20. Review fixes before release (2026-09-24)
+
+- **Keeping the views expanded has a way out.** The undo cannot tell a header click from
+  "Hide 'Changes'", or from a view moved to another container while the panel closes. So
+  each view is expanded again at most once per 10 s: hidden again within that time, it is
+  left alone until the window reloads. `polylog.keepViewsExpanded` (default on) turns it
+  off. The expand never uses a `.focus` command, so it never takes keyboard focus: a
+  Changes tree with no commit is revealed once it gets one, and a Log that never loaded is
+  left alone.
+- **§18's stability claim is corrected** (see §18, "Limit").
+- **Smaller fixes:**
+  - Accessible names carry the full repo name (plus the branch in branch mode); only the
+    visible text is cut.
+  - Name fitting reads layout once per list.
+  - Cuts never split an emoji.
+  - A box click keeps keyboard focus on the Repositories list.
+  - Open File is hidden on deleted files.
+  - A file named `..x` counts as inside the repo.
+  - `ThirdPartyNotices.txt` is checked against `package-lock.json`.

@@ -1,6 +1,6 @@
 import type { Commit } from "../types";
 import { clear, h } from "./dom";
-import { fitName, textRoom } from "./measure";
+import { fitName, textStyle } from "./measure";
 import { absoluteTime, accentOf, moveSelection, relativeTime, visibleRange } from "./view";
 
 export interface ListProps {
@@ -110,10 +110,11 @@ export class CommitList {
     if (!first) return;
     const column = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
     if (!Number.isFinite(column)) return;
-    for (const chip of this.body.querySelectorAll<HTMLElement>(".row .chip")) {
-      const name = chip.getAttribute("aria-label") ?? "";
-      chip.textContent = fitName(chip, name, textRoom(chip, column));
-    }
+    const chips = [...this.body.querySelectorAll<HTMLElement>(".row .chip")];
+    if (chips.length === 0) return;
+    // Every chip shares one font and padding: read them once, then only write.
+    const { font, paddingX } = textStyle(chips[0]);
+    for (const chip of chips) chip.textContent = fitName(font, chip.dataset.name ?? "", column - paddingX);
   }
 
   /** One line, like an IDE log: repo chip | subject | author | date. */
@@ -128,7 +129,7 @@ export class CommitList {
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
     }, [
-      h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": name }, [name]),
+      h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name, "data-name": name }, [name]),
       h("span", { class: "subject", role: "gridcell", title: c.subject }, [
         c.subject,
         // File history: the file had another name in this commit.

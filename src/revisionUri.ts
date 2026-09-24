@@ -36,5 +36,6 @@ export function workingFile(r: RevisionRef, repoRoots: readonly string[]): strin
   if (!repoRoots.includes(r.root) || r.path === "") return undefined;
   const file = nodePath.resolve(r.root, ...r.path.split("/"));
   const rel = nodePath.relative(r.root, file);
-  return rel !== "" && !rel.startsWith("..") && !nodePath.isAbsolute(rel) ? file : undefined;
+  const escapes = rel === ".." || rel.startsWith(`..${nodePath.sep}`);
+  return rel !== "" && !escapes && !nodePath.isAbsolute(rel) ? file : undefined;
 }
