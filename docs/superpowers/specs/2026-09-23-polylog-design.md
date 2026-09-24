@@ -45,7 +45,9 @@ Stated explicitly so the plan does not drift into them:
 
 - No writes. No fetch, pull, checkout, cherry-pick, or any git operation that changes state.
 - No commit graph. Commits in unrelated repos share no topology; merged lanes would be meaningless.
-- No author, branch, or path filters. Text, repo and date only.
+- No branch or path filters. Text, author, repo and date only. (Author added 2026-09-23 by
+  maintainer decision: pushed down as `git log --author`, literal and case-insensitive,
+  ANDed with the message search; a "Me" button fills in the user's git email.)
 - No GitHub/GitLab/remote integration, no PR awareness.
 - No submodule-specific handling. A submodule that VS Code reports as a repository is
   treated as any other repository.
@@ -242,6 +244,17 @@ the `--vscode-charts-*` ramp.
 Rationale: categorical color perception tops out around 8–12 hues. At 68 repositories a
 per-repo chip is decoration rather than information, and hand-assigned hues collapse in
 high-contrast themes. Color is spent where it carries meaning — on a small, user-chosen set.
+
+**Amended 2026-09-23 (maintainer decision):** every repository now gets a chip, as in the
+JetBrains VCS Log. There are six hues: five `--vscode-charts-*` colors plus
+`--vscode-terminal-ansiCyan`, because VS Code aliases `charts.orange` to a translucent
+minimap color that is unset in high contrast. Since 2026-09-24 (panel spec §18) the hue
+comes from the repo's name and never changes with the filter. The chip is a 16% tint (24%
+in light themes) behind text in `--vscode-foreground`, so contrast never depends on the
+hue, and in
+high-contrast themes it is an outline instead of a tint. The repo name is always printed, so
+color stays a marker, not the identifier. Rows are one line (repo | subject | author | date),
+the changed files are a folder tree, and the full commit message sits below them.
 
 ### Filters
 

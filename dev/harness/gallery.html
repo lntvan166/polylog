@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Polylog harness — all themes</title>
+<style>
+  body { margin: 0; font: 12px system-ui, sans-serif; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 50vh; gap: 2px; }
+  figure { margin: 0; display: grid; grid-template-rows: auto 1fr; }
+  figcaption { padding: 2px 6px; }
+  iframe { width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<div class="grid" id="grid"></div>
+<script>
+  const state = new URLSearchParams(location.search).get("state") || "default";
+  for (const theme of ["dark", "light", "hc-dark", "hc-light"]) {
+    const figure = document.createElement("figure");
+    const caption = document.createElement("figcaption");
+    caption.textContent = `${theme} · state=${state}`;
+    const frame = document.createElement("iframe");
+    frame.src = `index.html?theme=${theme}&state=${state}`;
+    frame.title = theme;
+    figure.append(caption, frame);
+    document.getElementById("grid").append(figure);
+  }
+</script>
+</body>
+</html>

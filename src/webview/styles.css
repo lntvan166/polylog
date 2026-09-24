@@ -1,0 +1,207 @@
+/*
+ * Every color and font below is a --vscode-* variable, so the panel follows the
+ * user's theme — light, dark and high-contrast (CLAUDE.md constraint 2).
+ * `npm run check:theme` fails on any literal color or font.
+ */
+:root {
+  --row-height: calc(var(--vscode-font-size, 13px) * 1.9);
+  --pad-x: 12px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; padding: 0; }
+body {
+  overflow: hidden;
+  /* A panel view: match the panel's surface (and the native Changes tree beside it), not the editor's. */
+  background: var(--vscode-panel-background, var(--vscode-editor-background));
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+  font-weight: var(--vscode-font-weight);
+}
+button, input, select { font: inherit; }
+/* Tell Chromium the page's scheme, so native controls (checkboxes, date pickers,
+   the branch suggestions popup, scrollbars) draw dark in dark themes, not white. */
+body.vscode-dark, body.vscode-high-contrast { color-scheme: dark; }
+body.vscode-light, body.vscode-high-contrast-light { color-scheme: light; }
+/* Picking a suggestion marks an input as auto-filled; Chromium then paints its own
+   light background over the theme. Keep the theme's input colors instead. */
+input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:focus, input:autofill {
+  -webkit-text-fill-color: var(--vscode-input-foreground);
+  -webkit-box-shadow: 0 0 0 1000px var(--vscode-input-background) inset;
+  caret-color: var(--vscode-input-foreground);
+  transition: background-color 100000s 0s;
+}
+[hidden] { display: none !important; }
+:focus { outline: none; }
+:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+/* Repositories | divider | Log. The pane width is set from main.ts (--repo-pane-width). */
+.app { display: grid; grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr); height: 100vh; }
+.app.no-repos { grid-template-columns: minmax(0, 1fr); }
+.app.no-repos .repo-pane, .app.no-repos .splitter { display: none; }
+.log { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.log > .main { flex: 1 1 auto; min-height: 0; }
+
+/* ── Mode bar (file history) ─────────────────────────────────────────── */
+.modebar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.mode { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border-radius: 3px; background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; }
+button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
+.mode.active { background: var(--vscode-inputOption-activeBackground); border-color: var(--vscode-inputOption-activeBorder, transparent); color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground)); min-width: 0; }
+.history-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--vscode-editor-font-family); }
+.mode-close { width: 20px; height: 20px; margin-left: 2px; font-size: 14px; }
+.was-path { color: var(--vscode-descriptionForeground); }
+/* A file lives in one repository: the pane is just context while viewing its history. */
+.app.history .repo-pane { opacity: 0.5; pointer-events: none; }
+
+/* ── Repositories pane ──────────────────────────────────────────────────── */
+.repo-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
+/* Same height and bottom line as the Log's filter bar, so the two panes' rows line up. */
+.repo-search { padding: 6px 8px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.repo-filter { width: 100%; }
+.repo-rows { overflow-y: auto; min-height: 0; padding: 2px 0 6px; }
+.repo-count { margin-left: auto; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
+.repo-row { display: flex; align-items: center; gap: 7px; height: 22px; padding: 0 10px; cursor: pointer; white-space: nowrap; }
+.repo-row:hover { background: var(--vscode-list-hoverBackground); }
+.repo-rows:focus .repo-row.active { background: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground)); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
+.repo-row[aria-selected="false"] .repo-name { color: var(--vscode-descriptionForeground); }
+/* <vscode-checkbox> draws the box from the theme's checkbox colors. A click on it reaches the
+   row as a click on .repo-check (tick/untick); the row re-renders the box's state. */
+.repo-check { flex: none; }
+.repo-dot { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--accent); }
+.repo-dot.all { background: transparent; border: 1px solid var(--vscode-descriptionForeground); }
+.repo-name { overflow: hidden; text-overflow: ellipsis; }
+.repo-name .hit { color: var(--vscode-list-highlightForeground); font-weight: 600; }
+
+/* The divider: a visible theme line that lights up like VS Code's own sash. */
+.splitter { cursor: col-resize; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); touch-action: none; }
+.splitter:hover, .splitter.dragging, .splitter:focus-visible { background: var(--vscode-sash-hoverBorder); outline: none; }
+
+/* ── Filter bar ─────────────────────────────────────────────────────────── */
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
+.search { flex: 1 1 180px; min-width: 120px; }
+/* Author with "Me" as an input option toggle inside it, like the Aa / ab / .* toggles in
+   VS Code's own search box. */
+.author-field { position: relative; display: inline-flex; flex: 0 1 160px; min-width: 100px; }
+.author-filter { width: 100%; }
+.author-field:has(#me:not([hidden])) .author-filter { padding-right: 32px; }
+.input-toggle {
+  position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+  height: 20px; min-width: 24px; padding: 0 4px; border-radius: 3px;
+  font-size: 11px; line-height: 18px;
+  background: transparent; color: var(--vscode-icon-foreground); border: 1px solid transparent;
+}
+.input-toggle:hover { background: var(--vscode-toolbar-hoverBackground); }
+.input-toggle[aria-pressed="true"] {
+  background: var(--vscode-inputOption-activeBackground);
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
+.branch-filter { flex: 0 1 150px; min-width: 100px; }
+.filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
+input[type="search"], input[type="date"], select {
+  height: 26px; padding: 2px 6px; border-radius: 2px;
+  background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  border: 1px solid var(--vscode-input-border, var(--vscode-input-background));
+}
+select { background: var(--vscode-dropdown-background); color: var(--vscode-dropdown-foreground); border-color: var(--vscode-dropdown-border); }
+input::placeholder { color: var(--vscode-input-placeholderForeground); }
+.custom-range { display: inline-flex; align-items: center; gap: 4px; }
+
+button {
+  height: 26px; padding: 0 10px; border-radius: 2px; cursor: pointer;
+  border: 1px solid var(--vscode-button-border, transparent);
+  background: var(--vscode-button-background); color: var(--vscode-button-foreground);
+}
+button:hover { background: var(--vscode-button-hoverBackground); }
+button:disabled { cursor: default; opacity: 0.6; }
+button.secondary { background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); }
+button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
+button.link { height: auto; padding: 2px 4px; border: 0; background: transparent; color: var(--vscode-textLink-foreground); }
+button.link:hover { background: transparent; color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
+.icon-button {
+  width: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-color: transparent; border-radius: 4px; background: transparent; color: var(--vscode-icon-foreground);
+}
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+
+/* ── Notices ────────────────────────────────────────────────────────────── */
+.notice {
+  display: flex; align-items: flex-start; gap: 8px; padding: 6px var(--pad-x);
+  background: var(--vscode-inputValidation-warningBackground);
+  border-bottom: 1px solid var(--vscode-inputValidation-warningBorder);
+}
+.notice-text { flex: 1; overflow-wrap: anywhere; }
+
+/* ── List and detail ────────────────────────────────────────────────────── */
+.main { display: grid; min-height: 0; }
+.list-pane { display: grid; min-height: 0; }
+.list-pane > * { grid-area: 1 / 1; }
+.list { overflow-y: auto; min-height: 0; }
+.rows { position: relative; }
+
+/* One line per commit, like an IDE log: repo chip | subject | author | date. */
+.row {
+  position: absolute; top: 0; left: 0; right: 0; height: var(--row-height);
+  /* The repo column fits the longest repo name (main.ts --repo-col), but never takes more
+     than a quarter of the Log. */
+  display: grid; grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) minmax(0, 1fr) minmax(48px, 10ch) 8ch;
+  align-items: center; column-gap: 10px; padding: 0 var(--pad-x); cursor: default;
+}
+.row:hover { background: var(--vscode-list-hoverBackground); }
+.row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+.list:focus .row[aria-selected="true"] {
+  background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
+  outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px;
+}
+.subject, .author, .date, .chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.author, .date { color: var(--vscode-descriptionForeground); }
+.list:focus .row[aria-selected="true"] :is(.author, .date) { color: inherit; }
+.date { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Repo chip: a tint of the repo's chart hue behind text in the theme's own
+   foreground, so contrast never depends on the hue. Every repo has one
+   (maintainer decision); see assignAccents in view.ts. */
+.chip {
+  justify-self: start; max-width: 100%; padding: 1px 6px; border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--vscode-foreground); font-size: 0.92em;
+}
+/* 16% of a hue is pale on a white panel: light themes get a stronger tint. The text stays the
+   theme foreground, so contrast still does not depend on the hue. */
+body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.accent-0 { --accent: var(--vscode-charts-red); }
+.accent-1 { --accent: var(--vscode-charts-blue); }
+.accent-2 { --accent: var(--vscode-charts-yellow); }
+.accent-3 { --accent: var(--vscode-charts-green); }
+.accent-4 { --accent: var(--vscode-charts-purple); }
+/* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
+.accent-5 { --accent: var(--vscode-terminal-ansiCyan); }
+
+.skeleton .bar { display: inline-block; width: 70%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
+.skeleton .bar.short { width: 50%; }
+
+.empty { align-self: start; max-width: 560px; padding: 32px 24px; }
+.empty h2 { margin: 0 0 6px; font-size: 1.1em; font-weight: 600; }
+.empty p { margin: 0 0 12px; line-height: 1.5; color: var(--vscode-descriptionForeground); }
+
+.hint { padding: 0 var(--pad-x); color: var(--vscode-descriptionForeground); }
+.error { padding: 0 var(--pad-x); color: var(--vscode-errorForeground); }
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.footer { display: flex; align-items: center; gap: 12px; padding: 6px var(--pad-x); border-top: 1px solid var(--vscode-panel-border); }
+.note, .count { color: var(--vscode-descriptionForeground); }
+.count { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* ── High contrast: hover and selection are outlines, not fills ─────────── */
+body.vscode-high-contrast .row:hover,
+body.vscode-high-contrast .repo-row:hover,
+body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
+
+/* ── Narrow editor groups: stack list above detail ──────────────────────── */
+@media (max-width: 720px) {
+  .row { grid-template-columns: minmax(80px, min(var(--repo-col, 14ch), 30%)) minmax(0, 1fr) 8ch; }
+  .row .author { display: none; }
+}

@@ -1,0 +1,288 @@
+{
+  "name": "polylog",
+  "displayName": "Polylog — Multi-Repo Git Log",
+  "description": "One git log across every repository in your workspace. Search commit messages, filter by author, branch and date across all of them at once, and open any change in the native diff editor.",
+  "version": "0.0.0",
+  "publisher": "lntvan166",
+  "icon": "media/icon.png",
+  "galleryBanner": {
+    "color": "#1c0e0b",
+    "theme": "dark"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/lntvan166/polylog"
+  },
+  "bugs": {
+    "url": "https://github.com/lntvan166/polylog/issues"
+  },
+  "homepage": "https://github.com/lntvan166/polylog#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "SCM Providers"
+  ],
+  "keywords": [
+    "git",
+    "log",
+    "history",
+    "multi-repo",
+    "monorepo",
+    "polyrepo",
+    "multi-root",
+    "commits",
+    "workspace",
+    "git log",
+    "git history",
+    "file history",
+    "multi repository",
+    "search commits"
+  ],
+  "activationEvents": [
+    "onCommand:polylog.fileHistory",
+    "onCommand:polylog.open",
+    "onView:polylog.changes",
+    "onView:polylog.log"
+  ],
+  "main": "./out/extension.js",
+  "extensionKind": [
+    "workspace"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "polylog",
+          "title": "Polylog",
+          "icon": "media/polylog.svg"
+        }
+      ]
+    },
+    "views": {
+      "polylog": [
+        {
+          "type": "webview",
+          "id": "polylog.log",
+          "name": "Log",
+          "initialSize": 1100
+        },
+        {
+          "id": "polylog.changes",
+          "name": "Changes",
+          "initialSize": 450
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "polylog.open",
+        "title": "Open Merged Log",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.openDiff",
+        "title": "Open Diff",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.copySha",
+        "title": "Copy SHA",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.copyMessage",
+        "title": "Copy Message",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.showRepos",
+        "title": "Group by Repository",
+        "category": "Polylog",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "polylog.hideRepos",
+        "title": "Hide Repositories",
+        "category": "Polylog",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "polylog.fileHistory",
+        "title": "Polylog: File History",
+        "icon": "$(history)"
+      },
+      {
+        "command": "polylog.openWorkingFile",
+        "title": "Open File",
+        "category": "Polylog",
+        "icon": "$(go-to-file)"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "polylog.copySha",
+          "when": "view == polylog.changes && viewItem == commit",
+          "group": "copy@1"
+        },
+        {
+          "command": "polylog.copyMessage",
+          "when": "view == polylog.changes && viewItem == commit",
+          "group": "copy@2"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "view == polylog.changes && viewItem == file",
+          "group": "1_open@1"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "view == polylog.changes && viewItem =~ /^file/",
+          "group": "2_history@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "polylog.openDiff",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copySha",
+          "when": "false"
+        },
+        {
+          "command": "polylog.copyMessage",
+          "when": "false"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "resourceScheme == file || resourceScheme == polylog"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "resourceScheme == polylog"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "polylog.showRepos",
+          "when": "view == polylog.log && polylog.hideRepos",
+          "group": "navigation"
+        },
+        {
+          "command": "polylog.hideRepos",
+          "when": "view == polylog.log && !polylog.hideRepos",
+          "group": "navigation"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "polylog.fileHistory",
+          "when": "!explorerResourceIsFolder",
+          "group": "polylog@1"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "polylog.fileHistory",
+          "when": "resourceScheme == file",
+          "group": "polylog@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "polylog.fileHistory",
+          "when": "resourceScheme == file",
+          "group": "polylog@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "resourceScheme == polylog",
+          "group": "navigation@98"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "resourceScheme == file || resourceScheme == polylog",
+          "group": "navigation@99"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Polylog",
+      "properties": {
+        "polylog.pageSize": {
+          "type": "number",
+          "default": 200,
+          "minimum": 1,
+          "maximum": 1000,
+          "description": "Commits fetched per repository per page."
+        },
+        "polylog.maxConcurrency": {
+          "type": "number",
+          "default": 16,
+          "minimum": 1,
+          "maximum": 64,
+          "description": "Maximum number of git processes running at once."
+        },
+        "polylog.scanDepth": {
+          "type": "number",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 6,
+          "markdownDescription": "Folder levels to search the workspace folders for repositories. Polylog shows these together with the repositories the Git extension has open. See also `#git.repositoryScanMaxDepth#`."
+        },
+        "polylog.keepViewsExpanded": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Expand the Log or Changes view again when a click on its header collapses it. Hiding a view again right after (for example with **Hide 'Changes'**, or after moving a view out of the panel) turns this off for that view until the window reloads."
+        },
+        "polylog.excludeRepos": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Glob patterns for repositories to leave out, matched against the repository folder name and its full path."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run check:denylist && npm run bundle",
+    "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --target=node18",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext ts",
+    "check:denylist": "node scripts/check-denylist.mjs",
+    "test:unit": "node scripts/denylist.test.mjs && node scripts/themeTokens.test.mjs && node scripts/thirdParty.test.mjs && esbuild src/gitLog.test.ts --bundle --platform=node --format=cjs --outfile=out/gitLog.test.cjs && node out/gitLog.test.cjs && esbuild src/filterModel.test.ts --bundle --platform=node --format=cjs --outfile=out/filterModel.test.cjs && node out/filterModel.test.cjs && esbuild src/mergeStream.test.ts --bundle --platform=node --format=cjs --outfile=out/mergeStream.test.cjs && node out/mergeStream.test.cjs && esbuild src/revisionUri.test.ts --bundle --platform=node --format=cjs --outfile=out/revisionUri.test.cjs && node out/revisionUri.test.cjs && esbuild src/commitDetail.test.ts --bundle --platform=node --format=cjs --outfile=out/commitDetail.test.cjs && node out/commitDetail.test.cjs && esbuild src/pool.test.ts --bundle --platform=node --format=cjs --outfile=out/pool.test.cjs && node out/pool.test.cjs && esbuild src/debounce.test.ts --bundle --platform=node --format=cjs --outfile=out/debounce.test.cjs && node out/debounce.test.cjs && esbuild src/settings.test.ts --bundle --platform=node --format=cjs --outfile=out/settings.test.cjs && node out/settings.test.cjs && esbuild src/webview/html.test.ts --bundle --platform=node --format=cjs --outfile=out/html.test.cjs && node out/html.test.cjs && esbuild src/webview/view.test.ts --bundle --platform=node --format=cjs --outfile=out/view.test.cjs && node out/view.test.cjs && esbuild src/git.test.ts --bundle --platform=node --format=cjs --outfile=out/git.test.cjs && node out/git.test.cjs && esbuild src/logQuery.test.ts --bundle --platform=node --format=cjs --outfile=out/logQuery.test.cjs && node out/logQuery.test.cjs && esbuild src/repos.test.ts --bundle --platform=node --format=cjs --outfile=out/repos.test.cjs && node out/repos.test.cjs && esbuild src/discoverWalk.test.ts --bundle --platform=node --format=cjs --outfile=out/discoverWalk.test.cjs && node out/discoverWalk.test.cjs && esbuild src/fileTree.test.ts --bundle --platform=node --format=cjs --outfile=out/fileTree.test.cjs && node out/fileTree.test.cjs && esbuild src/changesModel.test.ts --bundle --platform=node --format=cjs --outfile=out/changesModel.test.cjs && node out/changesModel.test.cjs && esbuild src/webview/repoPaneModel.test.ts --bundle --platform=node --format=cjs --outfile=out/repoPaneModel.test.cjs && node out/repoPaneModel.test.cjs && esbuild src/webview/splitter.test.ts --bundle --platform=node --format=cjs --outfile=out/splitter.test.cjs && node out/splitter.test.cjs && esbuild src/keepExpanded.test.ts --bundle --platform=node --format=cjs --outfile=out/keepExpanded.test.cjs && node out/keepExpanded.test.cjs",
+    "test": "npm run test:unit",
+    "package": "vsce package --no-dependencies",
+    "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",
+    "harness": "node dev/harness/build.mjs --serve",
+    "harness:build": "node dev/harness/build.mjs",
+    "check:theme": "node scripts/check-theme-tokens.mjs",
+    "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
+    "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
+    "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
+    "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^20.19.43",
+    "@types/vscode": "~1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@vscode-elements/elements": "2.5.1",
+    "@vscode/test-electron": "^3.1.0",
+    "@vscode/vsce": "^3.9.2",
+    "esbuild": "^0.28.2",
+    "eslint": "^8.57.1",
+    "mocha": "^10.8.2",
+    "typescript": "^5.9.3"
+  }
+}
