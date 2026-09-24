@@ -5,7 +5,7 @@ description: Cut and publish a Polylog release to the VS Code Marketplace and Op
 
 # Release Polylog
 
-Polylog is a VS Code extension (`publisher: lntvan166`, `name: polylog`). A release means:
+Polylog is a VS Code extension (`publisher: lntvan166`, `name: polylog-git`, so the ID is `lntvan166.polylog-git`; plain `polylog` is taken on the Marketplace by another publisher). A release means:
 1. Bump the version and record it in the CHANGELOG.
 2. Verify that everything builds and every check passes.
 3. Commit, tag and push to GitHub.
@@ -152,9 +152,9 @@ done   # expect 200 on every line
 ### 9. Package once, publish the same file to both
 
 ```bash
-vsce package                                        # → polylog-X.Y.Z.vsix, runs vscode:prepublish
-vsce publish --packagePath polylog-X.Y.Z.vsix      # VS Code Marketplace
-ovsx publish polylog-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
+vsce package                                        # → polylog-git-X.Y.Z.vsix, runs vscode:prepublish
+vsce publish --packagePath polylog-git-X.Y.Z.vsix      # VS Code Marketplace
+ovsx publish polylog-git-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
 ```
 
 - **Expected package: 12 files, about 80 KB, as `vsce package` counts them** (10 from the allowlist plus two manifests). Hundreds of KB means media or `node_modules` crept in; fix `.vscodeignore` first.
@@ -162,8 +162,8 @@ ovsx publish polylog-X.Y.Z.vsix -p <token>         # Open VSX (or OVSX_PAT)
 
 ```bash
 for i in $(seq 1 25); do
-  o=$(curl -s https://open-vsx.org/api/lntvan166/polylog | python3 -c "import sys,json;print(json.load(sys.stdin).get('version','?'))" 2>/dev/null)
-  m=$(vsce show lntvan166.polylog 2>/dev/null | grep "^  Version:" | awk '{print $2}')
+  o=$(curl -s https://open-vsx.org/api/lntvan166/polylog-git | python3 -c "import sys,json;print(json.load(sys.stdin).get('version','?'))" 2>/dev/null)
+  m=$(vsce show lntvan166.polylog-git 2>/dev/null | grep "^  Version:" | awk '{print $2}')
   echo "t+$((i*20))s  openvsx=$o  marketplace=$m"
   [ "$o" = "X.Y.Z" ] && [ "$m" = "X.Y.Z" ] && echo "BOTH LIVE" && break
   sleep 20
@@ -183,8 +183,8 @@ gh release create vX.Y.Z --title "vX.Y.Z" --notes "<the CHANGELOG section>"
 ## After publishing
 
 - Link both listings:
-  - https://marketplace.visualstudio.com/items?itemName=lntvan166.polylog
-  - https://open-vsx.org/extension/lntvan166/polylog
+  - https://marketplace.visualstudio.com/items?itemName=lntvan166.polylog-git
+  - https://open-vsx.org/extension/lntvan166/polylog-git
 - Delete the local `.vsix`; it is a build artifact (`*.vsix` is gitignored).
 
 ## What NOT to do
