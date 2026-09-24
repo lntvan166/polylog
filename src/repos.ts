@@ -1,5 +1,5 @@
 import { isValidRef } from "./filterModel";
-import type { BranchName } from "./protocol";
+import type { AuthorName, BranchName } from "./protocol";
 import type { Repo } from "./types";
 
 const segments = (p: string) => p.split(/[\\/]+/).filter(Boolean);
@@ -80,4 +80,29 @@ export function branchSuggestions(lists: readonly (readonly string[])[], limit =
   }
   return [...counts].map(([name, count]) => ({ name, count }))
     .sort((a, b) => b.count - a.count || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)).slice(0, limit);
+}
+
+/**
+ * People who committed recently, across repositories: one entry per email (ignoring
+ * case), under the name they used most, most commits first. Each input is one repo's
+ * `git log --format=%aN%x1f%aE` output.
+ */
+export function authorSuggestions(outputs: readonly string[], limit = 200): AuthorName[] {
+  const byEmail = new Map<string, { email: string; count: number; names: Map<string, number> }>();
+  for (const out of outputs) {
+    for (const line of out.split("\n")) {
+      const [name, email] = line.split("\x1f");
+      if (!name?.trim() || !email?.trim()) continue;
+      const key = email.trim().toLowerCase();
+      const a = byEmail.get(key) ?? { email: key, count: 0, names: new Map<string, number>() };
+      a.count++;
+      a.names.set(name.trim(), (a.names.get(name.trim()) ?? 0) + 1);
+      byEmail.set(key, a);
+    }
+  }
+  const byName = (x: [string, number], y: [string, number]) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1);
+  return [...byEmail.values()]
+    .map((a) => ({ name: [...a.names].sort(byName)[0][0], email: a.email, count: a.count }))
+    .sort((x, y) => y.count - x.count || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))
+    .slice(0, limit);
 }

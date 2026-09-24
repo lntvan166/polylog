@@ -77,14 +77,56 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .splitter { cursor: col-resize; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); touch-action: none; }
 .splitter:hover, .splitter.dragging, .splitter:focus-visible { background: var(--vscode-sash-hoverBorder); outline: none; }
 
+/* ── Suggestions (Author, Branch): VS Code's suggest widget, not the browser's datalist ── */
+.suggest {
+  position: fixed; z-index: 10; overflow-y: auto; padding: 2px 0; border-radius: 4px;
+  background: var(--vscode-editorSuggestWidget-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-editorSuggestWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorSuggestWidget-border, var(--vscode-widget-border, transparent));
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, transparent);
+}
+.suggest-row { display: flex; align-items: baseline; gap: 10px; height: 22px; line-height: 22px; padding: 0 8px; cursor: pointer; white-space: nowrap; }
+.suggest-row[aria-selected="true"] {
+  background: var(--vscode-editorSuggestWidget-selectedBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-editorSuggestWidget-selectedForeground, var(--vscode-list-activeSelectionForeground, inherit));
+}
+.suggest-label { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.suggest-hit { color: var(--vscode-editorSuggestWidget-highlightForeground, var(--vscode-list-highlightForeground)); font-weight: 600; }
+.suggest-row[aria-selected="true"] .suggest-hit { color: var(--vscode-editorSuggestWidget-focusHighlightForeground, var(--vscode-editorSuggestWidget-highlightForeground, inherit)); }
+.suggest-detail { margin-left: auto; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 0.92em; }
+.suggest-row[aria-selected="true"] .suggest-detail { color: inherit; opacity: 0.8; }
+body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: transparent; outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-.search { flex: 1 1 180px; min-width: 120px; }
+/* Starting widths sum to about 750px, so the bar stays on one line in a typical panel; each
+   box grows from there. */
+.search { flex: 1 1 140px; min-width: 110px; }
 /* Author with "Me" as an input option toggle inside it, like the Aa / ab / .* toggles in
    VS Code's own search box. */
-.author-field { position: relative; display: inline-flex; flex: 0 1 160px; min-width: 100px; }
-.author-filter { width: 100%; }
-.author-field:has(#me:not([hidden])) .author-filter { padding-right: 32px; }
+/* The whole Author box is the field: chips, then the input, then the Me toggle. */
+.author-field {
+  position: relative; display: inline-flex; align-items: center; gap: 3px; flex: 1 1 170px; min-width: 120px;
+  height: 26px; padding: 0 2px; border-radius: 2px; overflow: hidden;
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-input-background));
+}
+.author-field:focus-within { border-color: var(--vscode-focusBorder); }
+.author-field:has(#me:not([hidden])) { padding-right: 32px; }
+.author-field .author-filter { flex: 1 1 60px; min-width: 56px; height: 22px; border: 0; background: transparent; outline: none; }
+.author-chips { display: inline-flex; gap: 3px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.author-chip {
+  display: inline-flex; flex: none; align-items: center; gap: 2px; max-width: 14ch; height: 20px; padding: 0 2px 0 6px;
+  border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 0.92em;
+}
+.author-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chips that did not fit, as "+N" (tooltip: their names). */
+.author-chip.more { padding: 0 6px; cursor: default; }
+.author-chip[hidden] { display: none; }
+.author-chip-remove {
+  width: 16px; height: 16px; min-width: 16px; padding: 0; border: 0; border-radius: 2px; line-height: 14px;
+  background: transparent; color: inherit; font-size: 12px;
+}
+.author-chip-remove:hover { background: var(--vscode-toolbar-hoverBackground); }
 .input-toggle {
   position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
   height: 20px; min-width: 24px; padding: 0 4px; border-radius: 3px;
@@ -97,8 +139,13 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 }
-.branch-filter { flex: 0 1 150px; min-width: 100px; }
+.branch-filter { flex: 1 1 125px; min-width: 90px; }
+.path-filter { flex: 1 1 130px; min-width: 100px; }
+/* File History already filters to one file. */
+.app.history .path-filter { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
+/* The focus outline would hide the error while typing: it takes the error color too. */
+.filters input[aria-invalid="true"]:focus-visible { outline-color: var(--vscode-inputValidation-errorBorder); }
 input[type="search"], input[type="date"], select {
   height: 26px; padding: 2px 6px; border-radius: 2px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
@@ -199,6 +246,9 @@ body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
+/* High contrast: an outlined chip in the text color (the badge's own foreground is white,
+   which vanishes on HC light). */
+body.vscode-high-contrast .author-chip { background: transparent; color: var(--vscode-foreground); outline: 1px solid var(--vscode-contrastBorder); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {

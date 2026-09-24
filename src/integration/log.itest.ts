@@ -87,6 +87,58 @@ describe("Polylog panel", () => {
     assert.strictEqual((await snapshot()).layout.groupByRepo, true);
   });
 
+  it("several authors: a commit by any of them matches, and the box suggests who committed", async () => {
+    await send({ type: "filter", filter: { ...ALL, authors: ["dana"] } });
+    await until("dana's three commits", (x) => x.rows.length === 3 && x.rows.every((r) => r.author === "dana"));
+    await send({ type: "filter", filter: { ...ALL, authors: ["dana", "rin@example.com"] } });
+    await until("dana's and rin's six commits", (x) => x.rows.length === 6);
+    await send({ type: "filter", filter: { ...ALL, authors: ["noor"] } });
+    await until("nobody named noor", (x) => x.rows.length === 0);
+    await send({ type: "filter", filter: ALL });
+    await sleep(300);
+    assert.strictEqual((await snapshot()).authors.length, 0, "nothing is read until the Author box is focused");
+    await send({ type: "wantSuggestions", kind: "authors" });
+    const s = await until("author suggestions read", (x) => x.authors.length === 2);
+    assert.deepStrictEqual(s.authors.map((a) => [a.name, a.email, a.count]).sort(), [["dana", "dana@example.com", 3], ["rin", "rin@example.com", 3]]);
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("Me is one more author beside the picked ones", async () => {
+    await until("identities read", (x) => x.me.length === 3);
+    // Me is dana, except in acme-libs where it is rin. So Me plus rin is every commit
+    // except dana's one in acme-libs ("chore: bump deps").
+    await send({ type: "filter", filter: { ...ALL, mine: true, authors: ["rin"] } });
+    const s = await until("my commits and rin's", (x) => x.rows.length === 5);
+    assert.ok(!s.rows.some((r) => r.subject === "chore: bump deps"), "dana is not Me in acme-libs");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("the path filter keeps commits that touched it, in every repository", async () => {
+    await send({ type: "filter", filter: { ...ALL, path: "upload.go" } });
+    let s = await until("upload.go's commits", (x) => x.rows.length === 2);
+    assert.ok(s.rows.every((r) => s.repos.find((p) => p.id === r.repoId)?.name === "acme-api"), "only the repo that has the file");
+    await send({ type: "filter", filter: { ...ALL, path: "**/*.md" } });
+    s = await until("the markdown commit", (x) => x.rows.length === 1);
+    assert.strictEqual(s.rows[0].subject, "docs: link ACME-7 from the changelog", "a glob");
+    await send({ type: "filter", filter: { ...ALL, path: "client.ts", authors: ["rin"] } });
+    s = await until("rin's commit to client.ts", (x) => x.rows.length === 1);
+    assert.strictEqual(s.rows[0].subject, "feat: scaffold web", "path and author together");
+    await send({ type: "filter", filter: { ...ALL, path: ":(top)../../etc" } });
+    s = await until("an unsafe path ignored", (x) => x.rows.length === 6);
+    assert.strictEqual(s.filter.path, undefined, "dropped by the host, never passed to git");
+    await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
+    await until("client.ts's commits", (x) => x.rows.length === 2);
+    const api = s.repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    s = await until("upload.go history, whatever the path filter", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    await send({ type: "exitHistory" });
+    s = await until("the path filter back", (x) => x.history === null && x.rows.length === 2);
+    assert.strictEqual(s.filter.path, "client.ts");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });
@@ -267,6 +319,22 @@ describe("Polylog panel", () => {
     await closeEditors();
   });
 
+  it("File History shows every commit of the file, whatever the search and author, and gives them back on close", async () => {
+    await send({ type: "filter", filter: { ...ALL, text: "retry", author: "rin", mine: true, authors: ["noor"] } });
+    await until("the filtered log", (x) => x.filter.text === "retry");
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"], "dana's commit shows too, and so does the one that never says retry");
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine, s.filter.authors], ["", "", false, undefined], "the boxes and chips are empty while in the history");
+    assert.deepStrictEqual([s.persistedFilter?.text, s.persistedFilter?.author, s.persistedFilter?.mine, s.persistedFilter?.authors], ["retry", "rin", true, ["noor"]], "a reload now would bring the user's filters back");
+    await send({ type: "exitHistory" });
+    s = await until("all commits again", (x) => x.history === null);
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine, s.filter.authors], ["retry", "rin", true, ["noor"]], "closing the history gives the search, author and chips back");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("stepping through a history keeps one diff tab even with preview editors off", async () => {
     await closeEditors();
     const cfg = vscode.workspace.getConfiguration("workbench.editor");
@@ -345,6 +413,8 @@ describe("Polylog panel", () => {
   });
 
   it("offers branch names found across repositories", async () => {
+    assert.strictEqual((await snapshot()).branches.length, 0, "nothing is read until the Branch box is focused");
+    await send({ type: "wantSuggestions", kind: "branches" });
     const s = await until("branch suggestions", (x) => x.branches.length > 0);
     assert.deepStrictEqual(s.branches.find((b) => b.name === "main"), { name: "main", count: 3 });
     assert.deepStrictEqual(s.branches.find((b) => b.name === "prod"), { name: "prod", count: 1 });
@@ -357,6 +427,43 @@ describe("Polylog panel", () => {
     await vscode.commands.executeCommand("polylog.open");
     await sleep(1000);
     assert.strictEqual((await snapshot()).readyCount, before, "the webview was destroyed and re-created");
+  });
+
+  it("switching git.path takes effect at once, and a path that cannot run falls back", async function () {
+    if (process.platform === "win32") this.skip(); // the wrapper is a shell script
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const os = require("os") as typeof import("os");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-gitpath-"));
+    const calls = path.join(dir, "calls.log");
+    const wrapper = path.join(dir, "git-wrapper");
+    // Records every call, then runs the real git from PATH.
+    fs.writeFileSync(wrapper, `#!/bin/sh\necho "$@" >> "${calls}"\nexec git "$@"\n`, { mode: 0o755 });
+    const cfg = vscode.workspace.getConfiguration("git");
+    const reloads = async () => (await snapshot()).stats.reloads;
+    try {
+      let before = await reloads();
+      await cfg.update("path", wrapper, vscode.ConfigurationTarget.Global);
+      let s = await until("a reload through the new git", (x) => x.stats.reloads > before && x.rows.length > 0 && !x.failures.length);
+      await waitFor("the wrapper to be used", () => (fs.existsSync(calls) && /log /.test(fs.readFileSync(calls, "utf8")) ? true : undefined));
+      assert.ok(s.rows.length > 0, "the Log still lists commits through the wrapper");
+
+      before = await reloads();
+      await cfg.update("path", path.join(dir, "no-such-git"), vscode.ConfigurationTarget.Global);
+      s = await until("a reload after switching to a path that cannot run", (x) => x.stats.reloads > before && x.rows.length > 0);
+      assert.deepStrictEqual(s.failures, [], "falls back to a git that runs instead of failing every repo");
+
+      before = await reloads();
+      await cfg.update("path", undefined, vscode.ConfigurationTarget.Global);
+      await until("a reload after clearing git.path", (x) => x.stats.reloads > before && x.rows.length > 0);
+      fs.writeFileSync(calls, "");
+      await send({ type: "refresh" });
+      await until("a refresh", (x) => x.rows.length > 0);
+      await sleep(300);
+      assert.strictEqual(fs.readFileSync(calls, "utf8"), "", "the old git.path is no longer used");
+    } finally {
+      await cfg.update("path", undefined, vscode.ConfigurationTarget.Global);
+    }
   });
 
   // Last: it leaves Changes hidden for the rest of the session, as a user who hid it wants.

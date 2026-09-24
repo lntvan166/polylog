@@ -37,13 +37,14 @@ export function renderHtml(o: HtmlOptions): string {
       </span>
     </div>
     <form id="filters" class="filters" role="search" aria-label="Filter commits">
-      <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
-      <span class="author-field">
-        <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">
+      <input id="search" class="search" type="search" placeholder="Search messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
+      <span id="author-field" class="author-field">
+        <span id="author-chips" class="author-chips" role="list" aria-label="Authors"></span>
+        <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email. Enter adds another author" autocomplete="off" spellcheck="false">
         <button id="me" class="input-toggle" type="button" title="Only my commits" hidden>Me</button>
       </span>
-      <input id="branch" class="branch-filter" list="branch-list" type="search" placeholder="Current branch" aria-label="Branch: shown in every repository that has it; the others use their current branch" autocomplete="off" spellcheck="false">
-      <datalist id="branch-list"></datalist>
+      <input id="path" class="path-filter" type="search" placeholder="Path or glob" aria-label="Only commits touching this path in each repository: a file, a folder or a glob like **/*.sql" autocomplete="off" spellcheck="false">
+      <input id="branch" class="branch-filter" type="search" placeholder="Current branch" aria-label="Branch: shown in every repository that has it; the others use their current branch" autocomplete="off" spellcheck="false">
       <select id="date" aria-label="Date range">
         <option value="24h">Last 24 hours</option>
         <option value="7d">Last 7 days</option>

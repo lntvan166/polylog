@@ -367,3 +367,102 @@ Chips were capped at 15ch and cut at the end. Repos that share a prefix
   - Open File is hidden on deleted files.
   - A file named `..x` counts as inside the repo.
   - `ThirdPartyNotices.txt` is checked against `package-lock.json`.
+
+## 21. Amendments for 0.2.0 (2026-09-24, maintainer request)
+
+### 21.1 VS Code's git binary
+
+Polylog ran plain `git` from PATH. Users with `git.path` set, or with Git installed but not
+on PATH (common on Windows), got "git was not found" while VS Code's own Git worked.
+
+- `GitRunner` (git.ts) tries candidates in order (`gitCandidates`, gitBinary.ts):
+  1. `git.path`, a string or an array, in order;
+  2. the binary VS Code's Git extension found (`api.git.path`);
+  3. `git` on PATH.
+- It uses the first that can run: a spawn failure (ENOENT, EACCES, …) moves on to the
+  next candidate, while git's own errors are reported as they are. The working binary is
+  remembered.
+- If none runs, the error names every path tried.
+- Polylog still never waits for the Git extension at startup. The first calls use
+  `git.path` or PATH; when the extension reports its binary and nothing has run yet, the
+  Log is read again.
+- **Switching `git.path` at runtime** takes effect at once: the runner forgets its binary,
+  in-flight git processes are killed, and the page, the selected commit and Me are read
+  again. Author and Branch suggestions are dropped and re-read on the next focus (§21.3).
+- **After review:**
+  - EINVAL and EPERM also count as "cannot run", so a Windows `.cmd` falls back.
+  - A missing repository folder is reported as such, not as a missing git.
+  - A lookup that began before `git.path` changed cannot overwrite the new choice
+    (a generation counter).
+  - The Git extension reporting its path only triggers a re-read if no git could run.
+
+### 21.2 File History sets search and author aside
+
+File History kept the Log's message search and author filter, so a file could show 1
+commit out of 9. It now does for `text`, `author` and `mine` what it already did for the
+date range. They are cleared on entry, saved (`beforeHistory`; a reload also restores
+them), and given back on close, even if the user changed them while in the history.
+
+### 21.3 Several authors (chips with suggestions)
+
+- `FilterState.authors?: string[]`: up to 20 chips, omitted when empty, so saved filters
+  from 0.1.0 load unchanged.
+- The author patterns for a repo (`authorPatterns`) are the chips, the typed text, and Me
+  (that repo's `user.email`). Each becomes one `--author=` flag under `--fixed-strings -i`;
+  git ORs them and ANDs the result with `--grep`.
+- A repo without `user.email` is skipped only when Me is the only author
+  (`hasOtherAuthors`).
+- Behavior change: **Me no longer replaces the typed author;** it is one more author, and
+  typing no longer switches Me off.
+- Chips reload at once; typing is still debounced.
+- Suggestions: `git log --no-merges --max-count=300 --format=%aN%x1f%aE` per repo, merged
+  by email (ignoring case) under the most-used name, most commits first, top 200
+  (`authorSuggestions`).
+- **Loaded lazily:** Author and Branch suggestions are read the first time their box is
+  focused (`wantSuggestions`), once per repo set, not after the first page.
+  - Measured on 68 repos: startup git processes fell from 273 to 137, and first rows from
+    353 to 308 ms (511 to 366 ms end to end).
+  - The first focus costs about 100 ms (authors) or 65 ms (branches).
+  - If you type before they arrive, the list opens when they land.
+- **The dropdown is Polylog's own** (`SuggestBox`, `suggestModel.ts`), in VS Code's
+  suggest-widget colors (`--vscode-editorSuggestWidget-*`), for Author and Branch alike. The
+  browser's `<datalist>` popup could not be themed.
+  - Matching: a case-insensitive substring of the label or the detail, with name matches
+    first and the match highlighted; chosen authors are left out.
+  - Keys: ↑/↓ wrap, Enter and Tab pick, Esc closes; ↓ opens the list with nothing typed.
+  - The box is an ARIA combobox; the list never takes focus.
+- Enter (with nothing highlighted), a comma, or a picked suggestion adds a chip; a pasted
+  "rin, sam" becomes two. Backspace in an empty box removes the last one, and × removes one.
+- **After review:**
+  - Chips keep their width. Those that do not fit beside the input collapse into a "+N"
+    chip, whose tooltip and accessible name list them (`chipsThatFit`). Before, three
+    chips shrank to slivers.
+  - Suggestions arrive in their own `suggestions` message rather than `init`, so they
+    cannot roll back what is being typed.
+  - A box focused before the repositories are known is served once they arrive.
+- File History sets the chips aside along with the search and author (§21.2).
+- High contrast: chips are outlined, in the theme foreground.
+
+### 21.4 Path filter
+
+- `FilterState.path?: string`, relative to each repository's root.
+- **Normalizing** (`normalizePath`): trimmed, backslashes to `/`, no leading `./` or
+  trailing `/`. It is rejected (undefined) when it is absolute (`/x`, `C:`), has a `..`
+  segment, starts with `:` (pathspec magic such as `:(top)` or `:!`), or holds control
+  characters.
+- **The pathspec** (`pathspecOf`):
+  - `:(glob)<path>` when the path has `*`, `?` or `[` (`**` crosses folders). A glob
+    without a `/` (`*.ts`) becomes `:(glob)**/*.ts`, so it matches at any depth, like
+    `.gitignore` and plain `git log -- '*.ts'`;
+  - `:(literal)<path>` otherwise, so a folder matches everything inside it and a partial
+    name matches nothing (whole path components).
+  - It goes after `--`, so it can never be read as an option or a revision.
+- **Where it applies:** the page query only. `historyArgs` keeps File History's own paths,
+  and the Path box is hidden in File History. Typing is debounced like search.
+- **UI:** an invalid path gets `aria-invalid` and is not sent. The error color also wins
+  over the focus outline while typing, for the Branch box too.
+- **Empty state:** "No commit touches “path”…", with Clear Path. With a search or authors,
+  their messages gain "touching “path”".
+- **Tests:** unit tests; a real-git test (folder, partial name, glob, `*.md`); and
+  integration tests for a file in only one repo, a glob, path plus author, an unsafe path
+  dropped by the host, and File History ignoring and then restoring it.

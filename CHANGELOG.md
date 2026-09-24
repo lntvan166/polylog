@@ -7,6 +7,60 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Polylog uses the same git as VS Code.** It used to run `git` from PATH only, so with
+  `git.path` set, or Git installed but not on PATH (common on Windows), it reported "git
+  was not found" while VS Code's own Git worked. It now tries your `git.path` (a path or a
+  list), then the git VS Code's Git extension found, then PATH, and uses the first that
+  runs. Changing `git.path` takes effect at once: git processes still running on the old
+  binary stop, and the Log is read again. If no git can run, the message names every path
+  it tried.
+
+- **Filter by several authors at once.** Type an author and press Enter (or a comma, or
+  pick a suggestion) to add them as a chip. A commit by any of the chips matches: each
+  becomes its own `--author` flag, which git combines as "any of", so the filtering stays
+  in git. The box suggests who committed recently across your repositories, with how many
+  commits. **Me** is now one more author beside the chips instead of replacing them. A repo
+  without a `user.email` is still searched for the other authors. Backspace in an empty
+  box removes the last chip.
+- **Suggestions look like VS Code's own.** The Author and Branch boxes show their
+  suggestions in VS Code's suggest-widget style, with the matching letters highlighted,
+  instead of the browser's unthemed dropdown. ↑/↓ move, Enter or Tab picks, Esc closes.
+
+- **Filter by path across every repository.** A new **Path** box keeps only commits that
+  touched a file, a folder (everything inside it), or a glob, in each repository at once,
+  relative to its root. `*.sql` matches in any folder, `db/*.sql` only in `db/`. It becomes a pathspec after `--` on each
+  repo's `git log`, so git does the filtering. Paths that could leave a repository (`..`,
+  absolute) or switch on other pathspec magic (a leading `:`) are marked invalid and
+  never reach git. File History ignores it, since it already follows one file.
+
+### Performance
+
+- **Suggestions load when you first use them.** Author and Branch suggestions used to be
+  read for every repository right after startup. They are now read the first time you
+  focus that box, once per set of repositories. On a 68-repository workspace, startup went
+  from 273 git processes to 137, and first rows from 0.51 s to 0.37 s. The first focus
+  costs about 0.1 s.
+
+### Changed
+
+- **File History shows every commit of the file.** It used to keep the message search
+  and author filter from the Log, so a file could look like it had 1 commit instead of 9.
+  Opening File History now sets the search, author and Me aside, as it already did the
+  date range, and closing it gives all of them back.
+- **The listing shows how to install Polylog under its published ID.** Polylog is
+  published as `lntvan166.polylog-git`, because the Marketplace name `polylog` belongs to
+  another publisher's unrelated extension. The Quick Start now gives the ID, the Quick Open
+  (`ext install lntvan166.polylog-git`) and command-line installs, the Open VSX route for
+  Cursor, VSCodium and Windsurf, and links to both listings. Listing pages show the README
+  from the published package, so this release is what brings the instructions there. No
+  code changes.
+
+---
+
 ## [0.1.0] — 2026-09-24
 
 The first release.

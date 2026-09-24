@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -154,4 +154,27 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.notStrictEqual(cut, fitMiddle("acme-mobile-shipper-app", within(112)), "so similar names stay apart at any width");
   assert.strictEqual(fitMiddle("acme-web", within(3)), "…", "no room at all still renders");
   console.log("ok - a repo name is cut in the middle to exactly what fits the space it has");
+}
+{
+  const by = (f: Partial<FilterState>) => emptyState({ repoCount: 3, filter: { ...ALL, ...f } }).body;
+  assert.match(by({ authors: ["dana", "rin"] }), /No commits by “dana” or “rin” in /, "two chips");
+  assert.match(by({ authors: ["dana"], author: "rin", mine: true }), /No commits by “dana”, “rin” or you in /, "chips, typed text and Me");
+  assert.deepStrictEqual(emptyState({ repoCount: 3, filter: { ...ALL, authors: ["dana"] } }).action, { label: "Clear Author", id: "clearAuthor" });
+  console.log("ok - the empty state names every author being filtered on");
+}
+{
+  const e = emptyState({ repoCount: 3, filter: { ...ALL, path: "src/checkout" } });
+  assert.match(e.body, /No commit touches “src\/checkout” in 3 repositories/);
+  assert.deepStrictEqual(e.action, { label: "Clear Path", id: "clearPath" });
+  assert.match(emptyState({ repoCount: 3, filter: { ...ALL, path: "src", text: "fix" } }).body, /No commit touching “src” contains “fix”/, "path and search together");
+  console.log("ok - the empty state names the path and offers to clear it");
+}
+{
+  // Chip widths 50, 60, 70; a "+N" chip is 30 wide; gaps are 3.
+  assert.strictEqual(chipsThatFit([50, 60, 70], 500, 30, 3), 3, "room for all: no +N");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 150, 30, 3), 2, "50+3+60 = 113, and 113+3+30 = 146 fits with the +1 chip");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 100, 30, 3), 1, "only one, then +2");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 20, 30, 3), 0, "no room: everything behind +3");
+  assert.strictEqual(chipsThatFit([], 100, 30, 3), 0);
+  console.log("ok - author chips keep their width; the ones that do not fit collapse into +N");
 }

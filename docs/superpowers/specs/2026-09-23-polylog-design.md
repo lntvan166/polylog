@@ -47,7 +47,7 @@ Stated explicitly so the plan does not drift into them:
 - No commit graph. Commits in unrelated repos share no topology; merged lanes would be meaningless.
 - No branch or path filters. Text, author, repo and date only. (Author added 2026-09-23 by
   maintainer decision: pushed down as `git log --author`, literal and case-insensitive,
-  ANDed with the message search; a "Me" button fills in the user's git email.)
+  ANDed with the message search; a "Me" button fills in the user's git email.) **Amended 2026-09-24:** branch (panel spec §13) and path (panel spec §21.4) filters are now in, both pushed down into git.
 - No GitHub/GitLab/remote integration, no PR awareness.
 - No submodule-specific handling. A submodule that VS Code reports as a repository is
   treated as any other repository.

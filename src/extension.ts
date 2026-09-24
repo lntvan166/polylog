@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { debounce } from "./debounce";
-import { runGit } from "./git";
+import { GitRunner } from "./git";
+import { gitCandidates } from "./gitBinary";
 import { UndoCollapse } from "./keepExpanded";
 import { HIDE_REPOS_KEY, LogView } from "./logView";
 import type { WebviewMessage } from "./protocol";
@@ -12,7 +13,9 @@ import { SCHEME } from "./revisionUri";
 export function activate(context: vscode.ExtensionContext): void {
   const discovery = new RepoDiscovery();
   const changes = new ChangesTree();
-  const log = new LogView(context, { discovery, run: runGit, changes });
+  // VS Code's git: git.path first, then the binary its Git extension found, then PATH.
+  const git = new GitRunner(() => gitCandidates(vscode.workspace.getConfiguration("git").get("path"), discovery.gitPath()));
+  const log = new LogView(context, { discovery, run: git.run, changes });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Clicking the Log or Changes header collapses that view; expand it again. Settle
@@ -26,6 +29,21 @@ export function activate(context: vscode.ExtensionContext): void {
     else if (which === "changes") changes.expand();
   }, 150);
   context.subscriptions.push(
+    // Switching git.path takes effect at once: forget the binary, stop git processes still
+    // running on the old one, and read everything again.
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("git.path")) return;
+      git.reset();
+      void log.gitChanged();
+    }),
+    // VS Code's Git extension reports its binary a moment after startup. If no git could
+    // run before that, try again with it (otherwise nothing needs reloading).
+    discovery.onDidFindGit(() => {
+      if (git.failed()) {
+        git.reset();
+        void log.gitChanged();
+      }
+    }),
     log.onDidChangeVisibility(undoCollapse),
     changes.onDidChangeVisibility(undoCollapse),
     // Changes can only be revealed once it has a commit: check again when it gets one.
@@ -41,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider(runGit)),
+    vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider(git.run)),
     vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
     vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
     vscode.commands.registerCommand("polylog.copySha", () => {

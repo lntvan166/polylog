@@ -4,11 +4,13 @@ import { excludeRepos, labelRepos, mergeRoots } from "./repos";
 import type { Settings } from "./settings";
 import type { Repo } from "./types";
 
-// The slice of vscode.git's API that Polylog uses — discovery only. Its
+// The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitRepository { rootUri: vscode.Uri }
 type GitState = "uninitialized" | "initialized";
 interface GitAPI {
+  /** The binary vscode.git found (from git.path or its own search). */
+  git?: { path?: string };
   state: GitState;
   onDidChangeState: vscode.Event<GitState>;
   repositories: GitRepository[];
@@ -31,9 +33,19 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private readonly disposables: vscode.Disposable[] = [this.emitter];
+
+  /** The git binary VS Code's Git extension uses, once it has activated. */
+  gitPath(): string | undefined {
+    const p = this.api?.git?.path;
+    return typeof p === "string" && p !== "" ? p : undefined;
+  }
   private started = false;
   /** vscode.git, once it has settled. */
   private ready: GitAPI | undefined;
+  private api: GitAPI | undefined;
+  private readonly gitFound = new vscode.EventEmitter<void>();
+  /** vscode.git has activated and reported its git binary (see gitPath). */
+  readonly onDidFindGit = this.gitFound.event;
 
   async list(settings: Settings): Promise<Repo[]> {
     if (!this.started) {
@@ -55,6 +67,8 @@ export class RepoDiscovery implements vscode.Disposable {
     } catch {
       return; // git disabled or the extension failed; the walk stays the source
     }
+    this.api = api;
+    if (this.gitPath()) this.gitFound.fire();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settleSoon = () => {
       clearTimeout(timer);
@@ -74,6 +88,7 @@ export class RepoDiscovery implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.gitFound.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

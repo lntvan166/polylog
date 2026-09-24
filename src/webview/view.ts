@@ -126,6 +126,21 @@ export function fitMiddle(name: string, fits: (text: string) => boolean): string
   return middleTruncate(name, lo);
 }
 
+/**
+ * How many author chips fit in `room` px, in order. When not all fit, a "+N" chip of
+ * `plusWidth` must fit too. Chips never shrink: a sliver of a name tells nobody anything.
+ */
+export function chipsThatFit(widths: readonly number[], room: number, plusWidth: number, gap: number): number {
+  let used = 0;
+  for (let k = 0; k < widths.length; k++) {
+    const next = used + (k > 0 ? gap : 0) + widths[k];
+    const rest = k + 1 < widths.length ? gap + plusWidth : 0;
+    if (next + rest > room) return k;
+    used = next;
+  }
+  return widths.length;
+}
+
 const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");
 
 export function repoButtonLabel(repoIds: readonly string[] | null, repos: readonly { id: string; name: string }[]): string {
@@ -149,7 +164,7 @@ export function dateLabel(f: FilterState): string {
   }
 }
 
-export type EmptyAction = "clearText" | "clearAuthor" | "allTime" | "selectAll" | "settings";
+export type EmptyAction = "clearText" | "clearAuthor" | "allTime" | "selectAll" | "settings" | "clearPath";
 
 export interface EmptyState {
   title: string;
@@ -179,16 +194,24 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   const k = f.repoIds === null ? o.repoCount : f.repoIds.length;
   const scope = f.repoIds === null ? `${k} ${repoNoun(k)}` : `${k} selected ${repoNoun(k)}`;
   const text = f.text.trim();
-  const author = f.mine ? "" : f.author.trim();
-  const by = f.mine ? "you" : `“${author}”`;
-  if (text && (author || f.mine)) {
-    return { title: "No matching commits", body: `No commit by ${by} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+  const names = [...(f.authors ?? []), f.author].map((n) => n.trim()).filter((n) => n !== "").map((n) => `“${n}”`);
+  const who = f.mine ? [...names, "you"] : names;
+  const author = who.length > 0;
+  // "“dana”", "“dana” or “rin”", "“dana”, “rin” or you"
+  const by = who.length <= 1 ? who.join("") : `${who.slice(0, -1).join(", ")} or ${who[who.length - 1]}`;
+  const touching = f.path ? ` touching “${f.path}”` : "";
+  if (text && author) {
+    return { title: "No matching commits", body: `No commit by ${by}${touching} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
   }
   if (text) {
-    return { title: "No matching commits", body: `No commit message contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
+    const what = f.path ? `commit${touching}` : "commit message";
+    return { title: "No matching commits", body: `No ${what} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
   }
-  if (author || f.mine) {
-    return { title: "No matching commits", body: `No commits by ${by} in ${scope}${dateLabel(f)}.`, action: { label: "Clear Author", id: "clearAuthor" } };
+  if (author) {
+    return { title: "No matching commits", body: `No commits by ${by}${touching} in ${scope}${dateLabel(f)}.`, action: { label: "Clear Author", id: "clearAuthor" } };
+  }
+  if (f.path) {
+    return { title: "No matching commits", body: `No commit touches “${f.path}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Path", id: "clearPath" } };
   }
   if (f.date !== "all") {
     return { title: "No commits in this date range", body: `No commits in ${scope}${dateLabel(f)}.`, action: { label: "Show All Time", id: "allTime" } };

@@ -74,7 +74,13 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Search across every repo.** Search commit messages (literal, case-insensitive) across
   every repository at once.
 - **Filters:**
-  - **Author**, with a **Me** toggle inside the box that uses each repo's own `user.email`.
+  - **Authors:** type a name or email. Enter, a comma or a picked suggestion adds it as a
+    chip, and a commit by any of the chips matches. Suggestions list who committed
+    recently across your repos. **Me** is a toggle inside the box that adds each repo's own
+    `user.email`.
+  - **Path**: only commits touching a file, a folder (everything inside it), or a glob, in
+    every repository at once. Paths are relative to each repo's root. `*.sql` matches in
+    any folder; `db/*.sql` only in `db/`.
   - **Branch**, applied in every repo that has it.
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.
@@ -85,8 +91,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
-  renames, opens on all time, and restores your date range when you close it. Your
-  message and author filters still apply, so clear them to see every commit.
+  renames, and always shows every commit of the file: it sets your date range, search and
+  author aside while open, and gives them back when you close it.
 - **Keyboard first.** The selection drives everything, so you can review a day's work
   without touching the mouse.
 
@@ -102,7 +108,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 ## How It Works
 
 ```
- Filters (search · author · branch · dates · repos)
+ Filters (search · authors · path · branch · dates · repos)
                  │  passed straight through as git log flags
      ┌───────────┼───────────┬───────────┐
   git log     git log     git log     git log      one process per repository,
@@ -115,7 +121,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 ```
 
 Polylog has **no index, no cache and no database**. Git does all the searching. Every
-filter becomes a `git log` flag (`--grep`, `--author`, `--since`/`--until`, a ref), so each
+filter becomes a `git log` flag (`--grep`, `--author`, `--since`/`--until`, a ref, a pathspec), so each
 repository returns only matching commits, and Polylog merges those already-filtered lists.
 
 On a 68-repository, 16,000-commit workspace:
@@ -150,7 +156,7 @@ skewed clock can place a commit out of order.
 | Requirement | Notes |
 |---|---|
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
-| `git` on your `PATH` | Polylog runs `git` from `PATH`; it does not read `git.path` |
+| Git | The same git as VS Code: your `git.path` setting, then the git VS Code's Git extension found, then `git` on `PATH`. Changing `git.path` takes effect at once |
 
 Polylog only reads history. It never runs a command that changes a repository.
 

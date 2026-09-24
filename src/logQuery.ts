@@ -1,4 +1,4 @@
-import { historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, type FilterState } from "./filterModel";
+import { hasOtherAuthors, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, type FilterState } from "./filterModel";
 import { countRecords, parseHistory, parseLog } from "./gitLog";
 import { takeReady, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
@@ -61,8 +61,9 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     req.prev
       ? [...req.prev.progress].filter(([id]) => byId.has(id)).map(([id, p]) => [id, { ...p, pending: [...p.pending] }])
       : (req.history ? req.repos.filter((r) => r.id === req.history!.repoId) : selectRepos(req.filter, req.repos))
-          // Me: a repo with no user.email has no commits that are "mine".
-          .filter((r) => !req.filter.mine || req.me?.has(r.id))
+          // Me alone: a repo with no user.email has no commits that are "mine". With other
+          // authors picked too, it is still searched for them.
+          .filter((r) => !req.filter.mine || hasOtherAuthors(req.filter) || req.me?.has(r.id))
           .map((r) => [r.id, { fetched: 0, pending: [], exhausted: false }]),
   );
   const failures: RepoFailure[] = [];

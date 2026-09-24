@@ -36,13 +36,13 @@ function send(m: HostMessage, delay = latency): void {
 
 function matching(f: FilterState): Commit[] {
   const text = f.text.trim().toLowerCase();
-  const author = f.mine ? "dana@example.com" : f.author.trim().toLowerCase();
+  const authors = [...(f.authors ?? []), f.author, f.mine ? "dana@example.com" : ""].map((a) => a.trim().toLowerCase()).filter(Boolean);
   const ids = f.repoIds === null ? null : new Set(f.repoIds);
   const span = { "24h": 86_400, "7d": 7 * 86_400, "30d": 30 * 86_400 } as Record<string, number>;
   const since = span[f.date] !== undefined ? NOW - span[f.date] : f.date === "custom" && f.from ? Date.parse(`${f.from}T00:00:00`) / 1000 : -Infinity;
   const until = f.date === "custom" && f.to ? Date.parse(`${f.to}T23:59:59`) / 1000 : Infinity;
   return all.filter((c) =>
-    (!text || c.subject.toLowerCase().includes(text)) && (!author || `${c.author} <${c.email}>`.toLowerCase().includes(author)) && (!ids || ids.has(c.repoId)) && c.time >= since && c.time <= until);
+    (!text || c.subject.toLowerCase().includes(text)) && (authors.length === 0 || authors.some((a) => `${c.author} <${c.email}>`.toLowerCase().includes(a))) && (!ids || ids.has(c.repoId)) && c.time >= since && c.time <= until);
 }
 
 function page(append: boolean): void {
@@ -63,8 +63,8 @@ function reload(): void {
 
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history, branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }] }, 0); reload(); return;
-    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history, branches: [] }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history, branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); reload(); return;
+    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history, branches: [], authors: [] }, 0); reload(); return;
     case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;

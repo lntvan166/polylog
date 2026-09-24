@@ -45,7 +45,7 @@ const notices = new NoticeBar(byId("notices"), () => {
   render();
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
-const filters = new FilterBar(setFilter, () => post({ type: "refresh" }));
+const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
 const appEl = byId("app");
 const modebar = byId("modebar");
@@ -88,6 +88,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.filter = m.filter;
       filters.setMe(m.hasMe);
       filters.setBranches(m.branches);
+      filters.setAuthors(m.authors);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
@@ -97,6 +98,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
+    case "suggestions":
+      if (m.authors) filters.setAuthors(m.authors);
+      if (m.branches) filters.setBranches(m.branches);
+      return;
     case "loading":
       state.loading = true;
       clearTimeout(skeletonTimer);
@@ -157,8 +162,9 @@ function runEmptyAction(action: EmptyAction): void {
   const f = state.filter;
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
-    case "clearAuthor": setFilter({ ...f, author: "", mine: false }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "clearAuthor": setFilter({ ...f, author: "", mine: false, authors: undefined }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, authors: f.authors, path: f.path, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "clearPath": setFilter({ ...f, path: undefined }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }
@@ -198,6 +204,13 @@ document.addEventListener("keydown", (e) => {
   if (t instanceof HTMLInputElement && t.id === "author" && t.value !== "") {
     e.preventDefault();
     setFilter({ ...state.filter, author: "" });
+    return;
+  }
+  if (t instanceof HTMLInputElement && t.id === "path" && t.value !== "") {
+    e.preventDefault();
+    t.value = "";
+    t.removeAttribute("aria-invalid");
+    setFilter({ ...state.filter, path: undefined });
     return;
   }
   if (t instanceof HTMLInputElement && t.id === "branch" && t.value !== "") {

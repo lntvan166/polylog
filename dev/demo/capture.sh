@@ -80,7 +80,7 @@ TOP=$(convert "$PROFILE/layout.png" -crop 1x800+300+60 txt:- | awk -F'[,: ]+' 'N
 xdotool mousemove 740 $((TOP + 1)) sleep 0.3 mousedown 1 sleep 0.2 mousemove 740 500 sleep 0.2 mousemove 740 390 sleep 0.3 mouseup 1
 sleep 1
 ROW0=504   # first Log row; rows are 25px apart
-SEARCH="388 472"; BRANCH="787 472"
+SEARCH="330 473"; BRANCH="797 473"
 FILE_PAYMENTSTEP="1140 574"   # in Changes, for the acme-web ACME-142 commit
 
 # 1. The merged log, with a commit's diff open above it.
@@ -107,7 +107,7 @@ shot 02-search
 # 3. File History of the diff on screen (the same command as a Changes file's right-click).
 cmd "Polylog: File History"
 sleep 1.5
-typein 388 507 ""                  # in history mode the filters sit under the mode bar
+typein 330 508 ""                  # in history mode the filters sit under the mode bar
 shot 03-file-history
 click 305 470 1 1.5                # close history: "All commits" (the × moves with the path)
 

@@ -120,6 +120,15 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
   }
   {
     const calls: string[][] = [];
+    const data = { [WEB.root]: [mk(WEB, 3)], [API.root]: [mk(API, 2)], [LIBS.root]: [mk(LIBS, 1)] };
+    const me = new Map([[WEB.id, "dana@example.com"]]);
+    await fetchPage(req({ filter: { ...ALL, mine: true, authors: ["noor"] }, run: fakeRun(data, calls), me }));
+    assert.deepStrictEqual(calls.map((c) => c[0]).sort(), [API.root, LIBS.root, WEB.root].sort(), "with other authors picked, a repo without user.email is still searched for them");
+    assert.deepStrictEqual(calls.find((c) => c[0] === API.root)!.filter((a) => a.startsWith("--author=")), ["--author=noor"]);
+    console.log("ok - Me plus other authors: every repo is searched for the others, and for Me where it has an email");
+  }
+  {
+    const calls: string[][] = [];
     const out = "\x1e" + [mk(API, 9).sha, "9", "rin", "rin@example.com", "feat: add retry", ""].join("\0") + "\0\nM\0upload.go\0";
     const names = "\x1e\x00\nM\x00upload.go\x00\x1e\x00\nR100\x00up.go\x00upload.go\x00";
     const run: RunGit = async (cwd, args) => { calls.push([cwd, ...args]); return args.includes("--follow") ? names : out; };
