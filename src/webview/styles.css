@@ -159,12 +159,15 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 
 /* Repo chip: a tint of the repo's chart hue behind text in the theme's own
    foreground, so contrast never depends on the hue. Every repo has one
-   (maintainer decision); see accentIndex in view.ts. */
+   (maintainer decision); see assignAccents in view.ts. */
 .chip {
   justify-self: start; max-width: 100%; padding: 1px 6px; border-radius: 3px;
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--vscode-foreground); font-size: 0.92em;
 }
+/* 16% of a hue is pale on a white panel: light themes get a stronger tint. The text stays the
+   theme foreground, so contrast still does not depend on the hue. */
+body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .accent-0 { --accent: var(--vscode-charts-red); }
 .accent-1 { --accent: var(--vscode-charts-blue); }
 .accent-2 { --accent: var(--vscode-charts-yellow); }

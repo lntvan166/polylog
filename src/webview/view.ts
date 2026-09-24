@@ -45,19 +45,48 @@ export function moveSelection(key: string, index: number, total: number, pageRow
 /** Six hues: five of VS Code's chart colors plus terminal cyan; see styles.css .accent-0 … .accent-5. */
 export const ACCENT_COUNT = 6;
 
-/**
- * Every repository gets a hue (maintainer decision, overriding spec §4's
- * filtered-only rule): its place in the workspace's repo list, cycling through
- * the six hues. When the user filters to six or fewer, hues follow the
- * selection so each chosen repo is distinct. The color is only a marker; the
- * repo name is always printed beside it.
- */
-export function accentIndex(repoId: string, repoIds: readonly string[] | null, allRepoIds: readonly string[]): number {
-  if (repoIds !== null && repoIds.length <= ACCENT_COUNT) {
-    const i = repoIds.indexOf(repoId);
-    if (i >= 0) return i;
+/** FNV-1a: a stable, well-spread hash of the repository name. */
+function hashName(name: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
   }
-  return Math.max(0, allRepoIds.indexOf(repoId)) % ACCENT_COUNT;
+  return h >>> 0;
+}
+
+/**
+ * Each repository's hue (maintainer decision, spec §18). It never depends on the filter,
+ * so ticking repositories never recolors the others. Each repo starts from a hue derived
+ * from its name; when that hue is taken, it moves on to the next one that is least used,
+ * in name order. Up to six repositories therefore get six different hues, discovery order
+ * does not matter, and a new repository only moves the repos it clashes with. Past six,
+ * hues are shared evenly. The color is only a marker: the name is always printed beside it.
+ */
+export function assignAccents(repos: readonly { id: string; name: string }[]): Map<string, number> {
+  const sorted = [...repos].sort((a, b) => a.name.localeCompare(b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const used = new Array<number>(ACCENT_COUNT).fill(0);
+  const out = new Map<string, number>();
+  for (const r of sorted) {
+    const least = Math.min(...used);
+    const start = hashName(r.name) % ACCENT_COUNT;
+    let hue = start;
+    for (let k = 0; k < ACCENT_COUNT; k++) {
+      const h = (start + k) % ACCENT_COUNT;
+      if (used[h] === least) {
+        hue = h;
+        break;
+      }
+    }
+    used[hue]++;
+    out.set(r.id, hue);
+  }
+  return out;
+}
+
+/** A repository's hue from assignAccents; 0 for one outside the list. */
+export function accentOf(accents: ReadonlyMap<string, number>, repoId: string): number {
+  return accents.get(repoId) ?? 0;
 }
 
 const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");

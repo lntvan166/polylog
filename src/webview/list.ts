@@ -1,13 +1,12 @@
 import type { Commit } from "../types";
 import { clear, h } from "./dom";
-import { absoluteTime, accentIndex, moveSelection, relativeTime, visibleRange } from "./view";
+import { absoluteTime, accentOf, moveSelection, relativeTime, visibleRange } from "./view";
 
 export interface ListProps {
   rows: readonly Commit[];
   repoNames: ReadonlyMap<string, string>;
-  repoIds: readonly string[] | null;
-  /** Every repository id in workspace order; each repo's color comes from its place here. */
-  repoOrder: readonly string[];
+  /** Each repository's hue (view.ts assignAccents), fixed for the repo list. */
+  accents: ReadonlyMap<string, number>;
   /** File history: the file's current path, to flag rows where it had another name. */
   historyPath?: string;
   selected: number;
@@ -24,7 +23,7 @@ const SKELETON_ROWS = 8;
  */
 export class CommitList {
   private rowHeight = 0;
-  private props: ListProps = { rows: [], repoNames: new Map(), repoIds: null, repoOrder: [], historyPath: undefined, selected: -1, now: 0, skeleton: false };
+  private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, now: 0, skeleton: false };
 
   constructor(
     private readonly root: HTMLElement,
@@ -99,7 +98,7 @@ export class CommitList {
 
   /** One line, like an IDE log: repo chip | subject | author | date. */
   private renderRow(c: Commit, i: number): HTMLElement {
-    const accent = accentIndex(c.repoId, this.props.repoIds, this.props.repoOrder);
+    const accent = accentOf(this.props.accents, c.repoId);
     return h("div", {
       class: "row",
       role: "row",

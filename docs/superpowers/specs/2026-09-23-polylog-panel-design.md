@@ -307,3 +307,25 @@ CSS) in all four theme kinds:
 - "Me" moves inside the Author box as an input-option toggle, like the Aa / ab / .*
   toggles in VS Code's search, using `--vscode-inputOption-*`.
 - Everything else in the left view is unchanged.
+
+## 18. Amendment: each repository keeps one hue (2026-09-24, maintainer decision)
+
+**Before.** A repo's hue came from its position in the name-sorted repo list. A filtered
+set of six or fewer was recolored in the order the repos were picked. So ticking one repo
+recolored others, and adding a repo shifted everyone sorted after it: the color could not
+be learned.
+
+**Now** (`view.ts assignAccents`, computed once per repo list):
+- The hue never depends on the filter.
+- Each repo starts from a hue hashed from its name (FNV-1a). If that hue is already taken,
+  it moves forward to the next least-used hue, with repos taken in name order. So:
+  - up to six repos get six different hues;
+  - discovery order does not matter;
+  - adding a repo moves only repos it clashes with;
+  - past six, hues are shared evenly.
+- A pure hash was rejected: with six hues, six repos would share a color about 98% of the
+  time.
+- The chip tint is 24% in light themes (16% elsewhere), because 16% of a hue is pale on a
+  white panel. The text stays in the theme foreground.
+- Blue and cyan remain the closest pair. With six or more repos both are in use; the
+  printed name disambiguates.

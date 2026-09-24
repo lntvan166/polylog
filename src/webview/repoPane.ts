@@ -1,7 +1,7 @@
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
-import { accentIndex } from "./view";
+import { accentOf, assignAccents } from "./view";
 
 interface Row {
   /** null = the "All repositories" row. */
@@ -15,6 +15,7 @@ interface Row {
  * Ctrl/Cmd-click) to add and remove. One tab stop, arrow keys inside.
  */
 export class RepoPane {
+  private accents: ReadonlyMap<string, number> = new Map();
   private readonly filterInput = byId<HTMLInputElement>("repo-filter");
   private readonly list = byId("repo-rows");
   private repos: readonly Repo[] = [];
@@ -50,6 +51,7 @@ export class RepoPane {
   }
 
   update(repos: readonly Repo[], repoIds: string[] | null): void {
+    if (repos !== this.repos) this.accents = assignAccents(repos);
     this.repos = repos;
     this.repoIds = repoIds;
     this.render();
@@ -105,14 +107,13 @@ export class RepoPane {
   }
 
   private render(): void {
-    const allIds = this.repos.map((r) => r.id);
     this.rows = [{ id: null, name: "All repositories" }, ...visibleRepos(this.repos, this.filterInput.value)];
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
     clear(this.list);
     this.rows.forEach((row, i) => {
       const checked = row.id === null ? this.repoIds === null : isChecked(this.repoIds, row.id);
-      const accent = row.id === null ? null : accentIndex(row.id, this.repoIds, allIds);
+      const accent = row.id === null ? null : accentOf(this.accents, row.id);
       // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
       // the row is the listbox option and handles the click and the keyboard.
       const box = document.createElement("vscode-checkbox");

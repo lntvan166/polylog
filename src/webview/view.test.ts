@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentIndex, ACCENT_COUNT, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -41,13 +41,22 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   console.log("ok - keyboard selection clamps to the list");
 }
 {
-  const all = ["/ws/a", "/ws/b", "/ws/c", "/ws/d", "/ws/e", "/ws/f", "/ws/g", "/ws/h"];
+  const repo = (name: string) => ({ id: `/ws/${name}`, name });
+  const six = ["acme-api", "acme-docs", "acme-infra", "acme-libs", "acme-mobile", "acme-web"].map(repo);
+  const a = assignAccents(six);
   assert.strictEqual(ACCENT_COUNT, 6);
-  assert.strictEqual(accentIndex("/ws/b", null, all), 1, "every repo gets a color from its place in the repo list");
-  assert.strictEqual(accentIndex("/ws/h", null, all), 1, "past six hues the ramp repeats (the name still disambiguates)");
-  assert.strictEqual(accentIndex("/ws/h", ["/ws/a", "/ws/h"], all), 1, "a filtered set of up to six gets distinct hues by selection order");
-  assert.strictEqual(accentIndex("/ws/zzz", null, all), 0, "an unknown repo still renders");
-  console.log("ok - every repo has an accent; a small filtered set gets distinct ones");
+  assert.strictEqual(new Set(six.map((r) => a.get(r.id))).size, 6, "six repositories get six different hues");
+  assert.deepStrictEqual(assignAccents([...six].reverse()), a, "the order repositories were discovered in does not matter");
+  const withNew = assignAccents([...six, repo("acme-zeta")]);
+  const moved = six.filter((r) => withNew.get(r.id) !== a.get(r.id));
+  assert.ok(moved.length <= 1, `adding a repository moves at most the one it clashes with, not everyone: ${moved.map((r) => r.name)}`);
+  const many = Array.from({ length: 20 }, (_, i) => repo(`svc-${i}`));
+  const m = assignAccents(many);
+  const counts = new Map<number, number>();
+  for (const r of many) counts.set(m.get(r.id)!, (counts.get(m.get(r.id)!) ?? 0) + 1);
+  assert.ok(Math.max(...counts.values()) - Math.min(...counts.values()) <= 1, "past six, hues are shared evenly");
+  assert.strictEqual(accentOf(a, "/ws/unknown"), 0, "a repository outside the list still renders");
+  console.log("ok - each repo keeps one hue: from its name, distinct up to six, the same under any filter");
 }
 {
   assert.strictEqual(repoButtonLabel(null, repos), "All repositories");

@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { branchUseLabel, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -65,6 +65,8 @@ const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, win
 // Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
 attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
 window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
+/** Each repository's hue, fixed for the repo list: filtering never recolors (spec §18). */
+let accents: ReadonlyMap<string, number> = new Map();
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 
@@ -80,6 +82,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
   switch (m.type) {
     case "init":
       state.repos = m.repos;
+      accents = assignAccents(m.repos);
       state.filter = m.filter;
       filters.setMe(m.hasMe);
       filters.setBranches(m.branches);
@@ -162,7 +165,7 @@ function runEmptyAction(action: EmptyAction): void {
 function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   list.update({
-    rows: state.rows, repoNames: names, repoIds: state.filter.repoIds, repoOrder: state.repos.map((r) => r.id),
+    rows: state.rows, repoNames: names, accents,
     historyPath: state.history?.path,
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
