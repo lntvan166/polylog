@@ -78,8 +78,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     chip, and a commit by any of the chips matches. Suggestions list who committed
     recently across your repos. **Me** is a toggle inside the box that adds each repo's own
     `user.email`.
-  - **Path**: only commits touching a file, a folder (everything inside it), or a glob such
-    as `**/*.sql`, in every repository at once. Paths are relative to each repo's root.
+  - **Path**: only commits touching a file, a folder (everything inside it), or a glob, in
+    every repository at once. Paths are relative to each repo's root. `*.sql` matches in
+    any folder; `db/*.sql` only in `db/`.
   - **Branch**, applied in every repo that has it.
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.

@@ -387,8 +387,14 @@ on PATH (common on Windows), got "git was not found" while VS Code's own Git wor
   `git.path` or PATH; when the extension reports its binary and nothing has run yet, the
   Log is read again.
 - **Switching `git.path` at runtime** takes effect at once: the runner forgets its binary,
-  in-flight git processes are killed, and the page, the selected commit and the
-  background reads (Me, branch suggestions) are read again.
+  in-flight git processes are killed, and the page, the selected commit and Me are read
+  again. Author and Branch suggestions are dropped and re-read on the next focus (§21.3).
+- **After review:**
+  - EINVAL and EPERM also count as "cannot run", so a Windows `.cmd` falls back.
+  - A missing repository folder is reported as such, not as a missing git.
+  - A lookup that began before `git.path` changed cannot overwrite the new choice
+    (a generation counter).
+  - The Git extension reporting its path only triggers a re-read if no git could run.
 
 ### 21.2 File History sets search and author aside
 
@@ -425,8 +431,15 @@ them), and given back on close, even if the user changed them while in the histo
     first and the match highlighted; chosen authors are left out.
   - Keys: ↑/↓ wrap, Enter and Tab pick, Esc closes; ↓ opens the list with nothing typed.
   - The box is an ARIA combobox; the list never takes focus.
-- Enter (with nothing highlighted), a comma, or a picked suggestion adds a chip. Backspace
-  in an empty box removes the last one, and × removes one.
+- Enter (with nothing highlighted), a comma, or a picked suggestion adds a chip; a pasted
+  "rin, sam" becomes two. Backspace in an empty box removes the last one, and × removes one.
+- **After review:**
+  - Chips keep their width. Those that do not fit beside the input collapse into a "+N"
+    chip, whose tooltip and accessible name list them (`chipsThatFit`). Before, three
+    chips shrank to slivers.
+  - Suggestions arrive in their own `suggestions` message rather than `init`, so they
+    cannot roll back what is being typed.
+  - A box focused before the repositories are known is served once they arrive.
 - File History sets the chips aside along with the search and author (§21.2).
 - High contrast: chips are outlined, in the theme foreground.
 
@@ -438,7 +451,9 @@ them), and given back on close, even if the user changed them while in the histo
   segment, starts with `:` (pathspec magic such as `:(top)` or `:!`), or holds control
   characters.
 - **The pathspec** (`pathspecOf`):
-  - `:(glob)<path>` when the path has `*`, `?` or `[` (`**` crosses folders);
+  - `:(glob)<path>` when the path has `*`, `?` or `[` (`**` crosses folders). A glob
+    without a `/` (`*.ts`) becomes `:(glob)**/*.ts`, so it matches at any depth, like
+    `.gitignore` and plain `git log -- '*.ts'`;
   - `:(literal)<path>` otherwise, so a folder matches everything inside it and a partial
     name matches nothing (whole path components).
   - It goes after `--`, so it can never be read as an option or a revision.

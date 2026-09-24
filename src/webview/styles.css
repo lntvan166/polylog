@@ -112,13 +112,16 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 }
 .author-field:focus-within { border-color: var(--vscode-focusBorder); }
 .author-field:has(#me:not([hidden])) { padding-right: 32px; }
-.author-field .author-filter { flex: 1 1 60px; min-width: 40px; height: 22px; border: 0; background: transparent; outline: none; }
+.author-field .author-filter { flex: 1 1 60px; min-width: 56px; height: 22px; border: 0; background: transparent; outline: none; }
 .author-chips { display: inline-flex; gap: 3px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
 .author-chip {
-  display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 12ch; height: 20px; padding: 0 2px 0 6px;
+  display: inline-flex; flex: none; align-items: center; gap: 2px; max-width: 14ch; height: 20px; padding: 0 2px 0 6px;
   border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 0.92em;
 }
 .author-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The chips that did not fit, as "+N" (tooltip: their names). */
+.author-chip.more { padding: 0 6px; cursor: default; }
+.author-chip[hidden] { display: none; }
 .author-chip-remove {
   width: 16px; height: 16px; min-width: 16px; padding: 0; border: 0; border-radius: 2px; line-height: 14px;
   background: transparent; color: inherit; font-size: 12px;

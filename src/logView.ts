@@ -393,12 +393,19 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // Suggestions are read when their box is first focused (wantSuggestions), not here:
     // at startup they would cost 2 git processes per repository for boxes rarely opened.
     this.suggestionsFor.clear();
+    // A box focused before the repositories were known asked for nothing useful: ask again.
+    for (const kind of this.suggestionsWanted) void this.loadSuggestions(kind);
   }
+
+  /** Kinds of suggestion a box has asked for this session. */
+  private readonly suggestionsWanted = new Set<"authors" | "branches">();
 
   /** The repo set each kind of suggestion was last read for. */
   private readonly suggestionsFor = new Map<"authors" | "branches", string>();
 
   private async loadSuggestions(kind: "authors" | "branches"): Promise<void> {
+    this.suggestionsWanted.add(kind);
+    if (this.repos.length === 0) return; // nothing to read yet; asked again once repos arrive
     const key = this.repos.map((r) => r.id).join("\0");
     if (this.suggestionsFor.get(kind) === key) return;
     this.suggestionsFor.set(kind, key);
@@ -411,7 +418,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const settled = await runPool(repos, this.settings().maxConcurrency,
       (r, signal) => this.run(r.root, ["log", "--no-merges", "--max-count=300", "--format=%aN%x1f%aE"], signal), new AbortController().signal);
     this.authors = authorSuggestions(settled.map((s) => (s.status === "fulfilled" ? s.value : "")));
-    this.postInit();
+    this.post({ type: "suggestions", authors: this.authors });
   }
 
   /** Branch names across repositories (local and remote-tracking), most shared first. */
@@ -423,7 +430,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       ? s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter(Boolean)
       : []);
     this.branches = branchSuggestions(lists);
-    this.postInit();
+    this.post({ type: "suggestions", branches: this.branches });
   }
 
   /** Each repo's user.email, in the background so it never delays the first paint. */

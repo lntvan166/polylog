@@ -142,6 +142,8 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual(await subjects("src/check"), [], "a partial name is not a prefix match: pathspecs match whole path components");
     assert.deepStrictEqual(await subjects("**/*.tsx"), ["feat: checkout"], "a glob with ** crosses folders");
     assert.deepStrictEqual(await subjects("*.md"), ["docs: readme"]);
+    assert.deepStrictEqual(await subjects("*.tsx"), ["feat: checkout"], "a slash-free glob matches in any folder");
+    assert.deepStrictEqual(await subjects("src/*.ts"), ["feat: cart"], "a glob with a folder stays anchored to it");
     console.log("ok - real git: a path filter matches files, folders and globs as the design says");
   }
 })().catch((e) => {

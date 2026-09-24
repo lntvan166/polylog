@@ -98,6 +98,10 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
+    case "suggestions":
+      if (m.authors) filters.setAuthors(m.authors);
+      if (m.branches) filters.setBranches(m.branches);
+      return;
     case "loading":
       state.loading = true;
       clearTimeout(skeletonTimer);

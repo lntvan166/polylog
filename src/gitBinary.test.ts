@@ -40,6 +40,14 @@ import { GitError, GitRunner } from "./git";
     console.log("ok - reset picks up a changed git.path");
   }
   {
+    // A repository folder that no longer exists is not a missing git.
+    const runner = new GitRunner(() => ["git"]);
+    await runner.run(home, ["--version"]);
+    await assert.rejects(runner.run(path.join(home, "deleted-repo"), ["log"]), (e: unknown) => e instanceof GitError && /folder/i.test(e.message) && !/git\.path/.test(e.message), "the error names the missing folder, not git.path");
+    assert.strictEqual(runner.binary(), "git", "and the working binary is kept");
+    console.log("ok - a missing repository folder is reported as such, not as a missing git");
+  }
+  {
     // A repo-level git error is not a missing binary: it must not fall through to other candidates.
     const runner = new GitRunner(() => ["git"]);
     await assert.rejects(runner.run(home, ["log"]), (e: unknown) => e instanceof GitError && !e.message.includes("not found"));

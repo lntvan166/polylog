@@ -129,7 +129,10 @@ export function normalizePath(raw: string): string | undefined {
 
 /** The pathspec for a normalized path: literal, or git's glob magic when it has glob characters. */
 export function pathspecOf(path: string): string {
-  return /[*?[]/.test(path) ? `:(glob)${path}` : `:(literal)${path}`;
+  if (!/[*?[]/.test(path)) return `:(literal)${path}`;
+  // A glob without a folder ("*.ts") matches at any depth, like .gitignore and plain
+  // git log -- '*.ts'; under :(glob) it would only match at the root.
+  return path.includes("/") ? `:(glob)${path}` : `:(glob)**/${path}`;
 }
 
 /**

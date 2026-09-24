@@ -126,6 +126,21 @@ export function fitMiddle(name: string, fits: (text: string) => boolean): string
   return middleTruncate(name, lo);
 }
 
+/**
+ * How many author chips fit in `room` px, in order. When not all fit, a "+N" chip of
+ * `plusWidth` must fit too. Chips never shrink: a sliver of a name tells nobody anything.
+ */
+export function chipsThatFit(widths: readonly number[], room: number, plusWidth: number, gap: number): number {
+  let used = 0;
+  for (let k = 0; k < widths.length; k++) {
+    const next = used + (k > 0 ? gap : 0) + widths[k];
+    const rest = k + 1 < widths.length ? gap + plusWidth : 0;
+    if (next + rest > room) return k;
+    used = next;
+  }
+  return widths.length;
+}
+
 const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");
 
 export function repoButtonLabel(repoIds: readonly string[] | null, repos: readonly { id: string; name: string }[]): string {

@@ -25,7 +25,9 @@ export interface BranchName {
 export type HostMessage =
   | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[] }
   | { type: "loading" }
-  | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse };
+  | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
+  /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
+  | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] };
 
 /** Webview → extension host. Every field is untrusted until validated. */
 export type WebviewMessage =

@@ -190,6 +190,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   }
   assert.strictEqual(pathspecOf("src/checkout"), ":(literal)src/checkout", "a folder or file: literal, and a folder matches everything inside");
   assert.strictEqual(pathspecOf("**/*.sql"), ":(glob)**/*.sql", "globs use git's glob magic, where ** crosses folders");
+  assert.strictEqual(pathspecOf("*.ts"), ":(glob)**/*.ts", "a glob without a folder matches at any depth, like .gitignore and plain git log -- '*.ts'");
   assert.strictEqual(pathspecOf("docs/[ab].md"), ":(glob)docs/[ab].md");
   console.log("ok - a path filter is validated and becomes one literal or glob pathspec");
 }

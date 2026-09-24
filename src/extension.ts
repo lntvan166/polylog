@@ -36,10 +36,10 @@ export function activate(context: vscode.ExtensionContext): void {
       git.reset();
       void log.gitChanged();
     }),
-    // VS Code's Git extension reports its binary a moment after startup. Nothing has run
-    // yet, or nothing could: try again with it.
+    // VS Code's Git extension reports its binary a moment after startup. If no git could
+    // run before that, try again with it (otherwise nothing needs reloading).
     discovery.onDidFindGit(() => {
-      if (git.binary() === undefined) {
+      if (git.failed()) {
         git.reset();
         void log.gitChanged();
       }

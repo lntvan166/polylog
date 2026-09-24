@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -168,4 +168,13 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.deepStrictEqual(e.action, { label: "Clear Path", id: "clearPath" });
   assert.match(emptyState({ repoCount: 3, filter: { ...ALL, path: "src", text: "fix" } }).body, /No commit touching “src” contains “fix”/, "path and search together");
   console.log("ok - the empty state names the path and offers to clear it");
+}
+{
+  // Chip widths 50, 60, 70; a "+N" chip is 30 wide; gaps are 3.
+  assert.strictEqual(chipsThatFit([50, 60, 70], 500, 30, 3), 3, "room for all: no +N");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 150, 30, 3), 2, "50+3+60 = 113, and 113+3+30 = 146 fits with the +1 chip");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 100, 30, 3), 1, "only one, then +2");
+  assert.strictEqual(chipsThatFit([50, 60, 70], 20, 30, 3), 0, "no room: everything behind +3");
+  assert.strictEqual(chipsThatFit([], 100, 30, 3), 0);
+  console.log("ok - author chips keep their width; the ones that do not fit collapse into +N");
 }
