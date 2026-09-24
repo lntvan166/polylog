@@ -1,4 +1,6 @@
 import "./styles.css";
+// Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
+import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import type { HostMessage, WebviewMessage } from "../protocol";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";

@@ -289,3 +289,21 @@ go to. `polylog.openWorkingFile` ("Open File", `$(go-to-file)`) fills that gap:
   refuses `..` and unknown roots).
 - A file that no longer exists in the workspace (deleted or renamed since) gets a message
   instead of an error.
+
+## 17. Amendment: VS Code Elements checkboxes, and Me as an input toggle (2026-09-24, maintainer decision)
+
+Chosen from a side-by-side comparison (current CSS, VS Code Elements, a refined custom
+CSS) in all four theme kinds:
+- The Repositories pane's checkboxes are `<vscode-checkbox>` from
+  [VS Code Elements](https://vscode-elements.github.io/) (`@vscode-elements/elements`,
+  MIT, pinned 2.5.1). It is a web component, not a framework (CLAUDE.md "no framework in
+  the webview" holds), and it draws VS Code's own box, tick and hover from the theme's
+  `--vscode-checkbox-*` and `--vscode-settings-checkbox*` variables. Only the checkbox is
+  imported. The minified webview grows from 19.5 KB to 50 KB (the checkbox plus Lit).
+  Its licenses ship in `ThirdPartyNotices.txt`.
+- The box stays presentational (`aria-hidden`, `tabindex=-1`): the row is the listbox
+  option and owns the click and the keyboard. A click on the box still ticks or unticks;
+  a click on the name still shows only that repository.
+- "Me" moves inside the Author box as an input-option toggle, like the Aa / ab / .*
+  toggles in VS Code's search, using `--vscode-inputOption-*`.
+- Everything else in the left view is unchanged.

@@ -17,7 +17,7 @@ The first release.
   one list, merged newest first by commit date, each with a chip showing the repository it
   belongs to. Polylog opens as a tab in the bottom panel, next to Terminal.
 - **Search and filters that apply to every repository at once:** commit message
-  (literal, case-insensitive), author with a **Me** button, branch, and date range (last
+  (literal, case-insensitive), author with a **Me** toggle inside the box, branch, and date range (last
   24 hours by default). Every filter becomes a `git log` flag, so git does the searching;
   there is no index and no cache to go stale.
 - **Branch in every repo.** Type or pick a branch such as `origin/release-1.4`; each

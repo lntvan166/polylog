@@ -104,12 +104,12 @@ click $FILE_PAYMENTSTEP 1 2.5
 kill -INT $FF; wait $FF || true
 shot 02-search
 
-# 3. File History from the Changes tree.
-click $FILE_PAYMENTSTEP 3 1
-click 1230 594 1 2.5
-typein 388 507 ""
+# 3. File History of the diff on screen (the same command as a Changes file's right-click).
+cmd "Polylog: File History"
+sleep 1.5
+typein 388 507 ""                  # in history mode the filters sit under the mode bar
 shot 03-file-history
-click 788 470 1 1.5                # close history (×)
+click 305 470 1 1.5                # close history: "All commits" (the × moves with the path)
 
 # 4. A release branch in every repository that has it.
 typein $SEARCH ""

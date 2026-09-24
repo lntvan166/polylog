@@ -113,8 +113,15 @@ export class RepoPane {
     this.rows.forEach((row, i) => {
       const checked = row.id === null ? this.repoIds === null : isChecked(this.repoIds, row.id);
       const accent = row.id === null ? null : accentIndex(row.id, this.repoIds, allIds);
-      const box = h("input", { type: "checkbox", class: "repo-check", tabindex: "-1", "aria-hidden": "true" });
+      // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
+      // the row is the listbox option and handles the click and the keyboard.
+      const box = document.createElement("vscode-checkbox");
+      box.className = "repo-check";
+      box.setAttribute("aria-hidden", "true");
+      box.tabIndex = -1;
       box.checked = checked;
+      // "All repositories" shows a dash while only some are picked.
+      box.indeterminate = row.id === null && this.repoIds !== null && this.repoIds.length > 0;
       this.list.append(h("div", {
         class: i === this.active ? "repo-row active" : "repo-row",
         role: "option",

@@ -65,7 +65,9 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .repo-row:hover { background: var(--vscode-list-hoverBackground); }
 .repo-rows:focus .repo-row.active { background: var(--vscode-list-focusBackground, var(--vscode-list-hoverBackground)); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
 .repo-row[aria-selected="false"] .repo-name { color: var(--vscode-descriptionForeground); }
-.repo-check { margin: 0; flex: none; accent-color: var(--vscode-button-background); }
+/* <vscode-checkbox> draws the box from the theme's checkbox colors. A click on it reaches the
+   row as a click on .repo-check (tick/untick); the row re-renders the box's state. */
+.repo-check { flex: none; }
 .repo-dot { width: 8px; height: 8px; flex: none; border-radius: 2px; background: var(--accent); }
 .repo-dot.all { background: transparent; border: 1px solid var(--vscode-descriptionForeground); }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
@@ -78,12 +80,25 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
 .search { flex: 1 1 180px; min-width: 120px; }
-.author-filter { flex: 0 1 140px; min-width: 90px; }
+/* Author with "Me" as an input option toggle inside it, like the Aa / ab / .* toggles in
+   VS Code's own search box. */
+.author-field { position: relative; display: inline-flex; flex: 0 1 160px; min-width: 100px; }
+.author-filter { width: 100%; }
+.author-field:has(#me:not([hidden])) .author-filter { padding-right: 32px; }
+.input-toggle {
+  position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
+  height: 20px; min-width: 24px; padding: 0 4px; border-radius: 3px;
+  font-size: 11px; line-height: 18px;
+  background: transparent; color: var(--vscode-icon-foreground); border: 1px solid transparent;
+}
+.input-toggle:hover { background: var(--vscode-toolbar-hoverBackground); }
+.input-toggle[aria-pressed="true"] {
+  background: var(--vscode-inputOption-activeBackground);
+  border-color: var(--vscode-inputOption-activeBorder, transparent);
+  color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
+}
 .branch-filter { flex: 0 1 150px; min-width: 100px; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
-#me[aria-pressed="true"] { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
-/* In high contrast both button backgrounds are black: show "pressed" as an outline. */
-body.vscode-high-contrast #me[aria-pressed="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 input[type="search"], input[type="date"], select {
   height: 26px; padding: 2px 6px; border-radius: 2px;
   background: var(--vscode-input-background); color: var(--vscode-input-foreground);
@@ -178,8 +193,6 @@ body.vscode-high-contrast .row:hover,
 body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
-/* button.background is black in hcDark: a checked box would vanish into the panel. */
-body.vscode-high-contrast .repo-check { accent-color: var(--vscode-contrastActiveBorder); }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
