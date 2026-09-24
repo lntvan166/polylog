@@ -48,7 +48,15 @@ the rest of your editor. That includes light, dark and both high-contrast themes
 
 ## Quick Start
 
-1. Install **Polylog** from the Extensions view.
+1. Install **Polylog** (extension ID `lntvan166.polylog-git`) in any of these ways:
+   - **Extensions view:** search for `lntvan166.polylog-git`, or "Polylog", and pick the
+     one by **lntvan166**. Another publisher's unrelated extension is also called polylog.
+   - **Quick Open** (`Ctrl+P` / `Cmd+P`): `ext install lntvan166.polylog-git`
+   - **Command line:** `code --install-extension lntvan166.polylog-git`
+   - **Cursor, VSCodium, Windsurf:** it is on [Open VSX](https://open-vsx.org/extension/lntvan166/polylog-git)
+     under the same ID.
+   - Listings: [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=lntvan166.polylog-git)
+     · [Open VSX](https://open-vsx.org/extension/lntvan166/polylog-git)
 2. Open a folder or multi-root workspace containing more than one git repository.
 3. Run **Polylog: Open Merged Log** from the Command Palette (`Ctrl+Shift+P` /
    `Cmd+Shift+P`), or click the **Polylog** tab in the bottom panel next to Terminal.
