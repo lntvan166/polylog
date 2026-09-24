@@ -24,16 +24,18 @@ The first release.
   repository that has it shows it, the rest show their current branch, and the footer
   says how many of each.
 - **Repositories pane** to choose which repositories the Log shows, with fuzzy search
-  and multi-select. **Group by Repository** in the Log's title bar shows or hides it.
-- **Native Changes tree** for the selected commit, with git status colors and badges.
-  Clicking a file opens its diff in VS Code's diff editor above the panel. Right-click the
-  commit to copy its SHA or message.
+  and multi-select. **Group by Repository** in the Polylog tab's toolbar shows or hides it.
+- **Changes pane** beside the Log: the selected commit's message and its changed files,
+  colored by git status with badges. Clicking a file opens its diff in VS Code's diff
+  editor above the panel. Right-click the commit to copy its SHA or message, or a file to
+  open it or see its history. The panel tab holds a single view, so there is no view
+  header to collapse by accident.
+- **Open File** on a Polylog diff opens the file as it is in the workspace now, at the
+  same line.
 - **File History.** Right-click a file in the Explorer, an editor, a tab or the Changes
-  tree and choose **Polylog: File History**. The Log shows that file's commits, following
+  pane and choose **Polylog: File History**. The Log shows that file's commits, following
   renames. The diff follows the selection, so `↑`/`↓` steps through its revisions. It
   opens on all time, and closing it restores your date range.
-- **The Log and Changes stay open.** Clicking either header no longer collapses it,
-  and a view collapsed in an earlier session opens again.
 - **Keyboard navigation:** `↑`/`↓`, `Home`/`End`, `PageUp`/`PageDown` to move, `Enter` to
   open the first changed file, `/` to search, `Esc` to clear.
 - **Every color comes from your theme**, in light, dark and both high-contrast themes.

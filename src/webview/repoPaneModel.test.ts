@@ -56,3 +56,11 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.strictEqual(w.fit(1400), 120, "and what it clamped to is what the user chose");
   console.log("ok - resizing never forgets the pane width the user chose");
 }
+{
+  const w = new PaneWidth({ initial: 450, min: 200, max: 900 });
+  assert.strictEqual(w.fit(1400), 450, "the Changes pane starts at 450px");
+  assert.strictEqual(w.fit(560), 260, "and always leaves the Log 300px");
+  assert.strictEqual(w.fit(400), 200, "but never goes under 200px");
+  assert.strictEqual(w.set(2000, 1400), 900, "a drag stops at the pane's own maximum");
+  console.log("ok - the Changes pane width has its own limits");
+}

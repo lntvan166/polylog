@@ -80,30 +80,43 @@ export function visibleRepos<T extends { name: string }>(repos: readonly T[], qu
     .map((x) => x.r);
 }
 
-export function clampPaneWidth(width: number, total: number): number {
-  if (!Number.isFinite(width)) return DEFAULT_REPO_PANE_WIDTH;
-  const max = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, total - MIN_LOG_WIDTH));
-  return Math.round(Math.min(max, Math.max(MIN_WIDTH, width)));
+export interface PaneLimits {
+  initial: number;
+  min: number;
+  max: number;
+}
+const REPO_PANE: PaneLimits = { initial: DEFAULT_REPO_PANE_WIDTH, min: MIN_WIDTH, max: MAX_WIDTH };
+
+/** A pane's width within its limits, always leaving the Log MIN_LOG_WIDTH of `total`. */
+export function clampPaneWidth(width: number, total: number, limits: PaneLimits = REPO_PANE): number {
+  if (!Number.isFinite(width)) return limits.initial;
+  const max = Math.max(limits.min, Math.min(limits.max, total - MIN_LOG_WIDTH));
+  return Math.round(Math.min(max, Math.max(limits.min, width)));
 }
 
 /**
- * The Repositories pane's width: what the user chose, and what fits right now. Resizing
- * (a narrow Log, or a collapse, which briefly leaves almost no room) changes only what is
+ * A pane's width: what the user chose, and what fits right now. Resizing (a narrow
+ * Log, or a collapse, which briefly leaves almost no room) changes only what is
  * shown, so the chosen width comes back when there is room for it again.
  */
 export class PaneWidth {
-  private wanted = DEFAULT_REPO_PANE_WIDTH;
-  shown = DEFAULT_REPO_PANE_WIDTH;
+  private wanted: number;
+  shown: number;
+
+  constructor(private readonly limits: PaneLimits = REPO_PANE) {
+    this.wanted = limits.initial;
+    this.shown = limits.initial;
+  }
 
   /** A drag, a key step or the saved layout: this becomes the user's width. */
   set(width: number, total: number): number {
-    this.wanted = clampPaneWidth(width, Number.POSITIVE_INFINITY);
+    this.wanted = clampPaneWidth(width, Number.POSITIVE_INFINITY, this.limits);
     return this.fit(total);
   }
 
-  /** The webview resized. */
+  /** The room changed; `total` is the width shared by this pane and the Log. */
   fit(total: number): number {
-    this.shown = clampPaneWidth(this.wanted, total);
+    this.shown = clampPaneWidth(this.wanted, total, this.limits);
     return this.shown;
   }
 }

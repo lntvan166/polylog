@@ -2,6 +2,7 @@ import "./styles.css";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import type { HostMessage, WebviewMessage } from "../protocol";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
+import { ChangesPane } from "./changesPane";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
 import { FilterBar } from "./filters";
@@ -52,17 +53,42 @@ const exitHistory = () => post({ type: "exitHistory" });
 byId("mode-all").addEventListener("click", exitHistory);
 byId("history-close").addEventListener("click", exitHistory);
 const splitter = byId("splitter");
-const paneWidth = new PaneWidth();
+const changesSplitter = byId("changes-splitter");
+const repoWidth = new PaneWidth();
+const changesWidth = new PaneWidth({ initial: 450, min: 200, max: 900 });
+/** Below this the Changes pane sits under the Log (styles.css), so it takes no width. */
+const STACKED_BELOW = 720;
+const SPLITTERS = 10;
 
-function showPaneWidth(width: number): void {
-  appEl.style.setProperty("--repo-pane-width", `${width}px`);
-  splitter.setAttribute("aria-valuenow", String(width));
+/** Fit both side panes; each leaves the Log its minimum beside the other. */
+function layoutPanes(): void {
+  const total = window.innerWidth;
+  const stacked = total < STACKED_BELOW;
+  const repos = appEl.classList.contains("no-repos") ? 0 : repoWidth.shown;
+  const changes = stacked ? changesWidth.fit(total) : changesWidth.fit(total - repos - SPLITTERS);
+  const repoRoom = total - (stacked ? 0 : changes) - SPLITTERS;
+  const r = repoWidth.fit(repoRoom);
+  appEl.style.setProperty("--repo-pane-width", `${r}px`);
+  appEl.style.setProperty("--changes-pane-width", `${changes}px`);
+  splitter.setAttribute("aria-valuenow", String(r));
+  changesSplitter.setAttribute("aria-valuenow", String(changes));
 }
-const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, window.innerWidth));
 
-// Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
-attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
-window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
+// Drag (or ←/→) a divider; the width is saved by the host when the gesture ends.
+attachSplitter(splitter, {
+  get: () => repoWidth.shown,
+  set: (w) => { repoWidth.set(w, Number.POSITIVE_INFINITY); layoutPanes(); },
+  commit: () => post({ type: "layout", repoPaneWidth: repoWidth.shown }),
+});
+// The Changes pane is on the right: dragging its divider left widens it, so the
+// splitter works on the negated width.
+attachSplitter(changesSplitter, {
+  get: () => -changesWidth.shown,
+  set: (w) => { changesWidth.set(-w, Number.POSITIVE_INFINITY); layoutPanes(); },
+  commit: () => post({ type: "layout", changesPaneWidth: changesWidth.shown }),
+});
+window.addEventListener("resize", layoutPanes);
+const changes = new ChangesPane(byId("changes-head"), byId("changes-status"), byId("changes-tree"), (path) => post({ type: "openFile", path }));
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 
@@ -88,8 +114,13 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       modebar.hidden = !m.history;
       appEl.classList.toggle("history", !!m.history);
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
-      applyPaneWidth(m.layout.repoPaneWidth);
+      repoWidth.set(m.layout.repoPaneWidth, Number.POSITIVE_INFINITY);
+      changesWidth.set(m.layout.changesPaneWidth, Number.POSITIVE_INFINITY);
+      layoutPanes();
       break;
+    case "changes":
+      changes.update(m.view);
+      return;
     case "loading":
       state.loading = true;
       clearTimeout(skeletonTimer);

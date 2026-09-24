@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import type { OpenDiffArgs } from "../changesTree";
+import type { OpenDiffArgs } from "../protocol";
 import type { LogSnapshot } from "../logView";
 import type { WebviewMessage } from "../protocol";
 import type { Commit } from "../types";
@@ -107,7 +107,7 @@ describe("Polylog panel", () => {
     await vscode.commands.executeCommand("polylog.showRepos");
   });
 
-  it("fills the native Changes tree when a commit is selected", async () => {
+  it("fills the Changes pane when a commit is selected", async () => {
     const c = bySubject(await snapshot(), "feat: add retry");
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
     const s = await until("the tree for the retry commit", (x) => x.changes.items.some((i) => i.includes("upload.go")));
@@ -136,6 +136,36 @@ describe("Polylog panel", () => {
     const input = await diffTab();
     assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "package upload\n");
     assert.match((await vscode.workspace.openTextDocument(input.modified)).getText(), /func Retry/);
+  });
+
+  it("Open File on a diff opens the file as it is in the workspace now", async () => {
+    await closeEditors();
+    const c = bySubject(await snapshot(), "feat: scaffold api");
+    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    const input = await diffTab();
+    // The editor title button passes the diff's modified side.
+    await vscode.commands.executeCommand("polylog.openWorkingFile", input.modified);
+    const editor = await waitFor("the workspace file", () => {
+      const e = vscode.window.activeTextEditor;
+      return e?.document.uri.scheme === "file" ? e : undefined;
+    });
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    assert.strictEqual(editor.document.uri.fsPath, require("path").join(api.root, "upload.go"));
+    assert.match(editor.document.getText(), /func Retry/, "today's content, not the revision's");
+  });
+
+  it("Open File from a Changes row's right-click opens the workspace file", async () => {
+    await closeEditors();
+    const c = bySubject(await snapshot(), "fix: guard nil");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await until("the tree for that commit", (x) => x.changes.items.some((i) => i.includes("client.ts")));
+    await vscode.commands.executeCommand("polylog.openWorkingFile", { webviewId: "polylog.log", webviewSection: "file", path: "client.ts" });
+    const editor = await waitFor("the workspace file", () => {
+      const e = vscode.window.activeTextEditor;
+      return e?.document.uri.scheme === "file" ? e : undefined;
+    });
+    assert.match(editor.document.uri.fsPath, /acme-web[\\/]client\.ts$/);
+    await closeEditors();
   });
 
   it("shows an empty before side for a root commit", async () => {
@@ -191,12 +221,19 @@ describe("Polylog panel", () => {
     assert.deepStrictEqual(s.changes.decorations, ["upload.go A gitDecoration.addedResourceForeground"]);
   });
 
-  it("tree files are not worktree URIs (no live git or Problems decorations)", async () => {
+  it("a click in the Changes pane opens only a file of the commit on screen", async () => {
+    await closeEditors();
     const c = bySubject(await snapshot(), "feat: add retry");
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
-    const s = await until("the retry tree", (x) => x.changes.items.some((i) => i.includes("upload.go")));
-    assert.ok(s.changes.schemes.length > 0);
-    assert.ok(s.changes.schemes.every((sc) => sc !== "file"), `worktree file: URIs attract live decorations: ${s.changes.schemes}`);
+    await until("the retry tree", (x) => x.changes.items.some((i) => i.includes("upload.go")));
+    await send({ type: "openFile", path: "../../etc/hostname" });
+    await send({ type: "openFile", path: "client.ts" });
+    await sleep(500);
+    assert.strictEqual(tabCount(), 0, "paths that are not this commit's files open nothing");
+    await send({ type: "openFile", path: "upload.go" });
+    const input = await diffTab();
+    assert.ok(input.modified.query.includes(c.sha));
+    assert.match((await vscode.workspace.openTextDocument(input.modified)).getText(), /func Retry/);
   });
 
   it("rejects refs that are not SHAs", async () => {

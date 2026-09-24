@@ -18,7 +18,7 @@ const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptU
   console.log("ok - no inline styles or literal colors in the shell");
 }
 {
-  for (const id of ["app", "repo-pane", "repo-filter", "repo-rows", "splitter", "modebar", "mode-all", "history-path", "history-close", "filters", "search", "author", "me", "branch", "branch-list", "branch-use", "date", "custom-range", "from", "to", "refresh", "notices", "list", "rows", "empty", "more", "count"]) {
+  for (const id of ["app", "repo-pane", "repo-filter", "repo-rows", "splitter", "modebar", "mode-all", "history-path", "history-close", "filters", "search", "author", "me", "branch", "branch-list", "branch-use", "date", "custom-range", "from", "to", "refresh", "notices", "list", "rows", "empty", "more", "count", "changes-splitter", "changes-pane", "changes-head", "changes-status", "changes-tree"]) {
     assert.ok(html.includes(`id="${id}"`), `missing #${id}`);
   }
   console.log("ok - every element main.ts looks up exists");
@@ -29,5 +29,6 @@ const html = renderHtml({ cspSource: "vscode-resource:", nonce: "n0nce", scriptU
     assert.ok(text || /aria-label="[^"]+"/.test(m[1]), `button without an accessible name: ${m[0].slice(0, 80)}`);
   }
   assert.ok(/id="list"[^>]*role="grid"/.test(html) && /id="list"[^>]*tabindex="0"/.test(html));
+  assert.ok(/id="changes-tree"[^>]*role="tree"/.test(html) && /id="changes-tree"[^>]*tabindex="0"/.test(html), "the Changes tree is its own tab stop");
   console.log("ok - every button has an accessible name; the list is a focusable grid");
 }

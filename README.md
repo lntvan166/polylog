@@ -23,7 +23,7 @@ four commits, and each one opens in the native diff editor.
 ## Screenshots
 
 **The merged log.** Every commit from every repo, with a colored chip showing where it
-lives. The Changes tree follows your selection, and clicking a file opens its diff above.
+lives. The Changes pane follows your selection, and clicking a file opens its diff above.
 
 ![The merged log of six repositories, with a commit's diff open in the editor](https://raw.githubusercontent.com/lntvan166/polylog/main/media/screenshot-log.png)
 
@@ -71,9 +71,13 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
-  multi-select. Toggle it with **Group by Repository** in the Log's title bar.
-- **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
-  open its diff in the editor area. Right-click the commit to copy its SHA or message.
+  multi-select. Toggle it with **Group by Repository** in the Polylog tab's toolbar.
+- **Changes pane.** The selected commit's message and changed files, beside the Log.
+  Files are colored by git status with `A`/`M`/`D`/`R` badges. Click a file to open its
+  diff in the editor area. Right-click the commit to copy its SHA or message, or a file
+  for **Open File** and **Polylog: File History**.
+- **Open File** on any Polylog diff (the title-bar button) opens the file as it is in your
+  workspace now, at the line you were on.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, opens on all time, and restores your date range when you close it. Your
   message and author filters still apply, so clear them to see every commit.
