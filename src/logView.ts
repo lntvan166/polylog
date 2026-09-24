@@ -10,7 +10,7 @@ import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQu
 import { isAbortError, runPool } from "./pool";
 import type { BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
-import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
+import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 import { branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
@@ -244,6 +244,46 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
     await this.setHistory(target);
+  }
+
+  /**
+   * "Open File" on a Polylog diff, or on a file in the Changes tree: the file as it is
+   * in the workspace now, at the line the diff's cursor was on.
+   */
+  async openWorkingFile(arg?: unknown): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+    const roots = this.repos.map((r) => r.root);
+    const current = this.deps.changes.current();
+    const node = arg as { kind?: unknown; path?: unknown } | undefined;
+    let file: string | undefined;
+    let line: number | undefined;
+    if (node && typeof node === "object" && node.kind === "file" && current?.files.some((f) => f.path === node.path)) {
+      file = workingFile({ root: current.repoRoot, ref: null, path: node.path as string }, roots);
+    } else {
+      const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
+      if (uri?.scheme === SCHEME) {
+        try {
+          file = workingFile(decodeRevision(uri.path, uri.query), roots);
+        } catch {
+          file = undefined;
+        }
+        const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri.toString());
+        line = editor?.selection.active.line;
+      }
+    }
+    if (!file) {
+      void vscode.window.showInformationMessage("Polylog: this file is not in a repository of this workspace.");
+      return;
+    }
+    const target = vscode.Uri.file(file);
+    try {
+      await vscode.workspace.fs.stat(target);
+    } catch {
+      void vscode.window.showInformationMessage(`Polylog: ${path.basename(file)} no longer exists in the workspace.`);
+      return;
+    }
+    const at = line === undefined ? undefined : new vscode.Range(line, 0, line, 0);
+    await vscode.window.showTextDocument(target, { preview: false, selection: at });
   }
 
   /** The workspace repository containing a file (innermost first), and its repo-relative path. */

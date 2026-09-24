@@ -210,6 +210,10 @@ VS Code 1.139): open → first rows went from **4.6 s to 0.43 s**.
 
 ## 15. Amendment: Changes drawn inside the Log webview (2026-09-24, maintainer decision)
 
+**Superseded the same day (maintainer decision): reverted in aa42ffd.** The native tree's
+file-type icons mattered more than removing the header flash, so Polylog keeps two views:
+the Log webview and the native Changes tree, with the collapse undone (6c01b9a).
+
 **Why.** Two views in one panel tab give each a header that VS Code collapses on click,
 and no API makes a header inert. Undoing the collapse (6c01b9a) still flashes for
 0.2–0.3 s. With one view in the container there is no header at all, so nothing can
@@ -272,3 +276,16 @@ uses outlines.
   `decorations`) assert the posted badge and color instead.
 - Harness: the Changes pane in all four theme shims.
 - A real VS Code check on Xvfb: no view headers; right-click menus.
+
+## 16. Amendment: Open File on a Polylog diff (2026-09-24, maintainer request)
+
+A Polylog diff shows two revisions, so VS Code's own "Open File" has no workspace file to
+go to. `polylog.openWorkingFile` ("Open File", `$(go-to-file)`) fills that gap:
+- It appears in the title bar of any `polylog:` editor, and on a file's right-click in the
+  Changes tree.
+- It opens the working-tree file for the revision, as a normal (non-preview) editor, at the
+  line the diff's cursor was on.
+- The file must lie inside a repository of this workspace (`revisionUri.workingFile`
+  refuses `..` and unknown roots).
+- A file that no longer exists in the workspace (deleted or renamed since) gets a message
+  instead of an error.

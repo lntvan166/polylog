@@ -74,6 +74,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
+- **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
+  Changes) opens the file as it is in your workspace now, at the line you were on.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, opens on all time, and restores your date range when you close it. Your
   message and author filters still apply, so clear them to see every commit.

@@ -28,6 +28,8 @@ The first release.
 - **Native Changes tree** for the selected commit, with git status colors and badges.
   Clicking a file opens its diff in VS Code's diff editor above the panel. Right-click the
   commit to copy its SHA or message.
+- **Open File** on a Polylog diff, or on a file in Changes, opens the file as it is in the
+  workspace now, at the same line.
 - **File History.** Right-click a file in the Explorer, an editor, a tab or the Changes
   tree and choose **Polylog: File History**. The Log shows that file's commits, following
   renames. The diff follows the selection, so `↑`/`↓` steps through its revisions. It

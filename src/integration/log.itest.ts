@@ -138,6 +138,37 @@ describe("Polylog panel", () => {
     assert.match((await vscode.workspace.openTextDocument(input.modified)).getText(), /func Retry/);
   });
 
+  it("Open File on a diff opens the file as it is in the workspace now", async () => {
+    await closeEditors();
+    const c = bySubject(await snapshot(), "feat: scaffold api");
+    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    const input = await diffTab();
+    // The editor title button passes the diff's modified side.
+    await vscode.commands.executeCommand("polylog.openWorkingFile", input.modified);
+    const editor = await waitFor("the workspace file", () => {
+      const e = vscode.window.activeTextEditor;
+      return e?.document.uri.scheme === "file" ? e : undefined;
+    });
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    assert.strictEqual(editor.document.uri.fsPath, require("path").join(api.root, "upload.go"));
+    assert.match(editor.document.getText(), /func Retry/, "today's content, not the revision's");
+  });
+
+  it("Open File from a Changes file's right-click opens the workspace file", async () => {
+    await closeEditors();
+    const c = bySubject(await snapshot(), "fix: guard nil");
+    await send({ type: "select", repoId: c.repoId, sha: c.sha });
+    await until("the tree for that commit", (x) => x.changes.items.some((i) => i.includes("client.ts")));
+    // The tree passes its file node, as for File History.
+    await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", path: "client.ts" });
+    const editor = await waitFor("the workspace file", () => {
+      const e = vscode.window.activeTextEditor;
+      return e?.document.uri.scheme === "file" ? e : undefined;
+    });
+    assert.match(editor.document.uri.fsPath, /acme-web[\\/]client\.ts$/);
+    await closeEditors();
+  });
+
   it("shows an empty before side for a root commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: scaffold api");

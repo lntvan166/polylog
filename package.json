@@ -112,6 +112,12 @@
         "command": "polylog.fileHistory",
         "title": "Polylog: File History",
         "icon": "$(history)"
+      },
+      {
+        "command": "polylog.openWorkingFile",
+        "title": "Open File",
+        "category": "Polylog",
+        "icon": "$(go-to-file)"
       }
     ],
     "menus": {
@@ -127,9 +133,14 @@
           "group": "copy@2"
         },
         {
+          "command": "polylog.openWorkingFile",
+          "when": "view == polylog.changes && viewItem == file",
+          "group": "1_open@1"
+        },
+        {
           "command": "polylog.fileHistory",
           "when": "view == polylog.changes && viewItem == file",
-          "group": "history@1"
+          "group": "2_history@1"
         }
       ],
       "commandPalette": [
@@ -148,6 +159,10 @@
         {
           "command": "polylog.fileHistory",
           "when": "resourceScheme == file || resourceScheme == polylog"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "resourceScheme == polylog"
         }
       ],
       "view/title": [
@@ -184,6 +199,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "resourceScheme == polylog",
+          "group": "navigation@98"
+        },
         {
           "command": "polylog.fileHistory",
           "when": "resourceScheme == file || resourceScheme == polylog",
