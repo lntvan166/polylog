@@ -85,8 +85,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
-  renames, opens on all time, and restores your date range when you close it. Your
-  message and author filters still apply, so clear them to see every commit.
+  renames, and always shows every commit of the file: it sets your date range, search and
+  author aside while open, and gives them back when you close it.
 - **Keyboard first.** The selection drives everything, so you can review a day's work
   without touching the mouse.
 

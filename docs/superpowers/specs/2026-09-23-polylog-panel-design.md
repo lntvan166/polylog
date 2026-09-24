@@ -389,3 +389,10 @@ on PATH (common on Windows), got "git was not found" while VS Code's own Git wor
 - **Switching `git.path` at runtime** takes effect at once: the runner forgets its binary,
   in-flight git processes are killed, and the page, the selected commit and the
   background reads (Me, branch suggestions) are read again.
+
+### 21.2 File History sets search and author aside
+
+File History kept the Log's message search and author filter, so a file could show 1
+commit out of 9. It now does for `text`, `author` and `mine` what it already did for the
+date range. They are cleared on entry, saved (`beforeHistory`; a reload also restores
+them), and given back on close, even if the user changed them while in the history.

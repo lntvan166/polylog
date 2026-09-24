@@ -267,6 +267,22 @@ describe("Polylog panel", () => {
     await closeEditors();
   });
 
+  it("File History shows every commit of the file, whatever the search and author, and gives them back on close", async () => {
+    await send({ type: "filter", filter: { ...ALL, text: "retry", author: "rin", mine: true } });
+    await until("the filtered log", (x) => x.filter.text === "retry");
+    const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"], "dana's commit shows too, and so does the one that never says retry");
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine], ["", "", false], "the boxes are empty while in the history");
+    assert.deepStrictEqual([s.persistedFilter?.text, s.persistedFilter?.author, s.persistedFilter?.mine], ["retry", "rin", true], "a reload now would bring the user's filters back");
+    await send({ type: "exitHistory" });
+    s = await until("all commits again", (x) => x.history === null);
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine], ["retry", "rin", true], "closing the history gives the search and author back");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("stepping through a history keeps one diff tab even with preview editors off", async () => {
     await closeEditors();
     const cfg = vscode.workspace.getConfiguration("workbench.editor");

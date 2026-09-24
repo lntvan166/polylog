@@ -81,7 +81,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** History steps swap tabs one at a time, and a step already overtaken is skipped. */
   private historySteps: Promise<void> = Promise.resolve();
   private historyStep = 0;
-  private dateBeforeHistory: Pick<FilterState, "date" | "from" | "to"> | null = null;
+  /** What File History set aside (range, search, author); closing it gives them back. */
+  private beforeHistory: Pick<FilterState, "date" | "from" | "to" | "text" | "author" | "mine"> | null = null;
   /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
   private branches: BranchName[] = [];
   private branchUse: BranchUse | undefined;
@@ -303,14 +304,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Save the filter; while File History forces all time, save the range the user will come back to. */
   private persistFilter(): void {
-    const saved = this.history && this.dateBeforeHistory ? { ...this.filter, ...this.dateBeforeHistory } : this.filter;
+    const saved = this.history && this.beforeHistory ? { ...this.filter, ...this.beforeHistory } : this.filter;
     void this.context.workspaceState.update(FILTER_KEY, saved);
   }
 
   /** Leave File History without reloading: restore the date range. */
   private leaveHistory(): void {
-    if (this.dateBeforeHistory) this.filter = { ...this.filter, ...this.dateBeforeHistory };
-    this.dateBeforeHistory = null;
+    if (this.beforeHistory) this.filter = { ...this.filter, ...this.beforeHistory };
+    this.beforeHistory = null;
     this.history = null;
     // The next File History is a new session: its first step must not close this one's diff.
     this.historyTab = undefined;
@@ -318,14 +319,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * File history shows all time; closing it restores the date range the user
-   * had before (even if they changed it while in history).
+   * File history shows every commit of the file: all time, no search, no author. Closing
+   * it restores what the user had before (even if they changed it while in history).
    */
   private async setHistory(history: { repoId: string; path: string } | null): Promise<void> {
     if (history && !this.history) {
-      const { date, from, to } = this.filter;
-      this.dateBeforeHistory = { date, from, to };
-      this.filter = { ...this.filter, date: "all", from: undefined, to: undefined };
+      const { date, from, to, text, author, mine } = this.filter;
+      this.beforeHistory = { date, from, to, text, author, mine };
+      this.filter = { ...this.filter, date: "all", from: undefined, to: undefined, text: "", author: "", mine: false };
       this.history = history;
     } else if (!history) {
       this.leaveHistory();

@@ -7,6 +7,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Polylog uses the same git as VS Code.** It used to run `git` from PATH only, so with
+  `git.path` set, or Git installed but not on PATH (common on Windows), it reported "git
+  was not found" while VS Code's own Git worked. It now tries your `git.path` (a path or a
+  list), then the git VS Code's Git extension found, then PATH, and uses the first that
+  runs. Changing `git.path` takes effect at once: git processes still running on the old
+  binary stop, and the Log is read again. If no git can run, the message names every path
+  it tried.
+
+### Changed
+
+- **File History shows every commit of the file.** It used to keep the message search
+  and author filter from the Log, so a file could look like it had 1 commit instead of 9.
+  Opening File History now sets the search, author and Me aside, as it already did the
+  date range, and closing it gives all of them back.
+- **The listing shows how to install Polylog under its published ID.** Polylog is
+  published as `lntvan166.polylog-git`, because the Marketplace name `polylog` belongs to
+  another publisher's unrelated extension. The Quick Start now gives the ID, the Quick Open
+  (`ext install lntvan166.polylog-git`) and command-line installs, the Open VSX route for
+  Cursor, VSCodium and Windsurf, and links to both listings. Listing pages show the README
+  from the published package, so this release is what brings the instructions there. No
+  code changes.
+
+---
+
 ## [0.1.0] — 2026-09-24
 
 The first release.
