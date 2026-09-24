@@ -79,12 +79,14 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-.search { flex: 1 1 180px; min-width: 120px; }
+/* Starting widths sum to about 750px, so the bar stays on one line in a typical panel; each
+   box grows from there. */
+.search { flex: 1 1 140px; min-width: 110px; }
 /* Author with "Me" as an input option toggle inside it, like the Aa / ab / .* toggles in
    VS Code's own search box. */
 /* The whole Author box is the field: chips, then the input, then the Me toggle. */
 .author-field {
-  position: relative; display: inline-flex; align-items: center; gap: 3px; flex: 0 1 220px; min-width: 120px;
+  position: relative; display: inline-flex; align-items: center; gap: 3px; flex: 1 1 170px; min-width: 120px;
   height: 26px; padding: 0 2px; border-radius: 2px; overflow: hidden;
   background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-input-background));
 }
@@ -114,8 +116,8 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
   border-color: var(--vscode-inputOption-activeBorder, transparent);
   color: var(--vscode-inputOption-activeForeground, var(--vscode-foreground));
 }
-.branch-filter { flex: 0 1 150px; min-width: 100px; }
-.path-filter { flex: 0 1 170px; min-width: 110px; }
+.branch-filter { flex: 1 1 125px; min-width: 90px; }
+.path-filter { flex: 1 1 130px; min-width: 100px; }
 /* File History already filters to one file. */
 .app.history .path-filter { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
