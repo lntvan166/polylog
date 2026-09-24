@@ -1,4 +1,4 @@
-import { DEFAULT_FILTER, isValidRef, type DatePreset, type FilterState } from "../filterModel";
+import { DEFAULT_FILTER, isValidRef, normalizePath, type DatePreset, type FilterState } from "../filterModel";
 import type { AuthorName, BranchName } from "../protocol";
 import { byId, clear, h } from "./dom";
 
@@ -13,6 +13,7 @@ export class FilterBar {
   private readonly authorChips = byId("author-chips");
   private readonly authorList = byId("author-list");
   private readonly meButton = byId<HTMLButtonElement>("me");
+  private readonly path = byId<HTMLInputElement>("path");
   private readonly branch = byId<HTMLInputElement>("branch");
   private readonly branchList = byId("branch-list");
   private readonly date = byId<HTMLSelectElement>("date");
@@ -44,6 +45,19 @@ export class FilterBar {
       if (b) this.removeAuthor(Number(b.dataset.chip));
     });
     this.meButton.addEventListener("click", () => this.emit({ mine: !this.current().mine }));
+    // A path filters as you type (debounced by the host); an unsafe one is marked, not sent.
+    this.path.addEventListener("input", () => {
+      const raw = this.path.value;
+      const p = normalizePath(raw);
+      if (raw.trim() !== "" && p === undefined) {
+        this.path.setAttribute("aria-invalid", "true");
+        this.path.title = "Relative to each repository: no leading / or :, and no ..";
+        return;
+      }
+      this.path.removeAttribute("aria-invalid");
+      this.path.title = "";
+      if (p !== this.current().path) this.emit({ path: p });
+    });
     // A branch applies when committed (Enter, a picked suggestion, leaving the box), not per keystroke.
     this.branch.addEventListener("change", () => this.applyBranch());
     this.branch.addEventListener("input", () => {
@@ -52,10 +66,10 @@ export class FilterBar {
     });
     this.date.addEventListener("change", () => {
       const date = this.date.value as DatePreset;
-      const { text, author, mine, authors, branch, repoIds } = this.current();
+      const { text, author, mine, authors, path, branch, repoIds } = this.current();
       this.onChange(date === "custom"
-        ? { text, author, mine, authors, branch, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
-        : { text, author, mine, authors, branch, repoIds, date });
+        ? { text, author, mine, authors, path, branch, repoIds, date, from: this.from.value || undefined, to: this.to.value || undefined }
+        : { text, author, mine, authors, path, branch, repoIds, date });
     });
     for (const input of [this.from, this.to]) {
       input.addEventListener("change", () => this.emit({ from: this.from.value || undefined, to: this.to.value || undefined }));
@@ -67,6 +81,11 @@ export class FilterBar {
     this.filter = filter;
     if (this.search.value !== filter.text) this.search.value = filter.text;
     if (this.author.value !== filter.author) this.author.value = filter.author;
+    // Keep what is being typed (it may still be invalid); follow the filter otherwise.
+    if (document.activeElement !== this.path && normalizePath(this.path.value) !== filter.path) {
+      this.path.value = filter.path ?? "";
+      this.path.removeAttribute("aria-invalid");
+    }
     const chips = filter.authors ?? [];
     this.author.placeholder = chips.length > 0 || filter.mine ? "Add author" : "Author";
     this.renderChips(chips);

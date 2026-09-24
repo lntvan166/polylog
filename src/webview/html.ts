@@ -44,6 +44,7 @@ export function renderHtml(o: HtmlOptions): string {
         <datalist id="author-list"></datalist>
         <button id="me" class="input-toggle" type="button" title="Only my commits" hidden>Me</button>
       </span>
+      <input id="path" class="path-filter" type="search" placeholder="Path, e.g. src/checkout" aria-label="Only commits touching this path in each repository: a file, a folder or a glob like **/*.sql" autocomplete="off" spellcheck="false">
       <input id="branch" class="branch-filter" list="branch-list" type="search" placeholder="Current branch" aria-label="Branch: shown in every repository that has it; the others use their current branch" autocomplete="off" spellcheck="false">
       <datalist id="branch-list"></datalist>
       <select id="date" aria-label="Date range">

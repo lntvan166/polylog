@@ -162,3 +162,10 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.deepStrictEqual(emptyState({ repoCount: 3, filter: { ...ALL, authors: ["dana"] } }).action, { label: "Clear Author", id: "clearAuthor" });
   console.log("ok - the empty state names every author being filtered on");
 }
+{
+  const e = emptyState({ repoCount: 3, filter: { ...ALL, path: "src/checkout" } });
+  assert.match(e.body, /No commit touches “src\/checkout” in 3 repositories/);
+  assert.deepStrictEqual(e.action, { label: "Clear Path", id: "clearPath" });
+  assert.match(emptyState({ repoCount: 3, filter: { ...ALL, path: "src", text: "fix" } }).body, /No commit touching “src” contains “fix”/, "path and search together");
+  console.log("ok - the empty state names the path and offers to clear it");
+}

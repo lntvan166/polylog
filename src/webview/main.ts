@@ -159,7 +159,8 @@ function runEmptyAction(action: EmptyAction): void {
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
     case "clearAuthor": setFilter({ ...f, author: "", mine: false, authors: undefined }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, authors: f.authors, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, authors: f.authors, path: f.path, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "clearPath": setFilter({ ...f, path: undefined }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }
@@ -199,6 +200,13 @@ document.addEventListener("keydown", (e) => {
   if (t instanceof HTMLInputElement && t.id === "author" && t.value !== "") {
     e.preventDefault();
     setFilter({ ...state.filter, author: "" });
+    return;
+  }
+  if (t instanceof HTMLInputElement && t.id === "path" && t.value !== "") {
+    e.preventDefault();
+    t.value = "";
+    t.removeAttribute("aria-invalid");
+    setFilter({ ...state.filter, path: undefined });
     return;
   }
   if (t instanceof HTMLInputElement && t.id === "branch" && t.value !== "") {

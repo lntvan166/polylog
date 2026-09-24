@@ -27,6 +27,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   without a `user.email` is still searched for the other authors. Backspace in an empty
   box removes the last chip.
 
+- **Filter by path across every repository.** A new **Path** box keeps only commits that
+  touched a file, a folder (everything inside it), or a glob such as `**/*.sql`, in each
+  repository at once, relative to its root. It becomes a pathspec after `--` on each
+  repo's `git log`, so git does the filtering. Paths that could leave a repository (`..`,
+  absolute) or switch on other pathspec magic (a leading `:`) are marked invalid and
+  never reach git. File History ignores it, since it already follows one file.
+
 ### Changed
 
 - **File History shows every commit of the file.** It used to keep the message search

@@ -129,6 +129,21 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     await assert.rejects(pending, (e: unknown) => isAbortError(e));
     console.log("ok - aborting kills the process and rejects with AbortError");
   }
+  {
+    const web = path.join(home, "acme-web");
+    makeRepo(web, [
+      { time: 1000, author: "dana", message: "feat: checkout", files: { "src/checkout/Pay.tsx": "x\n" } },
+      { time: 2000, author: "rin", message: "feat: cart", files: { "src/cart.ts": "y\n" } },
+      { time: 3000, author: "dana", message: "docs: readme", files: { "README.md": "z\n" } },
+    ], home);
+    const subjects = async (p: string) => parseLog(await runGit(web, logArgs({ ...ALL, path: p }, { pageSize: 50, now: 10_000 })), web).map((c) => c.subject);
+    assert.deepStrictEqual(await subjects("src/checkout"), ["feat: checkout"], "a folder matches what is inside it");
+    assert.deepStrictEqual(await subjects("src"), ["feat: cart", "feat: checkout"], "and everything below it");
+    assert.deepStrictEqual(await subjects("src/check"), [], "a partial name is not a prefix match: pathspecs match whole path components");
+    assert.deepStrictEqual(await subjects("**/*.tsx"), ["feat: checkout"], "a glob with ** crosses folders");
+    assert.deepStrictEqual(await subjects("*.md"), ["docs: readme"]);
+    console.log("ok - real git: a path filter matches files, folders and globs as the design says");
+  }
 })().catch((e) => {
   console.error(e);
   process.exit(1);

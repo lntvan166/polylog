@@ -111,6 +111,31 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("the path filter keeps commits that touched it, in every repository", async () => {
+    await send({ type: "filter", filter: { ...ALL, path: "upload.go" } });
+    let s = await until("upload.go's commits", (x) => x.rows.length === 2);
+    assert.ok(s.rows.every((r) => s.repos.find((p) => p.id === r.repoId)?.name === "acme-api"), "only the repo that has the file");
+    await send({ type: "filter", filter: { ...ALL, path: "**/*.md" } });
+    s = await until("the markdown commit", (x) => x.rows.length === 1);
+    assert.strictEqual(s.rows[0].subject, "docs: link ACME-7 from the changelog", "a glob");
+    await send({ type: "filter", filter: { ...ALL, path: "client.ts", authors: ["rin"] } });
+    s = await until("rin's commit to client.ts", (x) => x.rows.length === 1);
+    assert.strictEqual(s.rows[0].subject, "feat: scaffold web", "path and author together");
+    await send({ type: "filter", filter: { ...ALL, path: ":(top)../../etc" } });
+    s = await until("an unsafe path ignored", (x) => x.rows.length === 6);
+    assert.strictEqual(s.filter.path, undefined, "dropped by the host, never passed to git");
+    await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
+    await until("client.ts's commits", (x) => x.rows.length === 2);
+    const api = s.repos.find((r) => r.name === "acme-api")!;
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
+    s = await until("upload.go history, whatever the path filter", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
+    await send({ type: "exitHistory" });
+    s = await until("the path filter back", (x) => x.history === null && x.rows.length === 2);
+    assert.strictEqual(s.filter.path, "client.ts");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });

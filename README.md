@@ -78,6 +78,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     chip, and a commit by any of the chips matches. Suggestions list who committed
     recently across your repos. **Me** is a toggle inside the box that adds each repo's own
     `user.email`.
+  - **Path**: only commits touching a file, a folder (everything inside it), or a glob such
+    as `**/*.sql`, in every repository at once. Paths are relative to each repo's root.
   - **Branch**, applied in every repo that has it.
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.
@@ -105,7 +107,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 ## How It Works
 
 ```
- Filters (search · author · branch · dates · repos)
+ Filters (search · authors · path · branch · dates · repos)
                  │  passed straight through as git log flags
      ┌───────────┼───────────┬───────────┐
   git log     git log     git log     git log      one process per repository,
@@ -118,7 +120,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 ```
 
 Polylog has **no index, no cache and no database**. Git does all the searching. Every
-filter becomes a `git log` flag (`--grep`, `--author`, `--since`/`--until`, a ref), so each
+filter becomes a `git log` flag (`--grep`, `--author`, `--since`/`--until`, a ref, a pathspec), so each
 repository returns only matching commits, and Polylog merges those already-filtered lists.
 
 On a 68-repository, 16,000-commit workspace:

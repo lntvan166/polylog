@@ -416,3 +416,25 @@ them), and given back on close, even if the user changed them while in the histo
   suggestion adds a chip; Backspace in an empty box removes the last one; × removes one.
 - File History sets the chips aside along with the search and author (§21.2).
 - High contrast: chips are outlined, in the theme foreground.
+
+### 21.4 Path filter
+
+- `FilterState.path?: string`, relative to each repository's root.
+- **Normalizing** (`normalizePath`): trimmed, backslashes to `/`, no leading `./` or
+  trailing `/`. It is rejected (undefined) when it is absolute (`/x`, `C:`), has a `..`
+  segment, starts with `:` (pathspec magic such as `:(top)` or `:!`), or holds control
+  characters.
+- **The pathspec** (`pathspecOf`):
+  - `:(glob)<path>` when the path has `*`, `?` or `[` (`**` crosses folders);
+  - `:(literal)<path>` otherwise, so a folder matches everything inside it and a partial
+    name matches nothing (whole path components).
+  - It goes after `--`, so it can never be read as an option or a revision.
+- **Where it applies:** the page query only. `historyArgs` keeps File History's own paths,
+  and the Path box is hidden in File History. Typing is debounced like search.
+- **UI:** an invalid path gets `aria-invalid` and is not sent. The error color also wins
+  over the focus outline while typing, for the Branch box too.
+- **Empty state:** "No commit touches “path”…", with Clear Path. With a search or authors,
+  their messages gain "touching “path”".
+- **Tests:** unit tests; a real-git test (folder, partial name, glob, `*.md`); and
+  integration tests for a file in only one repo, a glob, path plus author, an unsafe path
+  dropped by the host, and File History ignoring and then restoring it.

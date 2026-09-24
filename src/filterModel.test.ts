@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, normalizePath, pathspecOf, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -179,4 +179,28 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
   assert.ok(!sameExceptText(ALL, { ...ALL, branch: "origin/prod" }), "a branch change applies at once, not debounced");
   console.log("ok - a branch becomes one revision argument after --end-of-options");
+}
+
+// ── Path filter: one pathspec after "--", so git does the filtering ─────────────
+{
+  assert.strictEqual(normalizePath(" src/checkout/ "), "src/checkout", "trimmed, no trailing slash");
+  assert.strictEqual(normalizePath("./src\\checkout"), "src/checkout", "a leading ./ and Windows separators are fine");
+  for (const bad of ["/etc", "C:\\x", "../x", "a/../../b", ":(top)x", ":!secret", "a\nb", ""]) {
+    assert.strictEqual(normalizePath(bad), undefined, `rejected: ${JSON.stringify(bad)}`);
+  }
+  assert.strictEqual(pathspecOf("src/checkout"), ":(literal)src/checkout", "a folder or file: literal, and a folder matches everything inside");
+  assert.strictEqual(pathspecOf("**/*.sql"), ":(glob)**/*.sql", "globs use git's glob magic, where ** crosses folders");
+  assert.strictEqual(pathspecOf("docs/[ab].md"), ":(glob)docs/[ab].md");
+  console.log("ok - a path filter is validated and becomes one literal or glob pathspec");
+}
+{
+  const a = args({ ...ALL, path: "src/checkout" });
+  assert.deepStrictEqual(a.slice(a.indexOf("--")), ["--", ":(literal)src/checkout"], "after --, so it can never be read as an option or a revision");
+  assert.deepStrictEqual(args({ ...ALL, path: ":(top)evil" }).slice(-1), ["--"], "an unsafe path adds nothing");
+  const h = historyArgs({ ...ALL, path: "src" }, { pageSize: 200, now: 0, paths: ["upload.go"] });
+  assert.deepStrictEqual(h.slice(h.indexOf("--")), ["--", "upload.go"], "File History ignores the path filter: it has its own file");
+  assert.strictEqual(sanitizeFilter({ ...ALL, path: " src/ " }).path, "src");
+  assert.ok(!("path" in sanitizeFilter({ ...ALL, path: "../x" })), "a bad saved path is dropped");
+  assert.ok(sameExceptText({ ...ALL, path: "sr" }, { ...ALL, path: "src" }), "typing a path is debounced like search");
+  console.log("ok - the path filter is pushed down after --, and File History keeps its own paths");
 }
