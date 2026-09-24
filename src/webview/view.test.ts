@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -128,4 +128,29 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(branchUseLabel({ branch: "prod", found: 0, fallback: 2 }), "no repo has prod · current branch in 2");
   assert.strictEqual(branchUseLabel(undefined), "");
   console.log("ok - the footer says which repos use the branch and which fell back");
+}
+{
+  assert.strictEqual(middleTruncate("acme-web", 12), "acme-web", "short names are untouched");
+  assert.strictEqual(middleTruncate("acme-mobile-shipper-ops", 16), "acme-mob…per-ops", "long names keep their start and their end");
+  assert.strictEqual(middleTruncate("acme-mobile-shipper-ops", 16).length, 16);
+  assert.notStrictEqual(middleTruncate("acme-mobile-shipper-ops", 16), middleTruncate("acme-mobile-shipper-app", 16), "names that share a start stay apart");
+  assert.strictEqual(middleTruncate("abcdef", 1), "…");
+  console.log("ok - long repo names are cut in the middle, so the part that tells them apart stays");
+}
+{
+  assert.strictEqual(repoColumnChars(["acme-web", "acme-api"]), 10, "never narrower than 10 characters");
+  assert.strictEqual(repoColumnChars(["acme-web", "acme-mobile-shipper"]), 19, "fits the longest name");
+  assert.strictEqual(repoColumnChars(["a".repeat(60)]), 28, "and stops at 28");
+  assert.strictEqual(repoColumnChars([]), 10);
+  console.log("ok - the repo column fits the workspace's longest repo name, within limits");
+}
+{
+  // A fake measure: 7px per character.
+  const within = (px: number) => (t: string) => t.length * 7 <= px;
+  assert.strictEqual(fitMiddle("acme-mobile-shipper-ops", within(1000)), "acme-mobile-shipper-ops", "a name that fits is untouched");
+  const cut = fitMiddle("acme-mobile-shipper-ops", within(112));
+  assert.strictEqual(cut, "acme-mob…per-ops", "otherwise the longest middle cut that fits (16 × 7 = 112px)");
+  assert.notStrictEqual(cut, fitMiddle("acme-mobile-shipper-app", within(112)), "so similar names stay apart at any width");
+  assert.strictEqual(fitMiddle("acme-web", within(3)), "…", "no room at all still renders");
+  console.log("ok - a repo name is cut in the middle to exactly what fits the space it has");
 }

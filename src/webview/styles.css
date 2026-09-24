@@ -143,7 +143,9 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 /* One line per commit, like an IDE log: repo chip | subject | author | date. */
 .row {
   position: absolute; top: 0; left: 0; right: 0; height: var(--row-height);
-  display: grid; grid-template-columns: minmax(72px, 15ch) minmax(0, 1fr) minmax(48px, 10ch) 8ch;
+  /* The repo column fits the longest repo name (main.ts --repo-col), but never takes more
+     than a quarter of the Log. */
+  display: grid; grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) minmax(0, 1fr) minmax(48px, 10ch) 8ch;
   align-items: center; column-gap: 10px; padding: 0 var(--pad-x); cursor: default;
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
@@ -200,6 +202,6 @@ body.vscode-high-contrast .chip { background: transparent; outline: 1px solid va
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {
-  .row { grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 8ch; }
+  .row { grid-template-columns: minmax(80px, min(var(--repo-col, 14ch), 30%)) minmax(0, 1fr) 8ch; }
   .row .author { display: none; }
 }

@@ -15,7 +15,9 @@ The first release.
 
 - **One git log across every repository in the workspace.** Commits from all of them in
   one list, merged newest first by commit date, each with a chip showing the repository it
-  belongs to. Polylog opens as a tab in the bottom panel, next to Terminal.
+  belongs to. The chip column fits your longest repository name. A name too long for the
+  space is shortened in the middle, so repositories that share a prefix stay apart, and the
+  full name is always in the tooltip. Polylog opens as a tab in the bottom panel, next to Terminal.
 - **Search and filters that apply to every repository at once:** commit message
   (literal, case-insensitive), author with a **Me** toggle inside the box, branch, and date range (last
   24 hours by default). Every filter becomes a `git log` flag, so git does the searching;

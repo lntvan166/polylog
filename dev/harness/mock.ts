@@ -23,9 +23,11 @@ const BASE = ["acme-web", "acme-api", "acme-libs"];
 
 export function mockRepos(scenario: string): Repo[] {
   if (scenario === "norepos") return [];
+  // "longnames": long repo names that share a prefix, as big workspaces tend to have.
+  const LONG = ["acme-web", "acme-mobile-shipper-ops", "acme-mobile-shipper-app", "acme-payments-gateway-worker", "acme-api"];
   const names = scenario === "many"
     ? [...BASE, ...Array.from({ length: 65 }, (_, i) => `acme-svc-${String(i + 1).padStart(2, "0")}`)]
-    : BASE;
+    : scenario === "longnames" ? LONG : BASE;
   return names.map((name) => ({ id: `/work/${name}`, root: `/work/${name}`, name }));
 }
 

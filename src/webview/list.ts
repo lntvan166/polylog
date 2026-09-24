@@ -1,5 +1,6 @@
 import type { Commit } from "../types";
 import { clear, h } from "./dom";
+import { fitName, textRoom } from "./measure";
 import { absoluteTime, accentOf, moveSelection, relativeTime, visibleRange } from "./view";
 
 export interface ListProps {
@@ -36,6 +37,8 @@ export class CommitList {
       this.rowHeight = 0;
       this.paint();
     });
+    // Dragging a divider narrows the Log without a window resize: re-fit the repo names.
+    new ResizeObserver(() => this.fitChips()).observe(root);
     root.addEventListener("keydown", (e) => this.onKey(e));
     body.addEventListener("click", (e) => {
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
@@ -92,13 +95,31 @@ export class CommitList {
     this.root.setAttribute("aria-rowcount", String(rows.length));
     const { start, end } = visibleRange(this.root.scrollTop, this.root.clientHeight, rh, rows.length);
     for (let i = start; i < end; i++) this.body.append(this.place(this.renderRow(rows[i], i), i));
+    this.fitChips();
     if (selected >= 0 && selected < rows.length) this.root.setAttribute("aria-activedescendant", `row-${selected}`);
     else this.root.removeAttribute("aria-activedescendant");
+  }
+
+  /**
+   * A repo name longer than its column is cut in the middle, to exactly what fits: repos
+   * that share a prefix differ at the end, and the browser's own ellipsis would hide it.
+   * The full name stays in the chip's tooltip and accessible name.
+   */
+  private fitChips(): void {
+    const first = this.body.querySelector<HTMLElement>(".row:not(.skeleton)");
+    if (!first) return;
+    const column = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
+    if (!Number.isFinite(column)) return;
+    for (const chip of this.body.querySelectorAll<HTMLElement>(".row .chip")) {
+      const name = chip.getAttribute("aria-label") ?? "";
+      chip.textContent = fitName(chip, name, textRoom(chip, column));
+    }
   }
 
   /** One line, like an IDE log: repo chip | subject | author | date. */
   private renderRow(c: Commit, i: number): HTMLElement {
     const accent = accentOf(this.props.accents, c.repoId);
+    const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
     return h("div", {
       class: "row",
       role: "row",
@@ -107,7 +128,7 @@ export class CommitList {
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
     }, [
-      h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${this.props.repoNames.get(c.repoId) ?? c.repoId} — ${c.ref}` : undefined }, [this.props.repoNames.get(c.repoId) ?? c.repoId]),
+      h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": name }, [name]),
       h("span", { class: "subject", role: "gridcell", title: c.subject }, [
         c.subject,
         // File history: the file had another name in this commit.

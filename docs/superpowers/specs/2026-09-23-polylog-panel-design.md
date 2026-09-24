@@ -329,3 +329,17 @@ be learned.
   white panel. The text stays in the theme foreground.
 - Blue and cyan remain the closest pair. With six or more repos both are in use; the
   printed name disambiguates.
+
+## 19. Amendment: long repository names (2026-09-24, maintainer request)
+
+Chips were capped at 15ch and cut at the end. Repos that share a prefix
+(`acme-mobile-shipper-ops` / `-app`) then looked identical, and there was no tooltip.
+- The repo column fits the longest repo name (`repoColumnChars`: 10–28 characters). It
+  never takes more than 25% of the Log (30% when narrow).
+- A name that still does not fit is cut in the middle, to exactly the width it has
+  (`fitMiddle` plus a canvas measure in the element's font). The same applies in the
+  Repositories pane, except while searching, where the highlighted letters need the whole
+  name.
+- Both re-fit when a divider is dragged (ResizeObserver).
+- The chip's tooltip and accessible name are always the full name, plus the branch in
+  branch mode.

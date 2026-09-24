@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -83,6 +83,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
     case "init":
       state.repos = m.repos;
       accents = assignAccents(m.repos);
+      // +2: the chip's own padding, so a name that fits is never cut.
+      appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
       filters.setMe(m.hasMe);
       filters.setBranches(m.branches);

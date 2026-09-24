@@ -1,5 +1,6 @@
 import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
+import { fitName } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
 import { accentOf, assignAccents } from "./view";
 
@@ -24,6 +25,8 @@ export class RepoPane {
   private active = 0;
 
   constructor(private readonly onChange: (repoIds: string[] | null) => void) {
+    // Dragging the divider resizes the pane without a window resize.
+    new ResizeObserver(() => this.fitNames()).observe(this.list);
     this.filterInput.addEventListener("input", () => {
       this.active = 0;
       this.render();
@@ -83,6 +86,20 @@ export class RepoPane {
     }
   }
 
+  /**
+   * Names wider than the pane are cut in the middle to what fits, so repos that share a
+   * prefix stay apart. Not while searching: the highlighted letters need the whole name.
+   */
+  private fitNames(): void {
+    if (this.filterInput.value.trim()) return;
+    for (const span of this.list.querySelectorAll<HTMLElement>(".repo-name")) {
+      const name = span.dataset.name;
+      if (!name) continue;
+      span.textContent = name;
+      if (span.scrollWidth > span.clientWidth) span.textContent = fitName(span, name, span.clientWidth);
+    }
+  }
+
   /** The name with the letters the fuzzy search matched wrapped for highlighting. */
   private highlighted(name: string): (string | HTMLElement)[] {
     const m = this.filterInput.value.trim() ? fuzzyMatch(this.filterInput.value, name) : null;
@@ -133,11 +150,12 @@ export class RepoPane {
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
-        h("span", { class: "repo-name" }, row.id === null ? [row.name] : this.highlighted(row.name)),
+        h("span", { class: "repo-name", "data-name": row.id === null ? undefined : row.name }, row.id === null ? [row.name] : this.highlighted(row.name)),
         row.id === null ? h("span", { class: "repo-count" }, [count]) : null,
       ]));
     });
     if (this.rows.length === 1 && this.repos.length > 0) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
+    this.fitNames();
     this.list.setAttribute("aria-activedescendant", `repo-row-${this.active}`);
     this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });
   }

@@ -89,6 +89,40 @@ export function accentOf(accents: ReadonlyMap<string, number>, repoId: string): 
   return accents.get(repoId) ?? 0;
 }
 
+/** The Log's repo column, in characters: fits the longest repo name, within 10–28. */
+export function repoColumnChars(names: readonly string[]): number {
+  const longest = names.reduce((n, name) => Math.max(n, name.length), 0);
+  return Math.min(28, Math.max(10, longest));
+}
+
+/**
+ * A repo name cut to `max` characters in the middle: repos that share a prefix
+ * (acme-mobile-…) usually differ at the end, so both ends stay visible.
+ */
+export function middleTruncate(name: string, max: number): string {
+  if (name.length <= max) return name;
+  if (max <= 1) return "…";
+  const keep = max - 1;
+  const head = Math.ceil(keep / 2);
+  return `${name.slice(0, head)}…${name.slice(name.length - (keep - head))}`;
+}
+
+/**
+ * The longest middle cut of `name` that `fits` accepts (the caller measures real text
+ * width). Binary search: fits is monotonic in length.
+ */
+export function fitMiddle(name: string, fits: (text: string) => boolean): string {
+  if (fits(name)) return name;
+  let lo = 1;
+  let hi = name.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(middleTruncate(name, mid))) lo = mid;
+    else hi = mid - 1;
+  }
+  return middleTruncate(name, lo);
+}
+
 const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");
 
 export function repoButtonLabel(repoIds: readonly string[] | null, repos: readonly { id: string; name: string }[]): string {
