@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
+import { debounce } from "./debounce";
 import { runGit } from "./git";
+import { collapsedPeer } from "./keepExpanded";
 import { HIDE_REPOS_KEY, LogView } from "./logView";
 import type { WebviewMessage } from "./protocol";
 import { RepoDiscovery } from "./repoDiscovery";
@@ -13,7 +15,17 @@ export function activate(context: vscode.ExtensionContext): void {
   const log = new LogView(context, { discovery, run: runGit, changes });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
+  // Clicking the Log or Changes header collapses that view; expand it again. Settle
+  // first: switching to another panel tab hides both, one event at a time.
+  const undoCollapse = debounce(() => {
+    const which = collapsedPeer(log.visible, changes.visible);
+    if (which === "log") log.expand();
+    else if (which === "changes") changes.expand();
+  }, 150);
   context.subscriptions.push(
+    log.onDidChangeVisibility(undoCollapse),
+    changes.onDidChangeVisibility(undoCollapse),
+    { dispose: () => undoCollapse.cancel() },
     discovery,
     changes,
     vscode.window.registerFileDecorationProvider(changes),

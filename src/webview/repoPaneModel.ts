@@ -85,3 +85,25 @@ export function clampPaneWidth(width: number, total: number): number {
   const max = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, total - MIN_LOG_WIDTH));
   return Math.round(Math.min(max, Math.max(MIN_WIDTH, width)));
 }
+
+/**
+ * The Repositories pane's width: what the user chose, and what fits right now. Resizing
+ * (a narrow Log, or a collapse, which briefly leaves almost no room) changes only what is
+ * shown, so the chosen width comes back when there is room for it again.
+ */
+export class PaneWidth {
+  private wanted = DEFAULT_REPO_PANE_WIDTH;
+  shown = DEFAULT_REPO_PANE_WIDTH;
+
+  /** A drag, a key step or the saved layout: this becomes the user's width. */
+  set(width: number, total: number): number {
+    this.wanted = clampPaneWidth(width, Number.POSITIVE_INFINITY);
+    return this.fit(total);
+  }
+
+  /** The webview resized. */
+  fit(total: number): number {
+    this.shown = clampPaneWidth(this.wanted, total);
+    return this.shown;
+  }
+}

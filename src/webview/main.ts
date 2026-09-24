@@ -9,7 +9,7 @@ import { CommitList } from "./list";
 import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
-import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH } from "./repoPaneModel";
+import { PaneWidth } from "./repoPaneModel";
 import { branchUseLabel, countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
@@ -52,17 +52,17 @@ const exitHistory = () => post({ type: "exitHistory" });
 byId("mode-all").addEventListener("click", exitHistory);
 byId("history-close").addEventListener("click", exitHistory);
 const splitter = byId("splitter");
-let paneWidth = DEFAULT_REPO_PANE_WIDTH;
+const paneWidth = new PaneWidth();
 
-function applyPaneWidth(width: number): void {
-  paneWidth = clampPaneWidth(width, window.innerWidth);
-  appEl.style.setProperty("--repo-pane-width", `${paneWidth}px`);
-  splitter.setAttribute("aria-valuenow", String(paneWidth));
+function showPaneWidth(width: number): void {
+  appEl.style.setProperty("--repo-pane-width", `${width}px`);
+  splitter.setAttribute("aria-valuenow", String(width));
 }
+const applyPaneWidth = (width: number) => showPaneWidth(paneWidth.set(width, window.innerWidth));
 
 // Drag (or ←/→) the divider; the width is saved by the host when the gesture ends.
-attachSplitter(splitter, { get: () => paneWidth, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth }) });
-window.addEventListener("resize", () => applyPaneWidth(paneWidth));
+attachSplitter(splitter, { get: () => paneWidth.shown, set: applyPaneWidth, commit: () => post({ type: "layout", repoPaneWidth: paneWidth.shown }) });
+window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.innerWidth)));
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
 

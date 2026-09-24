@@ -43,6 +43,22 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.render();
   }
 
+  /** Expanded and on screen (keepExpanded.ts). */
+  get visible(): boolean {
+    return this.view.visible;
+  }
+
+  get onDidChangeVisibility(): vscode.Event<vscode.TreeViewVisibilityChangeEvent> {
+    return this.view.onDidChangeVisibility;
+  }
+
+  /** Expand the view again without taking focus or changing the selection. */
+  expand(): void {
+    const root = this.roots[0];
+    if (root) void this.view.reveal(root, { select: false, focus: false }).then(undefined, () => undefined);
+    else void vscode.commands.executeCommand("polylog.changes.focus");
+  }
+
   set(state: ChangesState | null): void {
     this.state = state;
     this.render();

@@ -32,6 +32,8 @@ The first release.
   tree and choose **Polylog: File History**. The Log shows that file's commits, following
   renames. The diff follows the selection, so `↑`/`↓` steps through its revisions. It
   opens on all time, and closing it restores your date range.
+- **The Log and Changes stay open.** Clicking either header no longer collapses it,
+  and a view collapsed in an earlier session opens again.
 - **Keyboard navigation:** `↑`/`↓`, `Home`/`End`, `PageUp`/`PageDown` to move, `Enter` to
   open the first changed file, `/` to search, `Esc` to clear.
 - **Every color comes from your theme**, in light, dark and both high-contrast themes.

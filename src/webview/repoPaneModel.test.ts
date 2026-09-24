@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { clampPaneWidth, DEFAULT_REPO_PANE_WIDTH, PaneWidth, fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
 
 const all = ["/ws/acme-api", "/ws/acme-libs", "/ws/acme-web"];
 const repos = all.map((id) => ({ id, name: id.slice(4) }));
@@ -46,4 +46,13 @@ const repos = all.map((id) => ({ id, name: id.slice(4) }));
   assert.deepStrictEqual(fuzzyMatch("aw", "acme-web")?.positions, [0, 5], "positions of the matched letters, for highlighting");
   assert.strictEqual(fuzzyMatch("wa", "acme-web"), null);
   console.log("ok - repo search is fuzzy: in-order letters, word starts and runs rank higher");
+}
+{
+  const w = new PaneWidth();
+  assert.strictEqual(w.set(250, 1400), 250, "the width the user dragged to");
+  assert.strictEqual(w.fit(200), 120, "a squeezed Log (or a collapse) shows less");
+  assert.strictEqual(w.fit(1400), 250, "and the user's width comes back when there is room again");
+  assert.strictEqual(w.set(40, 1400), 120, "a drag is still clamped");
+  assert.strictEqual(w.fit(1400), 120, "and what it clamped to is what the user chose");
+  console.log("ok - resizing never forgets the pane width the user chose");
 }
