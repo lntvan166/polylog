@@ -207,3 +207,68 @@ VS Code 1.139): open → first rows went from **4.6 s to 0.43 s**.
 - The "Me" emails and branch suggestions (2 × 68 spawns) start after the first page, once
   per repo set, instead of competing with it.
 - The first fetch starts when the view is created, not when its page reports ready.
+
+## 15. Amendment: Changes drawn inside the Log webview (2026-09-24, maintainer decision)
+
+**Why.** Two views in one panel tab give each a header that VS Code collapses on click,
+and no API makes a header inert. Undoing the collapse (6c01b9a) still flashes for
+0.2–0.3 s. With one view in the container there is no header at all, so nothing can
+collapse or flash. The maintainer chose this over moving Changes to the side bar, and
+accepted losing the file-icon theme's icons in the tree.
+
+**Layout.** The Polylog panel tab holds one webview view, `polylog.log`. It has three
+panes: Repositories | Log | Changes. Two splitters separate them, with the same drag and
+keyboard behaviour as today's (`attachSplitter`). The Changes width is saved per user
+like the Repositories width, starts at 450 px, is at least 200 px, and always leaves the
+Log 300 px. Below a 720 px panel width, Changes stacks under the Log instead.
+Group by Repository and its title-bar toggle are unchanged; the actions now sit in the
+panel tab's own toolbar, as happens for any single-view container.
+
+**What the Changes pane shows.** The same content as today's tree:
+- A commit header: subject, then short SHA · author · relative time.
+- The full commit message.
+- The file tree, built by the existing pure `describeChanges` in the host and posted as
+  data. The webview gets no git logic.
+- Folder rows fold with a chevron. File rows show the name in its git status color, a
+  `+A −D` count and a status badge (`A`/`M`/`D`/`R`/`C`/`T`). Colors come from
+  `--vscode-gitDecoration-*`.
+- No file-type icons: there is no icon-theme API for webviews, and bundling an icon font
+  breaks constraint 2.
+- Loading, error and "select a commit" states.
+- In File History, the history's file is selected and scrolled into view.
+
+**Interaction.**
+- Click a file, or press Enter on it, to open its diff in the editor above (host
+  `openDiff`, as today).
+- The tree is a separate tab stop: `role="tree"`, with `aria-activedescendant` like the
+  Log.
+  - ↑/↓ move.
+  - ←/→ fold or unfold, or go to the parent.
+  - Home/End.
+- Focus in the tree doesn't change the Log's selection.
+- Right-click uses VS Code's native context menu, via `webview/context` contributions and
+  `data-vscode-context`:
+  - on the commit header: Copy SHA and Copy Message;
+  - on a file: Polylog: File History.
+  - The existing commands receive the row's context.
+
+**Removed.**
+- The `polylog.changes` tree view and `ChangesTree`'s `TreeDataProvider` and
+  `FileDecorationProvider` roles.
+- The `view/item/context` menus.
+- `keepExpanded` (from 6c01b9a); `PaneWidth` stays.
+- The host keeps the per-commit state (loading, files, message, focusPath) in a plain
+  model and posts it to the webview on each change.
+
+**Unchanged.** Git usage, filters, File History, the diff documents (`polylog:` scheme),
+and every constraint. Colors are still only `--vscode-*` variables, and high contrast
+uses outlines.
+
+**Testing.**
+- Unit: the described tree becomes pure webview view-models: flattening for keyboard
+  navigation, fold state kept across re-renders by node id, and the context-menu payload.
+- Integration: the `changes` snapshot keeps its shape (`items`, `focused`, `message`), now
+  read from the host model. Tests that asserted native tree internals (`schemes`,
+  `decorations`) assert the posted badge and color instead.
+- Harness: the Changes pane in all four theme shims.
+- A real VS Code check on Xvfb: no view headers; right-click menus.
