@@ -95,6 +95,9 @@ describe("Polylog panel", () => {
     await send({ type: "filter", filter: { ...ALL, authors: ["noor"] } });
     await until("nobody named noor", (x) => x.rows.length === 0);
     await send({ type: "filter", filter: ALL });
+    await sleep(300);
+    assert.strictEqual((await snapshot()).authors.length, 0, "nothing is read until the Author box is focused");
+    await send({ type: "wantSuggestions", kind: "authors" });
     const s = await until("author suggestions read", (x) => x.authors.length === 2);
     assert.deepStrictEqual(s.authors.map((a) => [a.name, a.email, a.count]).sort(), [["dana", "dana@example.com", 3], ["rin", "rin@example.com", 3]]);
     await until("six rows again", (x) => x.rows.length === 6);
@@ -410,6 +413,8 @@ describe("Polylog panel", () => {
   });
 
   it("offers branch names found across repositories", async () => {
+    assert.strictEqual((await snapshot()).branches.length, 0, "nothing is read until the Branch box is focused");
+    await send({ type: "wantSuggestions", kind: "branches" });
     const s = await until("branch suggestions", (x) => x.branches.length > 0);
     assert.deepStrictEqual(s.branches.find((b) => b.name === "main"), { name: "main", count: 3 });
     assert.deepStrictEqual(s.branches.find((b) => b.name === "prod"), { name: "prod", count: 1 });

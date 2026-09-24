@@ -45,7 +45,7 @@ const notices = new NoticeBar(byId("notices"), () => {
   render();
 });
 const empty = new EmptyView(byId("empty"), runEmptyAction);
-const filters = new FilterBar(setFilter, () => post({ type: "refresh" }));
+const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
 const appEl = byId("app");
 const modebar = byId("modebar");

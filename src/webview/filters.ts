@@ -1,6 +1,8 @@
 import { DEFAULT_FILTER, isValidRef, normalizePath, type DatePreset, type FilterState } from "../filterModel";
 import type { AuthorName, BranchName } from "../protocol";
 import { byId, clear, h } from "./dom";
+import { SuggestBox } from "./suggest";
+import type { Suggestion } from "./suggestModel";
 
 /**
  * The filter bar. It only reports intent: every change goes to the host, which
@@ -11,24 +13,37 @@ export class FilterBar {
   private readonly search = byId<HTMLInputElement>("search");
   private readonly author = byId<HTMLInputElement>("author");
   private readonly authorChips = byId("author-chips");
-  private readonly authorList = byId("author-list");
+  private authorItems: Suggestion[] = [];
+  private branchItems: Suggestion[] = [];
   private readonly meButton = byId<HTMLButtonElement>("me");
   private readonly path = byId<HTMLInputElement>("path");
   private readonly branch = byId<HTMLInputElement>("branch");
-  private readonly branchList = byId("branch-list");
   private readonly date = byId<HTMLSelectElement>("date");
   private readonly customRange = byId("custom-range");
   private readonly from = byId<HTMLInputElement>("from");
   private readonly to = byId<HTMLInputElement>("to");
 
-  constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void) {
+  private readonly authorSuggest: SuggestBox;
+  private readonly branchSuggest: SuggestBox;
+
+  constructor(private readonly onChange: (f: FilterState) => void, onRefresh: () => void, onWantSuggestions: (kind: "authors" | "branches") => void) {
+    // Suggestions load the first time a box is focused; the host reads them once per repo set.
+    this.author.addEventListener("focus", () => onWantSuggestions("authors"));
+    this.branch.addEventListener("focus", () => onWantSuggestions("branches"));
     byId("filters").addEventListener("submit", (e) => e.preventDefault());
     this.search.addEventListener("input", () => this.emit({ text: this.search.value }));
+    // Suggestions in VS Code's own style. Created first: their keys (Enter picks) run first.
+    this.authorSuggest = new SuggestBox(this.author, byId("author-field"),
+      () => ({ items: this.authorItems, exclude: this.current().authors }), (v) => this.addAuthor(v));
+    this.branchSuggest = new SuggestBox(this.branch, this.branch, () => ({ items: this.branchItems }), (v) => {
+      this.branch.value = v;
+      this.applyBranch();
+    });
     // Typing filters as you go (debounced by the host). Enter, a comma or a picked
     // suggestion turns it into a chip, and the next author can be typed.
-    this.author.addEventListener("input", (e) => {
+    this.author.addEventListener("input", () => {
       const v = this.author.value;
-      if ((e as InputEvent).inputType === "insertReplacementText" || v.endsWith(",")) this.addAuthor(v.replace(/,$/, ""));
+      if (v.endsWith(",")) this.addAuthor(v.replace(/,$/, ""));
       else this.emit({ author: v });
     });
     this.author.addEventListener("keydown", (e) => {
@@ -109,14 +124,14 @@ export class FilterBar {
 
   /** Suggestions for the Branch box: names shared by the most repositories first. */
   setBranches(items: readonly BranchName[]): void {
-    clear(this.branchList);
-    for (const b of items) this.branchList.append(h("option", { value: b.name, label: `${b.count} ${b.count === 1 ? "repo" : "repos"}` }));
+    this.branchItems = items.map((b) => ({ value: b.name, label: b.name, detail: `${b.count} ${b.count === 1 ? "repo" : "repos"}` }));
+    this.branchSuggest.refresh();
   }
 
   /** Suggestions for the Author box: people who committed recently, most commits first. */
   setAuthors(items: readonly AuthorName[]): void {
-    clear(this.authorList);
-    for (const a of items) this.authorList.append(h("option", { value: a.name, label: `${a.email} · ${a.count}` }));
+    this.authorItems = items.map((a) => ({ value: a.name, label: a.name, detail: `${a.email} · ${a.count}` }));
+    this.authorSuggest.refresh();
   }
 
   private addAuthor(raw: string): void {

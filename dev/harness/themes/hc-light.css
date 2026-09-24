@@ -57,4 +57,9 @@
   --vscode-settings-checkboxForeground: #292929;
   --vscode-badge-background: #0f4a85;
   --vscode-badge-foreground: #ffffff;
+  --vscode-editorSuggestWidget-background: #ffffff;
+  --vscode-editorSuggestWidget-border: #0f4a85;
+  --vscode-editorSuggestWidget-foreground: #292929;
+  --vscode-editorSuggestWidget-selectedBackground: #ffffff;
+  --vscode-editorSuggestWidget-highlightForeground: #0f4a85;
 }

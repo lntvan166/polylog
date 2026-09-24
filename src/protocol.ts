@@ -37,4 +37,6 @@ export type WebviewMessage =
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth: number }
   | { type: "exitHistory" }
+  /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
+  | { type: "wantSuggestions"; kind: "authors" | "branches" }
   | { type: "openSettings" };

@@ -409,11 +409,24 @@ them), and given back on close, even if the user changed them while in the histo
 - Behavior change: **Me no longer replaces the typed author;** it is one more author, and
   typing no longer switches Me off.
 - Chips reload at once; typing is still debounced.
-- Suggestions are a background read after the first page, like branches: `git log
-  --no-merges --max-count=300 --format=%aN%x1f%aE` per repo, merged by email (ignoring
-  case) under the most-used name, most commits first, top 200 (`authorSuggestions`).
-- The UI is a native `<datalist>`, like the Branch box. Enter, a comma or a picked
-  suggestion adds a chip; Backspace in an empty box removes the last one; × removes one.
+- Suggestions: `git log --no-merges --max-count=300 --format=%aN%x1f%aE` per repo, merged
+  by email (ignoring case) under the most-used name, most commits first, top 200
+  (`authorSuggestions`).
+- **Loaded lazily:** Author and Branch suggestions are read the first time their box is
+  focused (`wantSuggestions`), once per repo set, not after the first page.
+  - Measured on 68 repos: startup git processes fell from 273 to 137, and first rows from
+    353 to 308 ms (511 to 366 ms end to end).
+  - The first focus costs about 100 ms (authors) or 65 ms (branches).
+  - If you type before they arrive, the list opens when they land.
+- **The dropdown is Polylog's own** (`SuggestBox`, `suggestModel.ts`), in VS Code's
+  suggest-widget colors (`--vscode-editorSuggestWidget-*`), for Author and Branch alike. The
+  browser's `<datalist>` popup could not be themed.
+  - Matching: a case-insensitive substring of the label or the detail, with name matches
+    first and the match highlighted; chosen authors are left out.
+  - Keys: ↑/↓ wrap, Enter and Tab pick, Esc closes; ↓ opens the list with nothing typed.
+  - The box is an ARIA combobox; the list never takes focus.
+- Enter (with nothing highlighted), a comma, or a picked suggestion adds a chip. Backspace
+  in an empty box removes the last one, and × removes one.
 - File History sets the chips aside along with the search and author (§21.2).
 - High contrast: chips are outlined, in the theme foreground.
 

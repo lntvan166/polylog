@@ -199,6 +199,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "exitHistory":
         await this.setHistory(null);
         return;
+      case "wantSuggestions":
+        if (m.kind === "authors" || m.kind === "branches") await this.loadSuggestions(m.kind);
+        return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
         return;
@@ -387,8 +390,19 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key === this.backgroundFor) return;
     this.backgroundFor = key;
     void this.loadMe();
-    void this.loadBranches();
-    void this.loadAuthors();
+    // Suggestions are read when their box is first focused (wantSuggestions), not here:
+    // at startup they would cost 2 git processes per repository for boxes rarely opened.
+    this.suggestionsFor.clear();
+  }
+
+  /** The repo set each kind of suggestion was last read for. */
+  private readonly suggestionsFor = new Map<"authors" | "branches", string>();
+
+  private async loadSuggestions(kind: "authors" | "branches"): Promise<void> {
+    const key = this.repos.map((r) => r.id).join("\0");
+    if (this.suggestionsFor.get(kind) === key) return;
+    this.suggestionsFor.set(kind, key);
+    await (kind === "authors" ? this.loadAuthors() : this.loadBranches());
   }
 
   /** People who committed recently, for the Author box's suggestions: 300 commits per repo. */
