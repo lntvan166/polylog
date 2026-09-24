@@ -12,7 +12,7 @@
 html, body { height: 100%; margin: 0; padding: 0; }
 body {
   overflow: hidden;
-  /* A panel view: match the panel's surface, not the editor's. */
+  /* A panel view: match the panel's surface (and the native Changes tree beside it), not the editor's. */
   background: var(--vscode-panel-background, var(--vscode-editor-background));
   color: var(--vscode-foreground);
   font-family: var(--vscode-font-family);
@@ -36,13 +36,10 @@ input:-webkit-autofill, input:-webkit-autofill:hover, input:-webkit-autofill:foc
 :focus { outline: none; }
 :focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
-/* Repositories | divider | Log | divider | Changes. Widths are set from main.ts. */
-.app {
-  display: grid; height: 100vh;
-  grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr) 5px var(--changes-pane-width, 450px);
-}
-.app.no-repos { grid-template-columns: minmax(0, 1fr) 5px var(--changes-pane-width, 450px); }
-.app.no-repos .repo-pane, .app.no-repos #splitter { display: none; }
+/* Repositories | divider | Log. The pane width is set from main.ts (--repo-pane-width). */
+.app { display: grid; grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr); height: 100vh; }
+.app.no-repos { grid-template-columns: minmax(0, 1fr); }
+.app.no-repos .repo-pane, .app.no-repos .splitter { display: none; }
 .log { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .log > .main { flex: 1 1 auto; min-height: 0; }
 
@@ -77,48 +74,6 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 /* The divider: a visible theme line that lights up like VS Code's own sash. */
 .splitter { cursor: col-resize; border-left: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); touch-action: none; }
 .splitter:hover, .splitter.dragging, .splitter:focus-visible { background: var(--vscode-sash-hoverBorder); outline: none; }
-
-/* ── Changes pane (panel spec §15) ──────────────────────────────────────── */
-.changes-pane { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 0; }
-/* Not a view header: plain text, so there is nothing to click and collapse. Same height
-   and bottom line as the Log's filter bar. */
-.changes-title {
-  display: flex; align-items: center; min-height: 39px; padding: 0 12px;
-  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border));
-  font-weight: 600; color: var(--vscode-foreground);
-}
-.changes-scroll { overflow-y: auto; min-height: 0; }
-.commit-head { padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-.commit-subject { font-weight: 600; overflow-wrap: anywhere; }
-.commit-meta { margin-top: 2px; color: var(--vscode-descriptionForeground); font-variant-numeric: tabular-nums; }
-.commit-body { margin-top: 6px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--vscode-descriptionForeground); max-height: 8.5em; overflow-y: auto; }
-.changes-status { margin: 0; padding: 8px 12px; color: var(--vscode-descriptionForeground); }
-.tree { padding: 2px 0 6px; }
-/* Like VS Code's trees: the focused row carries the outline, not the whole tree. */
-.tree:focus-visible { outline: none; }
-.tree-row { display: flex; align-items: center; gap: 4px; height: 22px; padding-right: 10px; white-space: nowrap; cursor: pointer; }
-.tree-row:hover { background: var(--vscode-list-hoverBackground); }
-.tree-row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
-.tree:focus .tree-row[aria-selected="true"] {
-  background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
-  outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px;
-}
-.twistie { flex: none; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; color: var(--vscode-icon-foreground); }
-.twistie .chevron { transition: transform 0.1s; }
-.twistie.open .chevron { transform: rotate(90deg); }
-.tree-name { overflow: hidden; text-overflow: ellipsis; }
-.tree-desc { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--vscode-descriptionForeground); font-size: 0.92em; padding-left: 4px; }
-.tree-badge { flex: none; width: 14px; text-align: center; font-size: 0.92em; font-weight: 600; }
-/* A file takes its git status color, as in VS Code's own trees. */
-.status-A, .status-C { --status: var(--vscode-gitDecoration-addedResourceForeground); }
-.status-M, .status-T { --status: var(--vscode-gitDecoration-modifiedResourceForeground); }
-.status-D { --status: var(--vscode-gitDecoration-deletedResourceForeground); }
-.status-R { --status: var(--vscode-gitDecoration-renamedResourceForeground); }
-.tree-row[class*="status-"] .tree-name, .tree-row[class*="status-"] .tree-badge { color: var(--status, inherit); }
-.status-D .tree-name { text-decoration: line-through; }
-.tree-row.binary { cursor: default; }
-/* Selected rows keep the selection's own foreground, like VS Code's trees. */
-.tree:focus .tree-row[aria-selected="true"] :is(.tree-name, .tree-desc, .tree-badge) { color: inherit; }
 
 /* ── Filter bar ─────────────────────────────────────────────────────────── */
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 10px; border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
@@ -222,9 +177,7 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 body.vscode-high-contrast .row:hover,
 body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
-body.vscode-high-contrast .row[aria-selected="true"],
-body.vscode-high-contrast .tree-row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
-body.vscode-high-contrast .tree-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 /* button.background is black in hcDark: a checked box would vanish into the panel. */
 body.vscode-high-contrast .repo-check { accent-color: var(--vscode-contrastActiveBorder); }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
@@ -233,10 +186,4 @@ body.vscode-high-contrast .chip { background: transparent; outline: 1px solid va
 @media (max-width: 720px) {
   .row { grid-template-columns: minmax(80px, 14ch) minmax(0, 1fr) 8ch; }
   .row .author { display: none; }
-  /* Too narrow for three panes: Changes goes under the Log (main.ts STACKED_BELOW). */
-  .app { grid-template-columns: var(--repo-pane-width, 190px) 5px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(120px, 40%); }
-  .app.no-repos { grid-template-columns: minmax(0, 1fr); }
-  .changes-splitter { display: none; }
-  .changes-pane { grid-column: 1 / -1; border-top: 1px solid var(--vscode-panel-border, var(--vscode-widget-border)); }
-  .repo-pane, #splitter, .log { grid-row: 1; }
 }

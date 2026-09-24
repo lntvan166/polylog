@@ -2,15 +2,15 @@ import { randomBytes } from "crypto";
 import * as path from "path";
 import * as vscode from "vscode";
 import { firstOpenable } from "./changesModel";
-import type { ChangesSnapshot, ChangesStore } from "./changesStore";
+import type { ChangesSnapshot, ChangesTree, OpenDiffArgs } from "./changesTree";
 import { diffSides, parseShow, showArgs } from "./commitDetail";
 import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { BranchName, HostMessage, Layout, OpenDiffArgs, WebviewMessage } from "./protocol";
+import type { BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
-import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
+import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 import { branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
@@ -22,16 +22,13 @@ export const HIDE_REPOS_KEY = "polylog.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
 const PANE_WIDTH_KEY = "polylog.repoPaneWidth";
 const DEFAULT_PANE_WIDTH = 190;
-/** globalState: the Changes pane width the user dragged to. */
-const CHANGES_WIDTH_KEY = "polylog.changesPaneWidth";
-const DEFAULT_CHANGES_WIDTH = 450;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
 
 export interface LogDeps {
   discovery: RepoDiscovery;
   run: RunGit;
-  changes: ChangesStore;
+  changes: ChangesTree;
 }
 
 export interface LogSnapshot {
@@ -91,6 +88,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly visibilityChanged = new vscode.EventEmitter<void>();
+  readonly onDidChangeVisibility = this.visibilityChanged.event;
   private readonly reloadSoon = debounce(() => void this.reload(), SEARCH_DEBOUNCE_MS);
   // The git extension opens repositories in bursts at startup; coalesce them.
   private readonly reposChangedSoon = debounce(() => void this.refreshRepos(), SEARCH_DEBOUNCE_MS);
@@ -106,10 +105,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       return deps.run(cwd, args, signal);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
-    this.disposables.push(
-      deps.discovery.onDidChange(() => this.reposChangedSoon()),
-      deps.changes.onDidChange(() => this.post({ type: "changes", view: deps.changes.view() })),
-    );
+    this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -128,12 +124,26 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       scriptUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.js")).toString(),
       styleUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.css")).toString(),
     });
+    // Also a check on load: a view collapsed in an earlier session raises no event of its own.
+    this.visibilityChanged.fire();
     this.disposables.push(
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
+      view.onDidChangeVisibility(() => this.visibilityChanged.fire()),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
       }),
     );
+  }
+
+  /** Expanded and on screen; undefined if the Log never loaded (collapsed at startup). */
+  get visible(): boolean | undefined {
+    return this.webviewView?.visible;
+  }
+
+  /** Expand the Log again (keepExpanded.ts); show(true) keeps focus where it is. */
+  expand(): void {
+    if (this.webviewView) this.webviewView.show(true);
+    else void vscode.commands.executeCommand(`${LogView.id}.focus`);
   }
 
   async onMessage(m: WebviewMessage): Promise<void> {
@@ -146,7 +156,6 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
         this.postInit();
-        this.post({ type: "changes", view: this.deps.changes.view() });
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
@@ -177,18 +186,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "openFirst":
         await this.openFirst(m.repoId, m.sha);
         return;
-      case "openFile": {
-        // A path from the webview: only a file of the commit on screen opens.
-        const args = this.deps.changes.openable(m.path);
-        if (args) await this.openDiff(args);
-        return;
-      }
       case "exitHistory":
         await this.setHistory(null);
         return;
       case "layout":
         if (typeof m.repoPaneWidth === "number" && Number.isFinite(m.repoPaneWidth)) await this.context.globalState.update(PANE_WIDTH_KEY, Math.round(m.repoPaneWidth));
-        if (typeof m.changesPaneWidth === "number" && Number.isFinite(m.changesPaneWidth)) await this.context.globalState.update(CHANGES_WIDTH_KEY, Math.round(m.changesPaneWidth));
         return;
       case "openSettings":
         await vscode.commands.executeCommand("workbench.action.openSettings", "scan depth");
@@ -203,10 +205,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private layout(): Layout {
     const width = this.context.globalState.get<number>(PANE_WIDTH_KEY, DEFAULT_PANE_WIDTH);
-    const changes = this.context.globalState.get<number>(CHANGES_WIDTH_KEY, DEFAULT_CHANGES_WIDTH);
     return {
       repoPaneWidth: typeof width === "number" && Number.isFinite(width) ? width : DEFAULT_PANE_WIDTH,
-      changesPaneWidth: typeof changes === "number" && Number.isFinite(changes) ? changes : DEFAULT_CHANGES_WIDTH,
       groupByRepo: !this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false),
     };
   }
@@ -219,17 +219,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /**
    * "Polylog: File History" from the Explorer, an editor, a diff or the Changes
-   * pane. Accepts a file: URI, a polylog: revision URI, a Changes file row's
-   * context, or nothing (the active editor).
+   * tree. Accepts a file: URI, a polylog: revision URI, a Changes file node, or
+   * nothing (the active editor).
    */
   async fileHistory(arg?: unknown): Promise<void> {
     if (this.repos.length === 0) await this.loadRepos();
     let target: { repoId: string; path: string } | undefined;
     const current = this.deps.changes.current();
-    // A file row in the Changes pane: its right-click context (changesPaneModel.contextFor).
-    const row = arg as { webviewSection?: unknown; path?: unknown } | undefined;
-    if (row && typeof row === "object" && row.webviewSection === "file" && current?.files.some((f) => f.path === row.path)) {
-      target = { repoId: current.commit.repoId, path: row.path as string };
+    if (arg && typeof arg === "object" && (arg as { kind?: unknown }).kind === "file" && current) {
+      target = { repoId: current.commit.repoId, path: (arg as { path: string }).path };
     } else {
       const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
       if (uri?.scheme === SCHEME) {
@@ -246,46 +244,6 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
     await this.setHistory(target);
-  }
-
-  /**
-   * "Open File" on a Polylog diff, or on a file in the Changes pane: the file as it is
-   * in the workspace now, at the line the diff's cursor was on.
-   */
-  async openWorkingFile(arg?: unknown): Promise<void> {
-    if (this.repos.length === 0) await this.loadRepos();
-    const roots = this.repos.map((r) => r.root);
-    const current = this.deps.changes.current();
-    const row = arg as { webviewSection?: unknown; path?: unknown } | undefined;
-    let file: string | undefined;
-    let line: number | undefined;
-    if (row && typeof row === "object" && row.webviewSection === "file" && current?.files.some((f) => f.path === row.path)) {
-      file = workingFile({ root: current.repoRoot, ref: null, path: row.path as string }, roots);
-    } else {
-      const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
-      if (uri?.scheme === SCHEME) {
-        try {
-          file = workingFile(decodeRevision(uri.path, uri.query), roots);
-        } catch {
-          file = undefined;
-        }
-        const editor = vscode.window.visibleTextEditors.find((e) => e.document.uri.toString() === uri.toString());
-        line = editor?.selection.active.line;
-      }
-    }
-    if (!file) {
-      void vscode.window.showInformationMessage("Polylog: this file is not in a repository of this workspace.");
-      return;
-    }
-    const target = vscode.Uri.file(file);
-    try {
-      await vscode.workspace.fs.stat(target);
-    } catch {
-      void vscode.window.showInformationMessage(`Polylog: ${path.basename(file)} no longer exists in the workspace.`);
-      return;
-    }
-    const at = line === undefined ? undefined : new vscode.Range(line, 0, line, 0);
-    await vscode.window.showTextDocument(target, { preview: false, selection: at });
   }
 
   /** The workspace repository containing a file (innermost first), and its repo-relative path. */
@@ -584,5 +542,6 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
     for (const d of this.disposables) d.dispose();
+    this.visibilityChanged.dispose();
   }
 }

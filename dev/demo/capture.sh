@@ -79,9 +79,9 @@ import -window root "$PROFILE/layout.png"
 TOP=$(convert "$PROFILE/layout.png" -crop 1x800+300+60 txt:- | awk -F'[,: ]+' 'NR>1 && $0 !~ /#1F1F1F/ {print $2 + 60; exit}')
 xdotool mousemove 740 $((TOP + 1)) sleep 0.3 mousedown 1 sleep 0.2 mousemove 740 500 sleep 0.2 mousemove 740 390 sleep 0.3 mouseup 1
 sleep 1
-ROW0=478   # first Log row; rows are 25px apart
-SEARCH="360 446"; BRANCH="735 446"
-FILE_PAYMENTSTEP="1080 622"   # in the Changes pane, for the acme-web ACME-142 commit
+ROW0=504   # first Log row; rows are 25px apart
+SEARCH="388 472"; BRANCH="787 472"
+FILE_PAYMENTSTEP="1140 574"   # in Changes, for the acme-web ACME-142 commit
 
 # 1. The merged log, with a commit's diff open above it.
 click 500 $ROW0
@@ -104,12 +104,12 @@ click $FILE_PAYMENTSTEP 1 2.5
 kill -INT $FF; wait $FF || true
 shot 02-search
 
-# 3. File History of the diff on screen (the same command as a Changes row's right-click).
-cmd "Polylog: File History"
-sleep 1.5
-typein 360 483 ""                  # in history mode the filters sit under the mode bar
+# 3. File History from the Changes tree.
+click $FILE_PAYMENTSTEP 3 1
+click 1230 594 1 2.5
+typein 388 507 ""
 shot 03-file-history
-click 300 446 1 1.5                # close history: "All commits" (the × moves with the path)
+click 788 470 1 1.5                # close history (×)
 
 # 4. A release branch in every repository that has it.
 typein $SEARCH ""

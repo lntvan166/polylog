@@ -6,7 +6,7 @@
 
 web
 
-A VS Code panel view (one webview: Repositories, Log and Changes side by side), next to Terminal. It also renders in a plain browser through the
+A VS Code panel view (Log webview beside a native Changes tree), next to Terminal. It also renders in a plain browser through the
 dev harness (spec §6), which is where design iteration and detectors run.
 
 ## Stack

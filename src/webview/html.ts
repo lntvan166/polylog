@@ -72,15 +72,6 @@ export function renderHtml(o: HtmlOptions): string {
       <span id="count" class="count" aria-live="polite"></span>
     </footer>
   </div>
-  <div id="changes-splitter" class="splitter changes-splitter" role="separator" aria-orientation="vertical" aria-label="Resize the changes pane" tabindex="0"></div>
-  <aside id="changes-pane" class="changes-pane" aria-label="Changes">
-    <div class="changes-title">Changes</div>
-    <div class="changes-scroll">
-      <div id="changes-head" class="commit-head" hidden></div>
-      <p id="changes-status" class="changes-status" role="status"></p>
-      <div id="changes-tree" class="tree" role="tree" aria-label="Changed files" tabindex="0" hidden></div>
-    </div>
-  </aside>
 </div>
 <script nonce="${o.nonce}" src="${o.scriptUri}"></script>
 </body>

@@ -1,7 +1,6 @@
 // Dev-only stand-in for the extension host. It answers the webview's messages
 // with mock data so the real webview bundle runs in a plain browser. Filtering
 // mock data in JS here is fine: this is a harness, not the product.
-import { describeChanges } from "../../src/changesModel";
 import { DEFAULT_FILTER, type FilterState } from "../../src/filterModel";
 import type { HostMessage, WebviewMessage } from "../../src/protocol";
 import type { Commit } from "../../src/types";
@@ -55,24 +54,6 @@ function page(append: boolean): void {
   send({ type: "page", rows, append, failures, done: offset >= matched.length, now: NOW });
 }
 
-/** A plausible file list per commit, so the Changes pane has something to draw. */
-function changesFor(repoId: string, sha: string): void {
-  const commit = all.find((c) => c.repoId === repoId && c.sha === sha);
-  if (!commit) return;
-  const n = parseInt(sha.slice(0, 4), 16);
-  const files = [
-    { path: "src/checkout/PaymentStep.tsx", added: 11, deleted: 1, status: "M" as const },
-    { path: "src/checkout/SavedCards.tsx", added: 25, deleted: 0, status: "A" as const },
-    { path: "src/api/client.ts", added: 2, deleted: 0, status: "M" as const },
-    { path: "src/legacy/OldCards.tsx", added: 0, deleted: 40, status: "D" as const },
-    { path: "docs/cards.md", oldPath: "docs/saved-cards.md", added: 3, deleted: 1, status: "R" as const },
-    { path: "assets/logo.png", added: null, deleted: null, status: "M" as const },
-  ].slice(0, 2 + (n % 5));
-  const state = { commit, repoRoot: repoId, repoName: repos.find((r) => r.id === repoId)?.name ?? repoId, status: "ready" as const, files, message: `${commit.subject}\n\nWhy: customers asked to reuse a card.\nRefs ACME-142.`, focusPath: history?.path };
-  const d = describeChanges(state, NOW);
-  send({ type: "changes", view: { message: d.message, roots: d.roots, focusPath: history?.path, body: "Why: customers asked to reuse a card.\nRefs ACME-142." } });
-}
-
 function reload(): void {
   send({ type: "loading" }, 0);
   matched = matching(filter);
@@ -82,14 +63,13 @@ function reload(): void {
 
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "changes", view: { message: "Select a commit in the Log to see its changed files.", roots: [], focusPath: undefined, body: "" } }, 0); send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, changesPaneWidth: 450, groupByRepo: params.get("repos") !== "off" }, history, branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }] }, 0); reload(); return;
-    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, changesPaneWidth: 450, groupByRepo: true }, history, branches: [] }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history, branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }] }, 0); reload(); return;
+    case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history, branches: [] }, 0); reload(); return;
     case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;
     case "refresh": reload(); return;
     case "loadMore": page(true); return;
-    case "select": changesFor(m.repoId, m.sha); return;
-    case "openFirst": case "openFile": console.info(`[harness] ${m.type}`, m); return;
+    case "select": case "openFirst": console.info(`[harness] ${m.type}`, m); return;
     case "openSettings": console.info("[harness] openSettings"); return;
   }
 }

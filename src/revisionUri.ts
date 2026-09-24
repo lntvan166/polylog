@@ -1,4 +1,3 @@
-import * as nodePath from "path";
 import { isSha } from "./types";
 
 // Polylog's own scheme: the git extension's `git:` URIs are internal to
@@ -26,15 +25,4 @@ export function decodeRevision(path: string, query: string): RevisionRef {
   }
   if (typeof q.root !== "string" || !(q.ref === null || isSha(q.ref))) throw new Error("not a polylog revision URI");
   return { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
-}
-
-/**
- * The working-tree file a revision shows ("Open File" on a Polylog diff), or undefined
- * when the repository is not one of the workspace's or the path would leave it.
- */
-export function workingFile(r: RevisionRef, repoRoots: readonly string[]): string | undefined {
-  if (!repoRoots.includes(r.root) || r.path === "") return undefined;
-  const file = nodePath.resolve(r.root, ...r.path.split("/"));
-  const rel = nodePath.relative(r.root, file);
-  return rel !== "" && !rel.startsWith("..") && !nodePath.isAbsolute(rel) ? file : undefined;
 }

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
+import { decodeRevision, encodeRevision, SCHEME, type RevisionRef } from "./revisionUri";
 
 const SHA = "a".repeat(40);
 
@@ -23,13 +23,4 @@ const SHA = "a".repeat(40);
   bad(JSON.stringify({ ref: SHA }));
   bad("{not json");
   console.log("ok - decodeRevision rejects non-SHA refs (option injection) and malformed queries");
-}
-{
-  const ref = { root: "/ws/acme-web", ref: SHA };
-  assert.strictEqual(workingFile({ ...ref, path: "src/checkout/PaymentStep.tsx" }, ["/ws/acme-web"]), "/ws/acme-web/src/checkout/PaymentStep.tsx");
-  assert.strictEqual(workingFile({ ...ref, path: "../../etc/passwd" }, ["/ws/acme-web"]), undefined, "never leaves the repository");
-  assert.strictEqual(workingFile({ ...ref, path: "a/../../b" }, ["/ws/acme-web"]), undefined);
-  assert.strictEqual(workingFile({ ...ref, path: "" }, ["/ws/acme-web"]), undefined);
-  assert.strictEqual(workingFile({ ...ref, path: "a.ts" }, ["/ws/acme-api"]), undefined, "only a repository of this workspace");
-  console.log("ok - Open File maps a revision to its working-tree file, inside a workspace repository only");
 }
