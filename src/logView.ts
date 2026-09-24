@@ -8,10 +8,10 @@ import { debounce } from "./debounce";
 import { DEFAULT_FILTER, sameExceptText, sanitizeFilter, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
+import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
-import { branchSuggestions } from "./repos";
+import { authorSuggestions, branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, type Commit, type Repo, type RepoFailure } from "./types";
 import { renderHtml } from "./webview/html";
@@ -45,6 +45,7 @@ export interface LogSnapshot {
   /** What a window reload would restore. */
   persistedFilter: FilterState | undefined;
   branches: BranchName[];
+  authors: AuthorName[];
   branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
   /** The native Changes view is expanded and on screen (keepExpanded test seam). */
@@ -82,9 +83,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private historySteps: Promise<void> = Promise.resolve();
   private historyStep = 0;
   /** What File History set aside (range, search, author); closing it gives them back. */
-  private beforeHistory: Pick<FilterState, "date" | "from" | "to" | "text" | "author" | "mine"> | null = null;
+  private beforeHistory: Pick<FilterState, "date" | "from" | "to" | "text" | "author" | "mine" | "authors"> | null = null;
   /** Branch names across the workspace, for the Branch box's suggestions. Read in the background. */
   private branches: BranchName[] = [];
+  /** Recent authors across the workspace, for the Author box's suggestions. Read in the background. */
+  private authors: AuthorName[] = [];
   private branchUse: BranchUse | undefined;
   /** The repo set the background reads last ran for. */
   private backgroundFor: string | undefined;
@@ -221,7 +224,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches, authors: this.authors });
   }
 
   /**
@@ -324,9 +327,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   private async setHistory(history: { repoId: string; path: string } | null): Promise<void> {
     if (history && !this.history) {
-      const { date, from, to, text, author, mine } = this.filter;
-      this.beforeHistory = { date, from, to, text, author, mine };
-      this.filter = { ...this.filter, date: "all", from: undefined, to: undefined, text: "", author: "", mine: false };
+      const { date, from, to, text, author, mine, authors } = this.filter;
+      this.beforeHistory = { date, from, to, text, author, mine, authors };
+      this.filter = { ...this.filter, date: "all", from: undefined, to: undefined, text: "", author: "", mine: false, authors: undefined };
       this.history = history;
     } else if (!history) {
       this.leaveHistory();
@@ -385,6 +388,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.backgroundFor = key;
     void this.loadMe();
     void this.loadBranches();
+    void this.loadAuthors();
+  }
+
+  /** People who committed recently, for the Author box's suggestions: 300 commits per repo. */
+  private async loadAuthors(): Promise<void> {
+    const repos = [...this.repos];
+    const settled = await runPool(repos, this.settings().maxConcurrency,
+      (r, signal) => this.run(r.root, ["log", "--no-merges", "--max-count=300", "--format=%aN%x1f%aE"], signal), new AbortController().signal);
+    this.authors = authorSuggestions(settled.map((s) => (s.status === "fulfilled" ? s.value : "")));
+    this.postInit();
   }
 
   /** Branch names across repositories (local and remote-tracking), most shared first. */
@@ -483,7 +496,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.rows, failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,

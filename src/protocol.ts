@@ -8,6 +8,13 @@ export interface Layout {
   groupByRepo: boolean;
 }
 
+/** Someone who committed recently, across the workspace (Author box suggestions). */
+export interface AuthorName {
+  name: string;
+  email: string;
+  count: number;
+}
+
 /** A branch name seen across the workspace, with how many repositories have it. */
 export interface BranchName {
   name: string;
@@ -16,7 +23,7 @@ export interface BranchName {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[] }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[] }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse };
 

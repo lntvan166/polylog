@@ -87,6 +87,30 @@ describe("Polylog panel", () => {
     assert.strictEqual((await snapshot()).layout.groupByRepo, true);
   });
 
+  it("several authors: a commit by any of them matches, and the box suggests who committed", async () => {
+    await send({ type: "filter", filter: { ...ALL, authors: ["dana"] } });
+    await until("dana's three commits", (x) => x.rows.length === 3 && x.rows.every((r) => r.author === "dana"));
+    await send({ type: "filter", filter: { ...ALL, authors: ["dana", "rin@example.com"] } });
+    await until("dana's and rin's six commits", (x) => x.rows.length === 6);
+    await send({ type: "filter", filter: { ...ALL, authors: ["noor"] } });
+    await until("nobody named noor", (x) => x.rows.length === 0);
+    await send({ type: "filter", filter: ALL });
+    const s = await until("author suggestions read", (x) => x.authors.length === 2);
+    assert.deepStrictEqual(s.authors.map((a) => [a.name, a.email, a.count]).sort(), [["dana", "dana@example.com", 3], ["rin", "rin@example.com", 3]]);
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("Me is one more author beside the picked ones", async () => {
+    await until("identities read", (x) => x.me.length === 3);
+    // Me is dana, except in acme-libs where it is rin. So Me plus rin is every commit
+    // except dana's one in acme-libs ("chore: bump deps").
+    await send({ type: "filter", filter: { ...ALL, mine: true, authors: ["rin"] } });
+    const s = await until("my commits and rin's", (x) => x.rows.length === 5);
+    assert.ok(!s.rows.some((r) => r.subject === "chore: bump deps"), "dana is not Me in acme-libs");
+    await send({ type: "filter", filter: ALL });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });
@@ -268,17 +292,17 @@ describe("Polylog panel", () => {
   });
 
   it("File History shows every commit of the file, whatever the search and author, and gives them back on close", async () => {
-    await send({ type: "filter", filter: { ...ALL, text: "retry", author: "rin", mine: true } });
+    await send({ type: "filter", filter: { ...ALL, text: "retry", author: "rin", mine: true, authors: ["noor"] } });
     await until("the filtered log", (x) => x.filter.text === "retry");
     const api = (await snapshot()).repos.find((r) => r.name === "acme-api")!;
     await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.file(require("path").join(api.root, "upload.go")));
     let s = await until("upload.go history", (x) => x.history?.path === "upload.go" && x.rows.length === 2);
     assert.deepStrictEqual(s.rows.map((r) => r.subject), ["feat: add retry to uploader (ACME-7)", "feat: scaffold api"], "dana's commit shows too, and so does the one that never says retry");
-    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine], ["", "", false], "the boxes are empty while in the history");
-    assert.deepStrictEqual([s.persistedFilter?.text, s.persistedFilter?.author, s.persistedFilter?.mine], ["retry", "rin", true], "a reload now would bring the user's filters back");
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine, s.filter.authors], ["", "", false, undefined], "the boxes and chips are empty while in the history");
+    assert.deepStrictEqual([s.persistedFilter?.text, s.persistedFilter?.author, s.persistedFilter?.mine, s.persistedFilter?.authors], ["retry", "rin", true, ["noor"]], "a reload now would bring the user's filters back");
     await send({ type: "exitHistory" });
     s = await until("all commits again", (x) => x.history === null);
-    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine], ["retry", "rin", true], "closing the history gives the search and author back");
+    assert.deepStrictEqual([s.filter.text, s.filter.author, s.filter.mine, s.filter.authors], ["retry", "rin", true, ["noor"]], "closing the history gives the search, author and chips back");
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
   });

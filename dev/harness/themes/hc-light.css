@@ -55,4 +55,6 @@
   --vscode-settings-checkboxBackground: #ffffff;
   --vscode-settings-checkboxBorder: #0f4a85;
   --vscode-settings-checkboxForeground: #292929;
+  --vscode-badge-background: #0f4a85;
+  --vscode-badge-foreground: #ffffff;
 }

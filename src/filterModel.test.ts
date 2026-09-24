@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { HISTORY_FORMAT, LOG_FORMAT } from "./gitLog";
-import { DEFAULT_FILTER, gitDate, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
+import { authorPatterns, DEFAULT_FILTER, gitDate, hasOtherAuthors, historyArgs, historyPathsArgs, isValidRef, logArgs, parseHistoryPaths, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import type { Repo } from "./types";
 
 const NOW = 1790164800; // 2026-09-23T12:00:00Z
@@ -112,13 +112,33 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.ok(inj.includes("--author=--output=/tmp/pwned") && !inj.includes("--output=/tmp/pwned"));
   console.log("ok - author becomes one literal, case-insensitive --author= argument");
 }
+// ── Several authors: one --author per person, which git combines as "any of" ─
+{
+  const many = args({ ...ALL, authors: ["dana", " rin@example.com "], author: "sa" });
+  assert.deepStrictEqual(many.filter((x) => x.startsWith("--author=")), ["--author=dana", "--author=rin@example.com", "--author=sa"], "each chip, plus what is being typed");
+  assert.strictEqual(many.filter((x) => x === "--fixed-strings").length, 1, "literal matching once, for all of them");
+  const withMe = logArgs({ ...ALL, authors: ["rin"], mine: true }, { pageSize: 200, now: 0, me: "dana@example.com" });
+  assert.deepStrictEqual(withMe.filter((x) => x.startsWith("--author=")), ["--author=rin", "--author=dana@example.com"], "Me is one more author, not a replacement");
+  assert.deepStrictEqual(args({ ...ALL, authors: ["dana", "Dana", "", "  "] }).filter((x) => x.startsWith("--author=")), ["--author=dana"], "blank and repeated authors add nothing (case-insensitive)");
+  assert.deepStrictEqual(authorPatterns({ ...ALL, authors: ["rin"], mine: true }), ["rin"], "without a repo email, Me adds nothing");
+  assert.ok(!hasOtherAuthors({ ...ALL, mine: true }) && hasOtherAuthors({ ...ALL, mine: true, authors: ["rin"] }), "Me alone vs Me plus others");
+  console.log("ok - several authors become several literal --author= arguments");
+}
+{
+  assert.deepStrictEqual(sanitizeFilter({ ...ALL, authors: ["dana", 3, "", "rin"] }).authors, ["dana", "rin"], "only non-empty strings survive");
+  assert.strictEqual(sanitizeFilter({ ...ALL, authors: Array.from({ length: 40 }, (_, i) => `a${i}`) }).authors?.length, 20, "at most 20 authors");
+  assert.ok(!("authors" in sanitizeFilter({ ...ALL, authors: [] })), "no chips: the field is left out, like before");
+  assert.ok(!sameExceptText({ ...ALL, authors: ["dana"] }, { ...ALL, authors: ["dana", "rin"] }), "adding a chip reloads at once, not after the typing delay");
+  assert.ok(sameExceptText({ ...ALL, authors: ["dana"], author: "r" }, { ...ALL, authors: ["dana"], author: "ri" }), "typing is still debounced");
+  console.log("ok - the authors list is validated, capped, and reloads at once when it changes");
+}
 
 // ── Me: each repository's own user.email ────────────────────────────────────
 {
   const a = logArgs({ ...ALL, mine: true }, { pageSize: 200, now: NOW, me: "dana@example.com" });
   assert.ok(a.includes("--author=dana@example.com") && a.includes("--fixed-strings"));
   const both = logArgs({ ...ALL, mine: true, author: "rin" }, { pageSize: 200, now: NOW, me: "dana@example.com" });
-  assert.ok(both.includes("--author=dana@example.com") && !both.includes("--author=rin"), "Me replaces the typed author");
+  assert.ok(both.includes("--author=dana@example.com") && both.includes("--author=rin"), "Me is one more author beside the typed one (0.2.0: several authors)");
   assert.ok(sanitizeFilter({ ...ALL, mine: true }).mine);
   console.log("ok - Me becomes --author=<that repository's user.email>");
 }

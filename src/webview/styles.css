@@ -82,9 +82,26 @@ button.mode:hover { background: var(--vscode-toolbar-hoverBackground); }
 .search { flex: 1 1 180px; min-width: 120px; }
 /* Author with "Me" as an input option toggle inside it, like the Aa / ab / .* toggles in
    VS Code's own search box. */
-.author-field { position: relative; display: inline-flex; flex: 0 1 160px; min-width: 100px; }
-.author-filter { width: 100%; }
-.author-field:has(#me:not([hidden])) .author-filter { padding-right: 32px; }
+/* The whole Author box is the field: chips, then the input, then the Me toggle. */
+.author-field {
+  position: relative; display: inline-flex; align-items: center; gap: 3px; flex: 0 1 220px; min-width: 120px;
+  height: 26px; padding: 0 2px; border-radius: 2px; overflow: hidden;
+  background: var(--vscode-input-background); border: 1px solid var(--vscode-input-border, var(--vscode-input-background));
+}
+.author-field:focus-within { border-color: var(--vscode-focusBorder); }
+.author-field:has(#me:not([hidden])) { padding-right: 32px; }
+.author-field .author-filter { flex: 1 1 60px; min-width: 40px; height: 22px; border: 0; background: transparent; outline: none; }
+.author-chips { display: inline-flex; gap: 3px; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+.author-chip {
+  display: inline-flex; align-items: center; gap: 2px; min-width: 0; max-width: 12ch; height: 20px; padding: 0 2px 0 6px;
+  border-radius: 3px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 0.92em;
+}
+.author-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.author-chip-remove {
+  width: 16px; height: 16px; min-width: 16px; padding: 0; border: 0; border-radius: 2px; line-height: 14px;
+  background: transparent; color: inherit; font-size: 12px;
+}
+.author-chip-remove:hover { background: var(--vscode-toolbar-hoverBackground); }
 .input-toggle {
   position: absolute; right: 3px; top: 50%; transform: translateY(-50%);
   height: 20px; min-width: 24px; padding: 0 4px; border-radius: 3px;
@@ -199,6 +216,9 @@ body.vscode-high-contrast .repo-row:hover,
 body.vscode-high-contrast button:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
 body.vscode-high-contrast .chip { background: transparent; outline: 1px solid var(--accent); outline-offset: -1px; }
+/* High contrast: an outlined chip in the text color (the badge's own foreground is white,
+   which vanishes on HC light). */
+body.vscode-high-contrast .author-chip { background: transparent; color: var(--vscode-foreground); outline: 1px solid var(--vscode-contrastBorder); outline-offset: -1px; }
 
 /* ── Narrow editor groups: stack list above detail ──────────────────────── */
 @media (max-width: 720px) {

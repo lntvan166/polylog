@@ -396,3 +396,23 @@ File History kept the Log's message search and author filter, so a file could sh
 commit out of 9. It now does for `text`, `author` and `mine` what it already did for the
 date range. They are cleared on entry, saved (`beforeHistory`; a reload also restores
 them), and given back on close, even if the user changed them while in the history.
+
+### 21.3 Several authors (chips with suggestions)
+
+- `FilterState.authors?: string[]`: up to 20 chips, omitted when empty, so saved filters
+  from 0.1.0 load unchanged.
+- The author patterns for a repo (`authorPatterns`) are the chips, the typed text, and Me
+  (that repo's `user.email`). Each becomes one `--author=` flag under `--fixed-strings -i`;
+  git ORs them and ANDs the result with `--grep`.
+- A repo without `user.email` is skipped only when Me is the only author
+  (`hasOtherAuthors`).
+- Behavior change: **Me no longer replaces the typed author;** it is one more author, and
+  typing no longer switches Me off.
+- Chips reload at once; typing is still debounced.
+- Suggestions are a background read after the first page, like branches: `git log
+  --no-merges --max-count=300 --format=%aN%x1f%aE` per repo, merged by email (ignoring
+  case) under the most-used name, most commits first, top 200 (`authorSuggestions`).
+- The UI is a native `<datalist>`, like the Branch box. Enter, a comma or a picked
+  suggestion adds a chip; Backspace in an empty box removes the last one; × removes one.
+- File History sets the chips aside along with the search and author (§21.2).
+- High contrast: chips are outlined, in the theme foreground.

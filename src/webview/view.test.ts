@@ -155,3 +155,10 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(fitMiddle("acme-web", within(3)), "…", "no room at all still renders");
   console.log("ok - a repo name is cut in the middle to exactly what fits the space it has");
 }
+{
+  const by = (f: Partial<FilterState>) => emptyState({ repoCount: 3, filter: { ...ALL, ...f } }).body;
+  assert.match(by({ authors: ["dana", "rin"] }), /No commits by “dana” or “rin” in /, "two chips");
+  assert.match(by({ authors: ["dana"], author: "rin", mine: true }), /No commits by “dana”, “rin” or you in /, "chips, typed text and Me");
+  assert.deepStrictEqual(emptyState({ repoCount: 3, filter: { ...ALL, authors: ["dana"] } }).action, { label: "Clear Author", id: "clearAuthor" });
+  console.log("ok - the empty state names every author being filtered on");
+}

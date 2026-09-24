@@ -88,6 +88,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       state.filter = m.filter;
       filters.setMe(m.hasMe);
       filters.setBranches(m.branches);
+      filters.setAuthors(m.authors);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
@@ -157,8 +158,8 @@ function runEmptyAction(action: EmptyAction): void {
   const f = state.filter;
   switch (action) {
     case "clearText": setFilter({ ...f, text: "" }); return;
-    case "clearAuthor": setFilter({ ...f, author: "", mine: false }); return;
-    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
+    case "clearAuthor": setFilter({ ...f, author: "", mine: false, authors: undefined }); return;
+    case "allTime": setFilter({ text: f.text, author: f.author, mine: f.mine, authors: f.authors, branch: f.branch, repoIds: f.repoIds, date: "all" }); return;
     case "selectAll": setFilter({ ...f, repoIds: null }); return;
     case "settings": post({ type: "openSettings" }); return;
   }

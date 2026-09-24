@@ -74,7 +74,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Search across every repo.** Search commit messages (literal, case-insensitive) across
   every repository at once.
 - **Filters:**
-  - **Author**, with a **Me** toggle inside the box that uses each repo's own `user.email`.
+  - **Authors:** type a name or email. Enter, a comma or a picked suggestion adds it as a
+    chip, and a commit by any of the chips matches. Suggestions list who committed
+    recently across your repos. **Me** is a toggle inside the box that adds each repo's own
+    `user.email`.
   - **Branch**, applied in every repo that has it.
   - **Date range:** last 24 hours by default, or 7 days, 30 days, all time, or a custom
     range.

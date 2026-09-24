@@ -19,6 +19,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   binary stop, and the Log is read again. If no git can run, the message names every path
   it tried.
 
+- **Filter by several authors at once.** Type an author and press Enter (or a comma, or
+  pick a suggestion) to add them as a chip. A commit by any of the chips matches: each
+  becomes its own `--author` flag, which git combines as "any of", so the filtering stays
+  in git. The box suggests who committed recently across your repositories, with how many
+  commits. **Me** is now one more author beside the chips instead of replacing them. A repo
+  without a `user.email` is still searched for the other authors. Backspace in an empty
+  box removes the last chip.
+
 ### Changed
 
 - **File History shows every commit of the file.** It used to keep the message search

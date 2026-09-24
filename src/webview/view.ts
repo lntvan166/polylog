@@ -179,15 +179,18 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
   const k = f.repoIds === null ? o.repoCount : f.repoIds.length;
   const scope = f.repoIds === null ? `${k} ${repoNoun(k)}` : `${k} selected ${repoNoun(k)}`;
   const text = f.text.trim();
-  const author = f.mine ? "" : f.author.trim();
-  const by = f.mine ? "you" : `“${author}”`;
-  if (text && (author || f.mine)) {
+  const names = [...(f.authors ?? []), f.author].map((n) => n.trim()).filter((n) => n !== "").map((n) => `“${n}”`);
+  const who = f.mine ? [...names, "you"] : names;
+  const author = who.length > 0;
+  // "“dana”", "“dana” or “rin”", "“dana”, “rin” or you"
+  const by = who.length <= 1 ? who.join("") : `${who.slice(0, -1).join(", ")} or ${who[who.length - 1]}`;
+  if (text && author) {
     return { title: "No matching commits", body: `No commit by ${by} contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
   }
   if (text) {
     return { title: "No matching commits", body: `No commit message contains “${text}” in ${scope}${dateLabel(f)}.`, action: { label: "Clear Search", id: "clearText" } };
   }
-  if (author || f.mine) {
+  if (author) {
     return { title: "No matching commits", body: `No commits by ${by} in ${scope}${dateLabel(f)}.`, action: { label: "Clear Author", id: "clearAuthor" } };
   }
   if (f.date !== "all") {

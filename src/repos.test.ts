@@ -1,5 +1,6 @@
 import * as assert from "assert";
-import { branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots } from "./repos";
+import {
+  authorSuggestions, branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots } from "./repos";
 
 {
   const repos = labelRepos(["/w/acme-web", "/w/acme-api", "/w/acme-web"]);
@@ -52,4 +53,16 @@ import { branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots }
   const lists = [["main", "origin/main", "origin/prod", "origin/HEAD", "bad name"], ["main", "origin/prod", "fix/ü"], ["main"]];
   assert.deepStrictEqual(branchSuggestions(lists), [{ name: "main", count: 3 }, { name: "origin/prod", count: 2 }, { name: "fix/ü", count: 1 }, { name: "origin/main", count: 1 }]);
   console.log("ok - branch suggestions are counted per repo, most shared first, and never offer a name the box refuses");
+}
+
+{
+  const web = ["dana\x1fdana@example.com", "dana\x1fdana@example.com", "rin\x1frin@example.com"].join("\n");
+  const api = ["Dana L\x1fDANA@example.com", "noor\x1fnoor@example.com", "", "garbage"].join("\n");
+  assert.deepStrictEqual(authorSuggestions([web, api]), [
+    { name: "dana", email: "dana@example.com", count: 3 },
+    { name: "noor", email: "noor@example.com", count: 1 },
+    { name: "rin", email: "rin@example.com", count: 1 },
+  ], "one entry per email across repos (case-insensitive), most commits first, the most used name");
+  assert.strictEqual(authorSuggestions([web], 1).length, 1, "capped");
+  console.log("ok - author suggestions: one per email across repositories, most commits first");
 }

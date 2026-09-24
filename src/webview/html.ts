@@ -39,7 +39,9 @@ export function renderHtml(o: HtmlOptions): string {
     <form id="filters" class="filters" role="search" aria-label="Filter commits">
       <input id="search" class="search" type="search" placeholder="Search commit messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
       <span class="author-field">
-        <input id="author" class="author-filter" type="search" placeholder="Author" aria-label="Filter by author name or email" autocomplete="off" spellcheck="false">
+        <span id="author-chips" class="author-chips" role="list" aria-label="Authors"></span>
+        <input id="author" class="author-filter" type="search" list="author-list" placeholder="Author" aria-label="Filter by author name or email. Enter adds another author" autocomplete="off" spellcheck="false">
+        <datalist id="author-list"></datalist>
         <button id="me" class="input-toggle" type="button" title="Only my commits" hidden>Me</button>
       </span>
       <input id="branch" class="branch-filter" list="branch-list" type="search" placeholder="Current branch" aria-label="Branch: shown in every repository that has it; the others use their current branch" autocomplete="off" spellcheck="false">
