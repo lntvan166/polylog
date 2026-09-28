@@ -14,6 +14,7 @@ import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef }
 import { authorSuggestions, branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
+import { aheadBehindArgs, parseAheadBehind, type AheadBehind } from "./upstream";
 import { headOf, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { renderHtml } from "./webview/html";
 
@@ -57,6 +58,8 @@ export interface LogSnapshot {
   stats: { msToFirstRows: number | null; reloads: number; discoveries: number; spawns: number; discoveryMs: number; fetchMs: number; msToResolve: number; msToReady: number };
   /** Each git process started: in which repository, and which subcommand (the last 2,000). */
   spawnLog: { root: string; cmd: string }[];
+  /** Each repository's distance from its upstream (only those with one). */
+  sync: Record<string, AheadBehind>;
   /** Messages posted to the webview, by type, and their total size in bytes (integration runs only). */
   posts: Record<string, { count: number; bytes: number }>;
 }
@@ -155,6 +158,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       return deps.run(cwd, args, signal);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
+    this.syncRepoFiltered();
     this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
   }
 
@@ -212,6 +216,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         this.postInit();
         // A re-created webview lost the suggestions it had: send them again (only then).
         if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
+        if (this.sync.size > 0) this.postSync();
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
@@ -378,8 +383,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Save the filter; while File History forces all time, save the range the user will come back to. */
   private persistFilter(): void {
+    this.syncRepoFiltered();
     const saved = this.history && this.beforeHistory ? { ...this.filter, ...this.beforeHistory } : this.filter;
     void this.context.workspaceState.update(FILTER_KEY, saved);
+  }
+
+  /** The right-click menu offers Show All Repositories only while some are unticked. */
+  private repoFiltered: boolean | undefined;
+  private syncRepoFiltered(): void {
+    const on = this.filter.repoIds !== null;
+    if (on === this.repoFiltered) return;
+    this.repoFiltered = on;
+    void vscode.commands.executeCommand("setContext", "polylog.repoFiltered", on);
   }
 
   /** Leave File History without reloading: restore the date range. */
@@ -460,6 +475,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key === this.backgroundFor) return;
     this.backgroundFor = key;
     void this.loadMe();
+    void this.readSync();
     // Suggestions are read when their box is first focused (wantSuggestions), not here:
     // at startup they would cost 2 git processes per repository for boxes rarely opened.
     this.suggestionsFor.clear();
@@ -541,6 +557,148 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     this.postInit();
     if (force || changed || this.queryState === null) await this.reload();
+    // Refresh also re-reads how far each repo is from its upstream (a fetch may have moved it).
+    if (force) void this.readSync();
+  }
+
+  /** polylog.excludeRepos or scanDepth changed in Settings: list the repositories again. */
+  async reposSettingChanged(): Promise<void> {
+    await this.refreshRepos();
+  }
+
+  /** Each repository's distance from its upstream, for the Repositories pane's ↓/↑ badge. */
+  private sync = new Map<string, AheadBehind>();
+
+  /**
+   * Reads ahead/behind for these repositories (every one by default): one git rev-list each,
+   * from local refs. Posted only when a count changed.
+   */
+  private async readSync(only?: ReadonlySet<string>): Promise<void> {
+    const repos = only ? this.repos.filter((r) => only.has(r.id)) : [...this.repos];
+    const settled = await runPool(repos, this.settings().maxConcurrency, (r, signal) => this.run(r.root, aheadBehindArgs(), signal), new AbortController().signal);
+    const next = new Map(only ? this.sync : []);
+    settled.forEach((s, i) => {
+      const ab = s.status === "fulfilled" ? parseAheadBehind(s.value) : null;
+      if (ab && (ab.ahead > 0 || ab.behind > 0)) next.set(repos[i].id, ab);
+      else next.delete(repos[i].id);
+    });
+    for (const id of next.keys()) if (!this.repos.some((r) => r.id === id)) next.delete(id);
+    const key = (m: Map<string, AheadBehind>) => JSON.stringify([...m].sort());
+    if (key(next) === key(this.sync)) return;
+    this.sync = next;
+    this.postSync();
+  }
+
+  private postSync(): void {
+    this.post({ type: "sync", byRepo: Object.fromEntries(this.sync) });
+  }
+
+  /** Repositories VS Code's Git reported a change in, whose upstream distance is read again. */
+  private readonly syncTouched = new Set<string>();
+  private readonly syncSoon = debounce(() => {
+    const ids = new Set(this.syncTouched);
+    this.syncTouched.clear();
+    void this.readSync(ids);
+  }, 400);
+
+  /**
+   * VS Code's Git reported a new state for a repository (a save, a stage, a fetch, a pull):
+   * its uncommitted changes may have moved; its distance from its upstream only if HEAD or
+   * the upstream did (a save does not move them).
+   */
+  repoStateChanged(root: string, headMoved: boolean): void {
+    this.workingTreeChanged(root);
+    if (!headMoved) return;
+    const repo = this.innermost(root)?.r;
+    if (!repo) return;
+    this.syncTouched.add(repo.id);
+    this.syncSoon();
+  }
+
+  /** The repository a right-click on the Log's webview (a pane row or a commit row) was on. */
+  private contextRepo(arg: unknown): Repo | undefined {
+    const id = (arg as { repoId?: unknown } | undefined)?.repoId;
+    return typeof id === "string" ? this.repos.find((r) => r.id === id) : undefined;
+  }
+
+  /** Sets the repo filter from the host (a right-click): the webview gets it with init. */
+  private async setRepoFilter(repoIds: string[] | null): Promise<void> {
+    const key = (ids: string[] | null) => (ids === null ? null : ids.join("\0"));
+    if (key(repoIds) === key(this.filter.repoIds)) return;
+    // A filter the user cannot see is a trap: picking repositories shows the pane.
+    if (repoIds !== null && this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false)) {
+      await this.context.globalState.update(HIDE_REPOS_KEY, false);
+      await vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, false);
+    }
+    this.filter = { ...this.filter, repoIds };
+    this.persistFilter();
+    this.postInit();
+    this.reloadSoon.cancel();
+    await this.reload();
+  }
+
+  /** Right-click → Show Only: this repository's commits alone. */
+  async repoShowOnly(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (repo) await this.setRepoFilter([repo.id]);
+  }
+
+  /** Right-click → Hide from the Log: untick this repository (the others stay as they are). */
+  async repoHide(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (!repo) return;
+    const shown = this.filter.repoIds ?? this.repos.map((r) => r.id);
+    await this.setRepoFilter(shown.filter((id) => id !== repo.id));
+  }
+
+  /** Right-click → Show All Repositories. */
+  async repoShowAll(): Promise<void> {
+    if (this.filter.repoIds !== null) await this.setRepoFilter(null);
+  }
+
+  async repoCopyPath(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (repo) await vscode.env.clipboard.writeText(repo.root);
+  }
+
+  async repoOpenFolder(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (repo) await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(repo.root), { forceNewWindow: true });
+  }
+
+  /**
+   * Right-click → Exclude from Polylog: adds the repository's exact path to polylog.excludeRepos
+   * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
+   * already applies from: settings arrays do not merge across scopes, so writing to another
+   * would drop the user's own entries. With none yet, the user settings: an absolute path
+   * belongs to this machine, not in a workspace file that may sit inside a repository.
+   */
+  async repoExclude(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (!repo) return;
+    const inspected = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+    const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    const previous = target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue;
+    const pattern = repo.root.replace(/\\/g, "/");
+    if ((previous ?? []).includes(pattern)) return;
+    // The repo leaves the filter too, or a filter of only it would match nothing.
+    const ids = this.filter.repoIds;
+    if (ids?.includes(repo.id)) {
+      const rest = ids.filter((id) => id !== repo.id);
+      this.filter = { ...this.filter, repoIds: rest.length > 0 ? rest : null };
+      this.persistFilter();
+    }
+    // The configuration listener lists the repositories again (reposSettingChanged).
+    await vscode.workspace.getConfiguration("polylog").update("excludeRepos", [...(previous ?? []), pattern], target);
+    void vscode.window.showInformationMessage(`Polylog: ${repo.name} is excluded (polylog.excludeRepos).`, "Undo").then(async (pick) => {
+      if (pick !== "Undo") return;
+      const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+      const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
+      const rest = current.filter((p) => p !== pattern);
+      // Back to exactly what was there, down to "not set" (an empty list would still override).
+      const restored = rest.length === 0 && previous === undefined ? undefined : rest;
+      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", restored, target);
+    });
   }
 
   private async reload(): Promise<void> {
@@ -627,6 +785,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         msToResolve: this.stats.resolvedAt - this.stats.createdAt, msToReady: this.stats.readyAt - this.stats.createdAt,
       },
       spawnLog: [...this.spawnLog],
+      sync: Object.fromEntries(this.sync),
       posts: structuredClone(this.posts),
     };
   }
@@ -1000,6 +1159,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.uncommittedRead.abort();
     this.repoReads.abort();
     this.touchedSoon.cancel();
+    this.syncSoon.cancel();
     clearTimeout(this.publishTimer);
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();

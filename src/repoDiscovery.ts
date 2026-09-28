@@ -6,7 +6,18 @@ import type { Repo } from "./types";
 
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
-interface GitRepository { rootUri: vscode.Uri; state?: { onDidChange?: vscode.Event<void> } }
+interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
+interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> } }
+
+/** A repository's state change in vscode.git. */
+export interface RepoStateChange {
+  root: string;
+  /** Its HEAD commit, branch, upstream or ahead/behind differ from the last report (or from when it was first seen). */
+  headMoved: boolean;
+}
+
+const headKey = (h: GitBranch | undefined) =>
+  h ? [h.commit, h.name, h.upstream?.remote, h.upstream?.name, h.ahead, h.behind].map((x) => x ?? "").join("\0") : "";
 type GitState = "uninitialized" | "initialized";
 interface GitAPI {
   /** The binary vscode.git found (from git.path or its own search). */
@@ -46,7 +57,7 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly gitFound = new vscode.EventEmitter<void>();
   /** vscode.git has activated and reported its git binary (see gitPath). */
   readonly onDidFindGit = this.gitFound.event;
-  private readonly repoStateChanged = new vscode.EventEmitter<string>();
+  private readonly repoStateChanged = new vscode.EventEmitter<RepoStateChange>();
   /** A repository's state changed in vscode.git (a save, a stage, a checkout): its root. */
   readonly onDidChangeRepoState = this.repoStateChanged.event;
 
@@ -76,7 +87,14 @@ export class RepoDiscovery implements vscode.Disposable {
     const watching = new Map<GitRepository, vscode.Disposable>();
     const watch = (r: GitRepository) => {
       const root = r.rootUri.fsPath;
-      const d = r.state?.onDidChange?.(() => this.repoStateChanged.fire(root));
+      // Where HEAD stood when first seen, so the first report after a fetch counts as a move.
+      let head = headKey(r.state?.HEAD);
+      const d = r.state?.onDidChange?.(() => {
+        const now = headKey(r.state?.HEAD);
+        const headMoved = now !== head;
+        head = now;
+        this.repoStateChanged.fire({ root, headMoved });
+      });
       if (d) watching.set(r, d);
     };
     const unwatch = (r: GitRepository) => {

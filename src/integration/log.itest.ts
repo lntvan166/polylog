@@ -315,6 +315,80 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("right-click a repository: Show Only, Hide, Show All, Copy Path, Exclude", async () => {
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const [web, api, libs] = ["acme-web", "acme-api", "acme-libs"].map((n) => s0.repos.find((r) => r.name === n)!);
+    // What VS Code passes from a webview right-click: the element's data-vscode-context.
+    const on = (repoId: string, section = "repo") => ({ webviewSection: section, repoId });
+    await vscode.commands.executeCommand("polylog.repoShowOnly", on(web.id, "commit"));
+    let s = await until("acme-web only", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === web.id));
+    assert.deepStrictEqual(s.filter.repoIds, [web.id], "from a commit row too, and the filter is the pane's");
+    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await until("every repository", (x) => x.rows.length === 6 && x.filter.repoIds === null);
+    await vscode.commands.executeCommand("polylog.repoHide", on(api.id));
+    s = await until("all but acme-api", (x) => x.rows.length > 0 && !x.rows.some((r) => r.repoId === api.id));
+    assert.deepStrictEqual(s.filter.repoIds, s0.repos.map((r) => r.id).filter((id) => id !== api.id), "the others stay ticked");
+    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await until("every repository again", (x) => x.filter.repoIds === null && x.rows.length === 6);
+    await vscode.commands.executeCommand("polylog.repoShowOnly", on("/not/a/repo"));
+    assert.strictEqual((await snapshot()).filter.repoIds, null, "an id that is not a listed repository is ignored");
+
+    await vscode.commands.executeCommand("polylog.repoCopyPath", on(libs.id));
+    assert.strictEqual(await vscode.env.clipboard.readText(), libs.root);
+
+    // With the pane hidden, a commit row's Show Only brings the pane back: no invisible filter.
+    await vscode.commands.executeCommand("polylog.hideRepos");
+    await vscode.commands.executeCommand("polylog.repoShowOnly", on(web.id, "commit"));
+    s = await until("acme-web only, pane shown", (x) => x.filter.repoIds?.length === 1 && x.rows.length === 2);
+    assert.strictEqual(s.layout.groupByRepo, true, "the filter is never one the user cannot see");
+    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
+
+    const cfg = () => vscode.workspace.getConfiguration("polylog");
+    // The user's own (global) exclusions stay: arrays do not merge across settings scopes.
+    await cfg().update("excludeRepos", ["no-such-repo-*"], vscode.ConfigurationTarget.Global);
+    try {
+      // Excluding the repo shown alone must not leave a filter that matches nothing.
+      await vscode.commands.executeCommand("polylog.repoShowOnly", on(libs.id));
+      await until("acme-libs only", (x) => x.filter.repoIds?.[0] === libs.id);
+      await vscode.commands.executeCommand("polylog.repoExclude", on(libs.id));
+      s = await until("acme-libs left out", (x) => x.repos.length === 2 && !x.repos.some((r) => r.id === libs.id));
+      const inspected = cfg().inspect<string[]>("excludeRepos");
+      assert.deepStrictEqual(inspected?.globalValue, ["no-such-repo-*", libs.root.replace(/\\/g, "/")], "its exact path, added to the user's own list (not a workspace file inside a repo)");
+      assert.strictEqual(inspected?.workspaceValue, undefined);
+      s = await until("every remaining repository shown", (x) => x.filter.repoIds === null && x.rows.length > 0);
+    } finally {
+      await cfg().update("excludeRepos", undefined, vscode.ConfigurationTarget.Global);
+    }
+    await send({ type: "refresh" });
+    await until("three repositories again", (x) => x.repos.length === 3 && x.rows.length === 6);
+  });
+
+  it("the Repositories pane shows how far each repository is from its upstream", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
+    const branch = git("rev-parse", "--abbrev-ref", "HEAD");
+    // An upstream one commit ahead (made without touching the working tree).
+    const theirs = cp.execFileSync("git", ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "theirs"], {
+      cwd: web.root, env: { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" },
+    }).toString().trim();
+    git("update-ref", "refs/heads/polylog-up", theirs);
+    git("branch", "--set-upstream-to=polylog-up", branch);
+    try {
+      await send({ type: "refresh" });
+      const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
+      assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
+      assert.ok(Object.keys(s.sync).every((id) => id === web.id), "repositories without an upstream show nothing");
+    } finally {
+      git("branch", "--unset-upstream", branch);
+      git("branch", "-D", "polylog-up");
+    }
+    await send({ type: "refresh" });
+    await until("no badge once it has no upstream", (x) => x.sync[web.id] === undefined);
+  });
+
   it("hiding the Repositories pane clears its repo filter", async () => {
     const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
     await send({ type: "filter", filter: { ...ALL, repoIds: [web.id] } });

@@ -86,6 +86,12 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     range.
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
+  - **↓3 ↑2** beside a name: commits on its upstream you haven't pulled, and commits you
+    haven't pushed (as of your last fetch; Polylog never fetches).
+  - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
+    Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
+    Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
+    with an Undo).
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
@@ -93,8 +99,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Uncommitted changes, across every repo:**
   - **Show Uncommitted Changes** (the eye in the Log's toolbar) pins one row per repository
     with uncommitted work above its commits.
-  - **Review Uncommitted Changes** (the checklist) opens a review of every uncommitted file
-    across your repos in one tree, grouped by repository, for a last look before you
+  - **Review Uncommitted Changes** (the checklist) lists every repository with uncommitted
+    work; click one to see its files in the Changes tree, for a last look before you
     commit.
   - Staged and unstaged changes are both compared with the last commit; staged files are
     marked "staged" and new files "new". A file opens with your real, editable file on the
