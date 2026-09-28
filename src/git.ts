@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 import { promises as fs } from "fs";
+import { abortError } from "./pool";
 
 export class GitError extends Error {
   constructor(message: string, readonly exitCode: number | null) {
@@ -46,7 +47,9 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       else reject(e);
     });
     child.on("close", (code) => {
-      if (signal?.aborted) return; // already rejected by the "error" handler
+      // Aborted: usually rejected already by the "error" handler, but not when git had exited
+      // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
+      if (signal?.aborted) return reject(abortError());
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
       else reject(new GitError(firstLine(Buffer.concat(err).toString("utf8")) || `git exited with code ${code}`, code));
     });
