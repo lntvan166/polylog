@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, reviewLabel, repoColumnChars, countLabel, emptyState, reselect, withPinned, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -24,6 +24,7 @@ const state = {
   repos: [] as Repo[],
   filter: DEFAULT_FILTER as FilterState,
   history: null as { repoName: string; path: string } | null,
+  review: null as { files: number; repos: number } | null,
   rows: [] as Commit[],
   failures: [] as RepoFailure[],
   dismissed: false,
@@ -50,9 +51,14 @@ const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds 
 const appEl = byId("app");
 const modebar = byId("modebar");
 const historyPath = byId("history-path");
+const modeHistory = byId("mode-history");
+const modeReview = byId("mode-review");
+const reviewSummary = byId("review-summary");
 const exitHistory = () => post({ type: "exitHistory" });
-byId("mode-all").addEventListener("click", exitHistory);
+const exitReview = () => post({ type: "exitReview" });
+byId("mode-all").addEventListener("click", () => (state.review ? exitReview() : exitHistory()));
 byId("history-close").addEventListener("click", exitHistory);
+byId("review-close").addEventListener("click", exitReview);
 const splitter = byId("splitter");
 const paneWidth = new PaneWidth();
 
@@ -87,14 +93,17 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
       filters.setMe(m.hasMe);
-      filters.setBranches(m.branches);
-      filters.setAuthors(m.authors);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       state.history = m.history;
-      modebar.hidden = !m.history;
+      state.review = m.review;
+      modebar.hidden = !m.history && !m.review;
+      modeHistory.hidden = !m.history;
+      modeReview.hidden = !m.review;
       appEl.classList.toggle("history", !!m.history);
+      appEl.classList.toggle("review", !!m.review);
+      reviewSummary.textContent = m.review ? reviewLabel(m.review) : "";
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
@@ -121,31 +130,70 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         state.rows = state.rows.concat(m.rows);
         state.failures = m.failures.length > 0 ? state.failures.concat(m.failures) : state.failures;
       } else {
-        const prev = state.rows[state.selected];
-        const next = reselect(prev ? commitKey(prev) : null, m.rows);
-        const kept = prev !== undefined && next >= 0 && commitKey(m.rows[next]) === commitKey(prev);
-        state.rows = m.rows;
         state.failures = m.failures;
         state.dismissed = false;
-        if (!kept) list.resetScroll();
-        select(next, false);
+        replaceRows(m.rows);
+      }
+      break;
+    case "pinned":
+      replaceRows(withPinned(state.rows, m.rows));
+      if (m.review && state.review) {
+        state.review = m.review;
+        reviewSummary.textContent = reviewLabel(m.review);
       }
       break;
   }
   render();
 });
 
+/** New rows for the list, keeping the selected commit (and the scroll) when it is still listed. */
+function replaceRows(rows: Commit[]): void {
+  const prev = state.rows[state.selected];
+  const next = reselect(prev ? commitKey(prev) : null, rows);
+  const kept = prev !== undefined && next >= 0 && commitKey(rows[next]) === commitKey(prev);
+  state.rows = rows;
+  if (!kept) list.resetScroll();
+  select(next, false);
+}
+
+/** Selections closer together than this are a held arrow key: only where it stops is read. */
+const RAPID_SELECT_MS = 100;
+const SETTLE_SELECT_MS = 80;
+let lastSelectAt = 0;
+let pendingSelect: ReturnType<typeof setTimeout> | undefined;
+let pendingPost: (() => void) | undefined;
+
 function select(index: number, andRender = true): void {
   state.selected = index;
   const c = state.rows[index];
   const key = c ? commitKey(c) : null;
-  if (c && key !== selectedKey) post({ type: "select", repoId: c.repoId, sha: c.sha });
+  if (c && key !== selectedKey) postSelect(c);
   selectedKey = key;
   if (andRender) render();
 }
 
+/**
+ * Tells the host about a new selection. The highlight moves at once; while selections keep
+ * coming (holding ↓), the host's git show waits until they stop, instead of one per row.
+ */
+function postSelect(c: Commit): void {
+  const now = performance.now();
+  const rapid = now - lastSelectAt < RAPID_SELECT_MS;
+  lastSelectAt = now;
+  clearTimeout(pendingSelect);
+  const send = () => {
+    pendingSelect = undefined;
+    pendingPost = undefined;
+    post({ type: "select", repoId: c.repoId, sha: c.sha });
+  };
+  if (!rapid) return send();
+  pendingPost = send;
+  pendingSelect = setTimeout(send, SETTLE_SELECT_MS);
+}
+
 /** Enter: the host opens the selected commit's first text file in the editor area. */
 function openFirstFile(): void {
+  pendingPost?.(); // a selection still settling goes first
   const c = state.rows[state.selected];
   if (c) post({ type: "openFirst", repoId: c.repoId, sha: c.sha });
 }
@@ -178,11 +226,13 @@ function render(): void {
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
-  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
+  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path, review: state.review !== null }) : null);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
-  countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
+  // Pinned uncommitted rows are not commits; in Review Uncommitted the mode bar says it all.
+  const commits = state.rows.filter((r) => r.uncommitted === undefined).length;
+  countEl.textContent = state.review === null && commits > 0 ? countLabel(commits) : "";
 }
 
 document.addEventListener("keydown", (e) => {

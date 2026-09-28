@@ -6,6 +6,9 @@ export interface Repo {
   root: string;
 }
 
+/** The pseudo-commit id of a repository's uncommitted changes (git's own null id). */
+export const UNCOMMITTED = "0".repeat(40);
+
 export interface Commit {
   repoId: string;
   sha: string;
@@ -17,6 +20,8 @@ export interface Commit {
   parents: string[];
   /** Branch mode: the ref this row was read from ("current branch" when the repo lacks it). */
   ref?: string;
+  /** Uncommitted changes only (sha === UNCOMMITTED): how many files differ from the last commit. */
+  uncommitted?: number;
   /** File history only: the file as it was in this commit (it may have been renamed since). */
   file?: { path: string; oldPath?: string; status?: ChangeStatus };
 }
@@ -32,6 +37,10 @@ export interface FileChange {
   added: number | null;
   deleted: number | null;
   status?: ChangeStatus;
+  /** Uncommitted changes only: every change is in the index (git add). */
+  staged?: boolean;
+  /** Uncommitted changes only: a new file git does not track yet. */
+  untracked?: boolean;
 }
 
 export interface RepoFailure {

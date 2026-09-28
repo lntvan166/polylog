@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { decorationFor, describeChanges, firstOpenable, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
-import type { Commit } from "./types";
+import { UNCOMMITTED, type Commit } from "./types";
 
 const NOW = 1790164800;
 const commit: Commit = {
@@ -86,4 +86,41 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
   assert.deepStrictEqual(decorationFor("T"), { badge: "T", color: "gitDecoration.modifiedResourceForeground", tooltip: "Type changed" });
   assert.strictEqual(decorationFor(undefined), undefined);
   console.log("ok - each change status maps to the theme's git decoration color and a badge");
+}
+
+{
+  const wt: Commit = { repoId: "/ws/acme-web", sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["c".repeat(40)], uncommitted: 3 };
+  const d = describeChanges({ commit: wt, repoRoot: "/ws/acme-web", repoName: "acme-web", status: "ready", message: "", files: [
+    { path: "src/app.ts", added: 3, deleted: 1, status: "M", staged: false },
+    { path: "src/staged.ts", added: 1, deleted: 0, status: "M", staged: true },
+    { path: "notes.md", added: 0, deleted: 0, status: "A", staged: false, untracked: true },
+  ] }, NOW);
+  const root = d.roots[0];
+  assert.strictEqual(root.label, "Uncommitted changes");
+  assert.strictEqual(root.description, "3 files · not committed", "no sha, author or age for work that is not a commit");
+  const files = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [n] : n.children.flatMap(files));
+  const byLabel = new Map(files(root).map((f) => [f.label, f.description]));
+  assert.strictEqual(byLabel.get("staged.ts"), "+1 −0 · staged", "fully staged files say so");
+  assert.strictEqual(byLabel.get("notes.md"), "new", "an untracked file has no counts yet");
+  assert.strictEqual(byLabel.get("app.ts"), "+3 −1");
+  console.log("ok - uncommitted changes describe themselves: file count, staged, new");
+}
+
+{
+  const pin = (repoId: string, n: number): Commit => ({ repoId, sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["d".repeat(40)], uncommitted: n });
+  const review: ChangesState = {
+    commit: pin("/ws/acme-web", 2), repoRoot: "/ws/acme-web", repoName: "acme-web", status: "ready", message: "", files: [],
+    groups: [
+      { commit: pin("/ws/acme-web", 2), repoRoot: "/ws/acme-web", repoName: "acme-web", files: [{ path: "src/app.ts", added: 1, deleted: 0, status: "M" }, { path: "README.md", added: 2, deleted: 0, status: "M" }] },
+      { commit: pin("/ws/acme-api", 1), repoRoot: "/ws/acme-api", repoName: "acme-api", files: [{ path: "src/app.ts", added: 5, deleted: 5, status: "M" }] },
+    ],
+  };
+  const d = describeChanges(review, NOW);
+  assert.deepStrictEqual(d.roots.map((r) => [r.label, r.description]), [["acme-web", "2 files · not committed"], ["acme-api", "1 file · not committed"]], "one group per repository");
+  const files = (n: NodeDesc): Extract<NodeDesc, { kind: "file" }>[] => (n.kind === "file" ? [n] : n.children.flatMap(files));
+  const all = d.roots.flatMap(files);
+  assert.deepStrictEqual(all.filter((f) => f.path === "src/app.ts").map((f) => f.owner?.repoId), ["/ws/acme-web", "/ws/acme-api"], "the same path in two repos: each file knows which repo it is in");
+  assert.strictEqual(new Set(all.map((f) => f.id)).size, 3, "ids stay unique across repositories");
+  assert.strictEqual(describeChanges({ ...review, groups: [] }, NOW).message, "No uncommitted changes.", "every repository clean");
+  console.log("ok - the review tree groups every repository's uncommitted files, each file knowing its repo");
 }

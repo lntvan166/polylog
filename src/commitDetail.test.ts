@@ -50,6 +50,10 @@ const OTHER = "c".repeat(40);
   assert.strictEqual(diffSides(root, { sha: SHA, parents: [] }, { path: "a.go" }).before.ref, null, "root commit: empty before side");
   assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT] }, { path: "new.go", oldPath: "old.go" }).before.path, "old.go");
   assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT, OTHER] }, { path: "a.go" }).before.ref, PARENT, "merge: first parent");
+  // Added and deleted files: the empty side is known, so no git process is started for it.
+  assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT] }, { path: "new.go", status: "A" }).before.ref, null, "an added file has no before");
+  assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT] }, { path: "gone.go", status: "D" }).after.ref, null, "a deleted file has no after");
+  assert.strictEqual(diffSides(root, { sha: SHA, parents: [PARENT] }, { path: "a.go", status: "M" }).after.ref, SHA);
   console.log("ok - diffSides: parent vs commit, empty root side, rename source, first parent of merges");
 }
 

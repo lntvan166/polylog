@@ -90,6 +90,16 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
+- **Uncommitted changes, across every repo:**
+  - **Show Uncommitted Changes** (the eye in the Log's toolbar) pins one row per repository
+    with uncommitted work above its commits.
+  - **Review Uncommitted Changes** (the checklist) opens a review of every uncommitted file
+    across your repos in one tree, grouped by repository, for a last look before you
+    commit.
+  - Staged and unstaged changes are both compared with the last commit; staged files are
+    marked "staged" and new files "new". A file opens with your real, editable file on the
+    right.
+  - Both follow your saves and git actions.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.
@@ -147,6 +157,7 @@ skewed clock can place a commit out of order.
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
+| `polylog.showUncommitted` | `false` | Pin each repository's uncommitted changes above its commits. Toggle it from the Log's toolbar. |
 | `polylog.keepViewsExpanded` | `true` | Expand the Log or Changes again when a header click collapses it. Hiding a view again right after is respected until reload. |
 
 ---

@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { decorationFor, describeChanges, type ChangesState, type NodeDesc } from "./changesModel";
+import { decorationFor, describeChanges, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
 
 export interface OpenDiffArgs {
   repoId: string;
@@ -7,6 +7,8 @@ export interface OpenDiffArgs {
   parent: string | null;
   path: string;
   oldPath?: string;
+  /** The file's status in the commit (A, D, …): its empty side needs no git process. */
+  status?: string;
 }
 
 export interface ChangesSnapshot {
@@ -27,10 +29,12 @@ const TREE_SCHEME = "polylog-tree";
 export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.FileDecorationProvider, vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<NodeDesc | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
-  private readonly decorationsChanged = new vscode.EventEmitter<undefined>();
+  private readonly decorationsChanged = new vscode.EventEmitter<vscode.Uri[]>();
   readonly onDidChangeFileDecorations = this.decorationsChanged.event;
   /** uri.toString() → decoration, for the files of the commit on screen. */
   private decorations = new Map<string, vscode.FileDecoration>();
+  /** The URIs decorated now: a new commit tells VS Code about these and the new ones only. */
+  private decorated: vscode.Uri[] = [];
   private readonly view: vscode.TreeView<NodeDesc>;
   private state: ChangesState | null = null;
   private roots: NodeDesc[] = [];
@@ -95,10 +99,15 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.message = d.message;
     this.view.message = d.message;
     this.decorations = new Map();
+    const before = this.decorated;
+    this.decorated = [];
     const files = (nodes: NodeDesc[]): void => nodes.forEach((n) => {
       if (n.kind !== "file") return files(n.children);
       const dec = decorationFor(n.file.status);
-      if (dec) this.decorations.set(this.uriFor(n.path).toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
+      if (!dec) return;
+      const uri = this.uriFor(n.path, n.owner);
+      this.decorations.set(uri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
+      this.decorated.push(uri);
     });
     files(this.roots);
     this.parents = new Map();
@@ -110,7 +119,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     });
     index(this.roots);
     this.emitter.fire(undefined);
-    this.decorationsChanged.fire(undefined);
+    const changed = [...before, ...this.decorated];
+    if (changed.length > 0) this.decorationsChanged.fire(changed);
     // File history: select the file this history is about, without taking focus from the Log.
     const target = this.focused;
     if (target && this.view.visible) setTimeout(() => void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined), 0);
@@ -120,8 +130,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
    * Scheme keeps live worktree decorations off; the commit in the query keeps
    * one commit's colors from ever landing on another commit's same path.
    */
-  private uriFor(path: string): vscode.Uri {
-    return vscode.Uri.from({ scheme: TREE_SCHEME, path: `/${path}`, query: this.state?.commit.sha ?? "" });
+  private uriFor(path: string, owner?: Owner): vscode.Uri {
+    // The repository too: in Review Uncommitted, the same path can appear in several repos.
+    const query = owner ? `${owner.sha}:${owner.repoId}` : this.state?.commit.sha ?? "";
+    return vscode.Uri.from({ scheme: TREE_SCHEME, path: `/${path}`, query });
   }
 
   provideFileDecoration(uri: vscode.Uri): vscode.FileDecoration | undefined {
@@ -138,7 +150,6 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   }
 
   getTreeItem(node: NodeDesc): vscode.TreeItem {
-    const s = this.state!;
     const item = new vscode.TreeItem(node.label, node.kind === "file" ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded);
     item.id = node.id;
     item.description = node.description;
@@ -151,12 +162,12 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     // resourceUri lets the file-icon theme pick icons from the name. A private
     // scheme, not the worktree file: URI, so live git and Problems decorations
     // for today's files are not painted onto a historical commit.
-    item.resourceUri = this.uriFor(node.path);
+    item.resourceUri = this.uriFor(node.path, node.kind === "file" ? node.owner : undefined);
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
     // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
     if (node.kind === "file") item.contextValue = node.file.status === "D" ? "fileDeleted" : "file";
     if (node.kind === "file" && node.openable) {
-      const args: OpenDiffArgs = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null, path: node.file.path, oldPath: node.file.oldPath };
+      const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };
     }
     return item;

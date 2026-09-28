@@ -7,6 +7,33 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **See every repository's uncommitted changes, and review them before you commit.**
+  - **Show Uncommitted Changes**, the eye in the Log's toolbar (setting
+    `polylog.showUncommitted`, off by default), pins one row per repository with
+    uncommitted work above its commits: "Uncommitted changes · 3 files". Selecting it
+    lists the files in the Changes tree.
+  - **Review Uncommitted Changes**, the checklist, opens a mode like File History. The
+    Log lists the repositories with changes, and the Changes tree shows every uncommitted
+    file across them, grouped by repository.
+  - Staged and unstaged changes are both compared with the last commit. Fully staged
+    files say "staged", and new files say "new".
+  - A file opens with the last commit on the left and your real, editable file on the
+    right.
+  - The Path filter and the repositories you picked apply. The rows hide while a search,
+    author or branch filter is on, since uncommitted work has none of those.
+  - Everything is read only while shown: one `git status --branch` per repo, plus
+    `git diff --numstat` only where there are changes. Your saves and VS Code Git's own
+    events refresh it.
+  - The toggle acts at once and saves the setting in the background, and each repository
+    appears as soon as it is read. On 68 repositories with 5 dirty, the rows appear in
+    0.19 s rather than 1.1 s.
+
+---
+
 ## [0.2.0] — 2026-09-24
 
 ### Added

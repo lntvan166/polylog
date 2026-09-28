@@ -169,6 +169,23 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     console.log("ok - each repo uses the branch if it has it, else its current branch, resolved once per query");
   }
   {
+    // A slow rev-parse in one repository must not hold back the others' git log.
+    const order: string[] = [];
+    const inner = fakeRun({ [WEB.root]: [mk(WEB, 30)], [API.root]: [mk(API, 25)] });
+    const run: RunGit = async (cwd, args, signal) => {
+      if (args[0] === "rev-parse") {
+        if (cwd === WEB.root) await new Promise((r) => setTimeout(r, 50));
+        order.push(`rev-parse ${cwd}`);
+        return "abc\n";
+      }
+      order.push(`log ${cwd}`);
+      return inner(cwd, args, signal);
+    };
+    await fetchPage(req({ repos: [WEB, API], filter: { ...ALL, branch: "origin/prod" }, pageSize: 2, run }));
+    assert.ok(order.indexOf(`log ${API.root}`) < order.indexOf(`rev-parse ${WEB.root}`), `each repo's log follows its own rev-parse (${order.join(" → ")})`);
+    console.log("ok - branch mode: each repository goes from rev-parse to log on its own");
+  }
+  {
     const ctl = new AbortController();
     ctl.abort();
     const calls: string[][] = [];

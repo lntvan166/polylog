@@ -65,10 +65,11 @@ export function parseNumstat(stdout: string): FileChange[] {
 export function diffSides(
   root: string,
   commit: Pick<Commit, "sha" | "parents">,
-  file: Pick<FileChange, "path" | "oldPath">,
+  file: Pick<FileChange, "path" | "oldPath"> & { status?: string },
 ): { before: RevisionRef; after: RevisionRef } {
+  // An added file has no before, a deleted one no after: empty sides, without asking git.
   return {
-    before: { root, ref: commit.parents[0] ?? null, path: file.oldPath ?? file.path },
-    after: { root, ref: commit.sha, path: file.path },
+    before: { root, ref: file.status === "A" ? null : commit.parents[0] ?? null, path: file.oldPath ?? file.path },
+    after: { root, ref: file.status === "D" ? null : commit.sha, path: file.path },
   };
 }

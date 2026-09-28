@@ -70,13 +70,18 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
   const branch = req.filter.branch;
 
   // Branch mode, first page: does each repo have the branch? Exit code only
-  // (rev-parse --verify --quiet), so no localized error text is parsed.
-  if (branch && !req.prev) {
-    const repos = [...progress.keys()].map((id) => byId.get(id)!);
-    const found = await runPool(repos, req.concurrency,
-      (repo, signal) => req.run(repo.root, ["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], signal), req.signal);
-    if (req.signal.aborted) throw abortError();
-    found.forEach((f, i) => { progress.get(repos[i].id)!.ref = f.status === "fulfilled" ? branch : null; });
+  // (rev-parse --verify --quiet), so no localized error text is parsed. Each repo runs its
+  // own git log straight after, so none waits for the slowest rev-parse.
+  const resolveRef = async (repo: Repo, signal: AbortSignal): Promise<void> => {
+    const p = progress.get(repo.id)!;
+    if (!branch || p.ref !== undefined) return;
+    p.ref = await req.run(repo.root, ["rev-parse", "--verify", "--quiet", `${branch}^{commit}`], signal).then(() => branch, () => null);
+    if (signal.aborted) throw abortError();
+  };
+  if (branch && !req.prev && req.history) {
+    // File history reads the file's names on its branch first.
+    const repo = byId.get(req.history.repoId);
+    if (repo && progress.has(repo.id)) await resolveRef(repo, req.signal);
   }
   // File history, first page: learn every name the file has had (one unfiltered
   // --follow walk), then query all of them like any other log.
@@ -108,7 +113,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
     const settled = await runPool(
       targets,
       req.concurrency,
-      (repo, signal) => {
+      async (repo, signal) => {
+        await resolveRef(repo, signal);
         const p = progress.get(repo.id)!;
         const o = { pageSize: req.pageSize, now, cursor: { skip: p.fetched }, me: req.me?.get(repo.id), ref: p.ref ?? undefined };
         return req.run(repo.root, req.history ? historyArgs(req.filter, { ...o, paths: historyPaths ?? [req.history.path] }) : logArgs(req.filter, o), signal);

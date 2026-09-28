@@ -8,6 +8,7 @@ import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPat
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
+import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { isAbortError } from "./pool";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-git-test-"));
@@ -145,6 +146,33 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual(await subjects("*.tsx"), ["feat: checkout"], "a slash-free glob matches in any folder");
     assert.deepStrictEqual(await subjects("src/*.ts"), ["feat: cart"], "a glob with a folder stays anchored to it");
     console.log("ok - real git: a path filter matches files, folders and globs as the design says");
+  }
+  {
+    const wt = path.join(home, "acme-libs");
+    makeRepo(wt, [
+      { time: 1000, author: "rin", message: "init", files: { "a.ts": "1\n2\n", "b.ts": "b\n", "gone.ts": "x\n", "old.md": "same\n", "keep.ts": "k\n" } },
+    ], home);
+    fs.writeFileSync(path.join(wt, "a.ts"), "1\n2\n3\n"); // edited, not staged
+    fs.writeFileSync(path.join(wt, "b.ts"), "B\n");
+    git(wt, ["add", "b.ts"]); // edited and staged
+    fs.writeFileSync(path.join(wt, "new.ts"), "n\n");
+    git(wt, ["add", "new.ts"]); // new, staged
+    fs.rmSync(path.join(wt, "gone.ts")); // deleted
+    git(wt, ["mv", "old.md", "new.md"]); // renamed
+    fs.writeFileSync(path.join(wt, "to do é.txt"), "t\n"); // untracked, space and accent
+    const head = git(wt, ["rev-parse", "HEAD"]);
+    const files = uncommittedFiles(parseStatus(await runGit(wt, statusArgs([]))), parseNumstat(await runGit(wt, numstatArgs(head, []))));
+    const by = new Map(files.map((f) => [f.path, f]));
+    assert.deepStrictEqual([...by.keys()].sort(), ["a.ts", "b.ts", "gone.ts", "new.md", "new.ts", "to do é.txt"], "every uncommitted file, nothing clean");
+    assert.deepStrictEqual([by.get("a.ts")!.status, by.get("a.ts")!.added, by.get("a.ts")!.staged], ["M", 1, false]);
+    assert.deepStrictEqual([by.get("b.ts")!.status, by.get("b.ts")!.staged], ["M", true]);
+    assert.deepStrictEqual([by.get("new.ts")!.status, by.get("new.ts")!.staged], ["A", true]);
+    assert.strictEqual(by.get("gone.ts")!.status, "D");
+    assert.deepStrictEqual([by.get("new.md")!.status, by.get("new.md")!.oldPath], ["R", "old.md"]);
+    assert.deepStrictEqual([by.get("to do é.txt")!.status, by.get("to do é.txt")!.untracked], ["A", true]);
+    const only = parseStatus(await runGit(wt, statusArgs([":(literal)a.ts"])));
+    assert.deepStrictEqual(only.map((e) => e.path), ["a.ts"], "the Path filter narrows it");
+    console.log("ok - real git: uncommitted changes, staged or not, new, deleted, renamed and untracked");
   }
 })().catch((e) => {
   console.error(e);
