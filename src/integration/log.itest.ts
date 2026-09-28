@@ -204,8 +204,14 @@ describe("Polylog panel", () => {
       const posted = (s: LogSnapshot) => (s.posts.page?.count ?? 0) + (s.posts.pinned?.count ?? 0);
       assert.strictEqual(posted(now), posted(mark), "and nothing was posted: the same files, the same counts");
 
-      // A save outside every repository reads nothing.
-      mark = now;
+      // A save outside every repository reads nothing. First let VS Code's Git finish reporting
+      // the saves above (on a slow runner its report comes seconds later).
+      mark = await waitFor("git to go quiet", async () => {
+        const a = await snapshot();
+        await sleep(1500);
+        const b = await snapshot();
+        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+      });
       const outside = path.join(require("os").tmpdir(), `polylog-outside-${Date.now()}.txt`);
       fs.writeFileSync(outside, "a\n");
       const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
