@@ -184,6 +184,14 @@ describe("Polylog panel", () => {
       await until("no pinned row while searching", (x) => x.rows.length === 1 && x.rows[0].sha !== UNCOMMITTED);
       await send({ type: "filter", filter: ALL });
       await until("the pinned row again", (x) => x.rows[0]?.sha === UNCOMMITTED);
+
+      // The toolbar buttons act at once and write the setting back.
+      await vscode.commands.executeCommand("polylog.hideUncommitted");
+      await until("hidden by the button", (x) => !x.rows.some((r) => r.sha === UNCOMMITTED));
+      await waitFor("the setting written back", () => (cfg.get("showUncommitted") === false ? true : undefined));
+      await vscode.commands.executeCommand("polylog.showUncommitted");
+      await until("shown by the button", (x) => x.rows[0]?.sha === UNCOMMITTED);
+      await waitFor("the setting written back", () => (vscode.workspace.getConfiguration("polylog").get("showUncommitted") === true ? true : undefined));
     } finally {
       await cfg.update("showUncommitted", undefined, vscode.ConfigurationTarget.Global);
       await closeEditors();

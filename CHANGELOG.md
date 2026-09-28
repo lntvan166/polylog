@@ -25,8 +25,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     right.
   - The Path filter and the repositories you picked apply. The rows hide while a search,
     author or branch filter is on, since uncommitted work has none of those.
-  - Everything is read only while shown: `git status` and `git diff --numstat` per repo.
-    Your saves and VS Code Git's own events refresh it.
+  - Everything is read only while shown: one `git status --branch` per repo, plus
+    `git diff --numstat` only where there are changes. Your saves and VS Code Git's own
+    events refresh it.
+  - The toggle acts at once and saves the setting in the background, and each repository
+    appears as soon as it is read. On 68 repositories with 5 dirty, the rows appear in
+    0.19 s rather than 1.1 s.
 
 ---
 

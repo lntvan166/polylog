@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { EMPTY_TREE, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
+import { EMPTY_TREE, headOf, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 
 // git status --porcelain=v2 -z: "1 XY sub mH mI mW hH hI path", "2 XY … Xscore path\0orig", "? path", "u XY …".
 const H = "0".repeat(40);
@@ -52,9 +52,16 @@ const status = [
   console.log("ok - status and counts combine into the Changes tree's file list");
 }
 {
-  assert.deepStrictEqual(statusArgs([]), ["status", "--porcelain=v2", "-z", "--untracked-files=all"]);
-  assert.deepStrictEqual(statusArgs([":(literal)src"]), ["status", "--porcelain=v2", "-z", "--untracked-files=all", "--", ":(literal)src"], "the Path filter narrows it, after --");
+  assert.deepStrictEqual(statusArgs([]), ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"], "--branch: the last commit comes in the same call");
+  assert.deepStrictEqual(statusArgs([":(literal)src"]), ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all", "--", ":(literal)src"], "the Path filter narrows it, after --");
   assert.deepStrictEqual(numstatArgs("a".repeat(40), []), ["diff", "a".repeat(40), "--numstat", "-z", "-M", "--"]);
   assert.deepStrictEqual(numstatArgs(null, []).slice(0, 2), ["diff", EMPTY_TREE], "a repository with no commit yet compares with the empty tree");
   console.log("ok - status and numstat arguments");
+}
+{
+  const withBranch = `# branch.oid ${"a".repeat(40)}\0# branch.head main\0` + rec(".M", "src/app.ts") + "\0";
+  assert.strictEqual(headOf(withBranch), "a".repeat(40), "the last commit, from git status --branch");
+  assert.strictEqual(headOf("# branch.oid (initial)\0# branch.head main\0"), null, "no commit yet");
+  assert.deepStrictEqual(parseStatus(withBranch).map((e) => e.path), ["src/app.ts"], "the # header lines are not files");
+  console.log("ok - git status --branch gives the last commit too, so no separate rev-parse");
 }

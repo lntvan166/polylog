@@ -502,3 +502,14 @@ Review what is about to be committed, across every repository.
   edited while reviewing. New files have an empty left side, deleted files an empty right.
 - **Staged vs unstaged:** shown together against the last commit, with a "staged" marker,
   as chosen by the maintainer (a split was the alternative).
+- **Toggle speed** (after the maintainer found it slow; measured on 68 repos, 5 dirty):
+  first pinned row 1116 → 194 ms.
+  - The toolbar commands act on an in-memory preference at once, and write
+    `polylog.showUncommitted` back in the background. Before, the rows waited for the
+    settings.json round trip.
+  - One `git status --branch` per repo (its `# branch.oid` replaces `rev-parse`), and
+    `numstat` only in dirty repos.
+  - Repos are published as they are read, coalesced to one repaint per 80 ms. A refresh
+    keeps each repo's last result until its new one lands.
+  - Full reloads still publish once, with the page, so rows never pair with a stale
+    commit list.

@@ -61,12 +61,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(arg)),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
     vscode.commands.registerCommand("polylog.reviewUncommitted", () => log.reviewUncommitted()),
-    vscode.commands.registerCommand("polylog.showUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", true, vscode.ConfigurationTarget.Global)),
-    vscode.commands.registerCommand("polylog.hideUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", false, vscode.ConfigurationTarget.Global)),
+    // The toggle acts at once; the setting is written back in the background.
+    vscode.commands.registerCommand("polylog.showUncommitted", () => log.setUncommittedOn(true)),
+    vscode.commands.registerCommand("polylog.hideUncommitted", () => log.setUncommittedOn(false)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration("polylog.showUncommitted")) return;
-      syncUncommittedContext();
-      void log.uncommittedToggled();
+      if (e.affectsConfiguration("polylog.showUncommitted")) void log.uncommittedSettingChanged();
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change, or a save.
     discovery.onDidChangeRepoState(() => uncommittedSoon()),

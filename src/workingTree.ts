@@ -16,15 +16,24 @@ export interface StatusEntry {
   conflicted?: boolean;
 }
 
-/** Which files differ, ignored ones never; `pathspecs` is the Path filter, after --. */
+/**
+ * Which files differ, ignored ones never; `pathspecs` is the Path filter, after --.
+ * --branch adds the last commit's id, so one call per repository says everything.
+ */
 export function statusArgs(pathspecs: readonly string[]): string[] {
-  const args = ["status", "--porcelain=v2", "-z", "--untracked-files=all"];
+  const args = ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"];
   return pathspecs.length > 0 ? [...args, "--", ...pathspecs] : args;
 }
 
 /** +/- counts of the working tree against `head` (null: no commit yet, the empty tree). */
 export function numstatArgs(head: string | null, pathspecs: readonly string[]): string[] {
   return ["diff", head ?? EMPTY_TREE, "--numstat", "-z", "-M", "--", ...pathspecs];
+}
+
+/** The last commit's id from `git status --branch` ("# branch.oid <sha>"); null before the first commit. */
+export function headOf(stdout: string): string | null {
+  const m = /(?:^|\0)# branch\.oid ([0-9a-f]{40,64})(?:\0|$)/.exec(stdout);
+  return m ? m[1] : null;
 }
 
 /** The index (X) and working-tree (Y) letters of one entry, as one change against HEAD. */

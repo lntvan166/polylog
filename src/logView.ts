@@ -14,7 +14,7 @@ import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef }
 import { authorSuggestions, branchSuggestions } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
+import { headOf, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
@@ -697,9 +697,37 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return after.toString();
   }
 
+  /** The toggle as last set from the toolbar, before the setting is written back. */
+  private uncommittedPref: boolean | undefined;
+
   /** The "Show Uncommitted Changes" toggle (polylog.showUncommitted). */
   private uncommittedOn(): boolean {
-    return vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false) === true;
+    return this.uncommittedPref ?? vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false) === true;
+  }
+
+  /**
+   * The toolbar toggle: acts at once, then saves the setting. Waiting for settings.json to
+   * be written and the change to come back made the toggle feel slow.
+   */
+  async setUncommittedOn(on: boolean): Promise<void> {
+    if (on === this.uncommittedOn()) return;
+    this.uncommittedPref = on;
+    void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", on);
+    const saved = vscode.workspace.getConfiguration("polylog").update("showUncommitted", on, vscode.ConfigurationTarget.Global);
+    await this.uncommittedToggled();
+    await saved;
+  }
+
+  /** The setting changed (Settings UI, settings.json, or our own write coming back). */
+  async uncommittedSettingChanged(): Promise<void> {
+    const setting = vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false) === true;
+    void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", setting);
+    if (setting === this.uncommittedOn()) {
+      this.uncommittedPref = undefined; // the setting caught up
+      return;
+    }
+    this.uncommittedPref = undefined;
+    await this.uncommittedToggled();
   }
 
   /**
@@ -772,7 +800,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * Reads each selected repository's uncommitted changes (git status + numstat, under the Path
    * filter), or forgets them when they are not shown. A newer read aborts an older one.
    */
-  private async readUncommitted(): Promise<void> {
+  private async readUncommitted(progressive = false): Promise<void> {
     this.uncommittedRead.abort();
     if (!this.uncommittedShown()) {
       this.uncommitted = new Map();
@@ -782,38 +810,38 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const path = this.filter.path === undefined ? undefined : normalizePath(this.filter.path);
     const specs = path ? [pathspecOf(path)] : [];
     const repos = selectRepos(this.filter, this.repos);
-    const settled = await runPool(repos, this.settings().maxConcurrency, async (r, signal) => {
-      const head = await this.run(r.root, ["rev-parse", "--verify", "--quiet", "HEAD"], signal).then((o) => o.trim() || null, (e) => {
-        if (isAbortError(e)) throw e;
-        return null; // no commit yet
-      });
-      const status = parseStatus(await this.run(r.root, statusArgs(specs), signal));
-      if (status.length === 0) return { head, files: [] };
-      return { head, files: uncommittedFiles(status, parseNumstat(await this.run(r.root, numstatArgs(head, specs), signal))) };
+    // Refreshing keeps each repo's last result until its new one lands: no flicker.
+    const next = new Map([...this.uncommitted].filter(([id]) => repos.some((r) => r.id === id)));
+    if (progressive) this.uncommitted = next;
+    await runPool(repos, this.settings().maxConcurrency, async (r, signal) => {
+      // One call for a clean repo: --branch carries the last commit's id too.
+      const out = await this.run(r.root, statusArgs(specs), signal);
+      const head = headOf(out);
+      const status = parseStatus(out);
+      const files = status.length === 0 ? [] : uncommittedFiles(status, parseNumstat(await this.run(r.root, numstatArgs(head, specs), signal)));
+      if (ctl.signal.aborted) return;
+      const before = next.get(r.id)?.files.length ?? 0;
+      next.set(r.id, { head, files });
+      // Show each repository as soon as it is read, rather than after the slowest one.
+      if (progressive && (files.length > 0 || before > 0)) this.publishUncommittedSoon();
     }, ctl.signal);
     if (ctl.signal.aborted) return;
-    const next = new Map<string, { head: string | null; files: FileChange[] }>();
-    settled.forEach((r, i) => {
-      if (r.status === "fulfilled") next.set(repos[i].id, r.value);
-    });
     this.uncommitted = next;
   }
 
-  /** The toggle changed: read (or drop) the uncommitted changes and show the Log again. */
-  async uncommittedToggled(): Promise<void> {
-    await this.readUncommitted();
-    this.clearTreeIfGone();
-    this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+  private publishTimer: ReturnType<typeof setTimeout> | undefined;
+
+  /** Coalesces progressive updates: at most one repaint every 80 ms while repos come in. */
+  private publishUncommittedSoon(): void {
+    if (this.publishTimer) return;
+    this.publishTimer = setTimeout(() => {
+      this.publishTimer = undefined;
+      this.publishUncommitted();
+    }, 80);
   }
 
-  /**
-   * Something in a repository changed (a save, VS Code's Git reporting a new state): read
-   * the uncommitted changes again, if they are shown, and refresh the Log and the tree.
-   */
-  async uncommittedChanged(): Promise<void> {
-    if (!this.uncommittedShown()) return;
-    await this.readUncommitted();
-    if (this.uncommittedRead.signal.aborted) return;
+  /** Posts the rows (and the review tree, or the selected uncommitted row's files) as they are now. */
+  private publishUncommitted(): void {
     this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
     if (this.review) {
       this.showReviewTree();
@@ -828,6 +856,26 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /** The toggle changed: read (or drop) the uncommitted changes, showing repos as they come. */
+  async uncommittedToggled(): Promise<void> {
+    if (!this.uncommittedShown()) this.clearTreeIfGone();
+    await this.readUncommitted(true);
+    if (this.uncommittedRead.signal.aborted) return;
+    this.clearTreeIfGone();
+    this.publishUncommitted();
+  }
+
+  /**
+   * Something in a repository changed (a save, VS Code's Git reporting a new state): read
+   * the uncommitted changes again, if they are shown, and refresh the Log and the tree.
+   */
+  async uncommittedChanged(): Promise<void> {
+    if (!this.uncommittedShown()) return;
+    await this.readUncommitted(true);
+    if (this.uncommittedRead.signal.aborted) return;
+    this.publishUncommitted();
+  }
+
   private post(m: HostMessage): void {
     void this.webviewView?.webview.postMessage(m);
   }
@@ -835,6 +883,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   dispose(): void {
     this.query.abort();
     this.detail.abort();
+    this.uncommittedRead.abort();
+    clearTimeout(this.publishTimer);
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
     for (const d of this.disposables) d.dispose();
