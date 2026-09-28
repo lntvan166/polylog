@@ -93,8 +93,6 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       appEl.style.setProperty("--repo-col", `${repoColumnChars(m.repos.map((r) => r.name)) + 2}ch`);
       state.filter = m.filter;
       filters.setMe(m.hasMe);
-      filters.setBranches(m.branches);
-      filters.setAuthors(m.authors);
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
@@ -158,17 +156,44 @@ function replaceRows(rows: Commit[]): void {
   select(next, false);
 }
 
+/** Selections closer together than this are a held arrow key: only where it stops is read. */
+const RAPID_SELECT_MS = 100;
+const SETTLE_SELECT_MS = 80;
+let lastSelectAt = 0;
+let pendingSelect: ReturnType<typeof setTimeout> | undefined;
+let pendingPost: (() => void) | undefined;
+
 function select(index: number, andRender = true): void {
   state.selected = index;
   const c = state.rows[index];
   const key = c ? commitKey(c) : null;
-  if (c && key !== selectedKey) post({ type: "select", repoId: c.repoId, sha: c.sha });
+  if (c && key !== selectedKey) postSelect(c);
   selectedKey = key;
   if (andRender) render();
 }
 
+/**
+ * Tells the host about a new selection. The highlight moves at once; while selections keep
+ * coming (holding ↓), the host's git show waits until they stop, instead of one per row.
+ */
+function postSelect(c: Commit): void {
+  const now = performance.now();
+  const rapid = now - lastSelectAt < RAPID_SELECT_MS;
+  lastSelectAt = now;
+  clearTimeout(pendingSelect);
+  const send = () => {
+    pendingSelect = undefined;
+    pendingPost = undefined;
+    post({ type: "select", repoId: c.repoId, sha: c.sha });
+  };
+  if (!rapid) return send();
+  pendingPost = send;
+  pendingSelect = setTimeout(send, SETTLE_SELECT_MS);
+}
+
 /** Enter: the host opens the selected commit's first text file in the editor area. */
 function openFirstFile(): void {
+  pendingPost?.(); // a selection still settling goes first
   const c = state.rows[state.selected];
   if (c) post({ type: "openFirst", repoId: c.repoId, sha: c.sha });
 }

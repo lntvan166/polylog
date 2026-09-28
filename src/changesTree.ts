@@ -7,6 +7,8 @@ export interface OpenDiffArgs {
   parent: string | null;
   path: string;
   oldPath?: string;
+  /** The file's status in the commit (A, D, …): its empty side needs no git process. */
+  status?: string;
 }
 
 export interface ChangesSnapshot {
@@ -27,10 +29,12 @@ const TREE_SCHEME = "polylog-tree";
 export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.FileDecorationProvider, vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<NodeDesc | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
-  private readonly decorationsChanged = new vscode.EventEmitter<undefined>();
+  private readonly decorationsChanged = new vscode.EventEmitter<vscode.Uri[]>();
   readonly onDidChangeFileDecorations = this.decorationsChanged.event;
   /** uri.toString() → decoration, for the files of the commit on screen. */
   private decorations = new Map<string, vscode.FileDecoration>();
+  /** The URIs decorated now: a new commit tells VS Code about these and the new ones only. */
+  private decorated: vscode.Uri[] = [];
   private readonly view: vscode.TreeView<NodeDesc>;
   private state: ChangesState | null = null;
   private roots: NodeDesc[] = [];
@@ -95,10 +99,15 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.message = d.message;
     this.view.message = d.message;
     this.decorations = new Map();
+    const before = this.decorated;
+    this.decorated = [];
     const files = (nodes: NodeDesc[]): void => nodes.forEach((n) => {
       if (n.kind !== "file") return files(n.children);
       const dec = decorationFor(n.file.status);
-      if (dec) this.decorations.set(this.uriFor(n.path, n.owner).toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
+      if (!dec) return;
+      const uri = this.uriFor(n.path, n.owner);
+      this.decorations.set(uri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
+      this.decorated.push(uri);
     });
     files(this.roots);
     this.parents = new Map();
@@ -110,7 +119,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     });
     index(this.roots);
     this.emitter.fire(undefined);
-    this.decorationsChanged.fire(undefined);
+    const changed = [...before, ...this.decorated];
+    if (changed.length > 0) this.decorationsChanged.fire(changed);
     // File history: select the file this history is about, without taking focus from the Log.
     const target = this.focused;
     if (target && this.view.visible) setTimeout(() => void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined), 0);
@@ -157,7 +167,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
     if (node.kind === "file") item.contextValue = node.file.status === "D" ? "fileDeleted" : "file";
     if (node.kind === "file" && node.openable) {
-      const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath };
+      const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };
     }
     return item;

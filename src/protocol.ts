@@ -23,7 +23,7 @@ export interface BranchName {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[]; review: { files: number; repos: number } | null }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; review: { files: number; repos: number } | null }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
   /**

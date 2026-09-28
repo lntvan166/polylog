@@ -210,6 +210,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
         this.postInit();
+        // A re-created webview lost the suggestions it had: send them again (only then).
+        if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
@@ -274,7 +276,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches, authors: this.authors, review: this.review ? this.reviewSummary() : null });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, review: this.review ? this.reviewSummary() : null });
   }
 
   /**
@@ -421,6 +423,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.detail.abort();
     this.reloadSoon.cancel();
     this.backgroundFor = undefined;
+    this.meFor = undefined;
     await this.reload();
     const current = this.deps.changes.current();
     if (current) await this.showDetail(current.commit.repoId, current.commit.sha);
@@ -500,9 +503,21 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.post({ type: "suggestions", branches: this.branches });
   }
 
+  /** The repo set meByRepo was read for (reset when git itself changes). */
+  private meFor: string | undefined;
+
   /** Each repo's user.email, in the background so it never delays the first paint. */
   private async loadMe(): Promise<void> {
+    if (this.meFor === this.repos.map((r) => r.id).join("\0")) return; // read before the page (Me was on)
+    if (!(await this.readMe())) return;
+    this.postInit();
+    if (this.filter.mine) await this.reload();
+  }
+
+  /** Reads each repo's user.email; true when they changed. */
+  private async readMe(): Promise<boolean> {
     const repos = [...this.repos];
+    this.meFor = repos.map((r) => r.id).join("\0");
     const settled = await runPool(repos, this.settings().maxConcurrency,
       (r, signal) => this.run(r.root, ["config", "user.email"], signal), new AbortController().signal);
     const me = new Map<string, string>();
@@ -511,9 +526,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     });
     const changed = [...me].join() !== [...this.meByRepo].join();
     this.meByRepo = me;
-    if (!changed) return;
-    this.postInit();
-    if (this.filter.mine) await this.reload();
+    return changed;
   }
 
   /** Repositories may have changed (vscode.git settled, a repo opened/closed): reload only if they did. */
@@ -553,6 +566,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       return;
     }
     try {
+      // Me needs each repository's user.email, or the first page is empty and read twice.
+      if (this.filter.mine && this.meFor !== this.repos.map((r) => r.id).join("\0")) {
+        if (await this.readMe()) this.postInit();
+        if (ctl.signal.aborted) return;
+      }
       // The commits do not wait for the uncommitted read: its rows follow as they land.
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
@@ -683,7 +701,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async swapHistoryDiff(commit: Commit, preserveFocus: boolean): Promise<void> {
     if (!this.history) return; // queued before the user closed File History
     const f = commit.file!;
-    const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath }, preserveFocus);
+    const opened = await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath, status: f.status }, preserveFocus);
     // Stepping through a history reuses one tab. VS Code's preview tab does that
     // unless the user turned preview editors off; then close the previous one.
     const previous = this.historyTab;
@@ -710,7 +728,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async openFirstOf(commit: Commit): Promise<void> {
     const f = firstOpenable(this.deps.changes.current()?.files ?? []);
     if (!f) return;
-    await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath });
+    await this.openDiff({ repoId: commit.repoId, sha: commit.sha, parent: commit.parents[0] ?? null, path: f.path, oldPath: f.oldPath, status: f.status });
   }
 
   /** Opens the diff; returns its modified-side URI (as a string), or undefined when refused. */
@@ -719,7 +737,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // Refs come from the webview or a command argument: validate before they reach git.
     if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
     if (a.sha === UNCOMMITTED) return this.openWorkingDiff(repo, a, preserveFocus);
-    const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, a);
+    const status = typeof a.status === "string" ? a.status : undefined;
+    const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, { path: a.path, oldPath: a.oldPath, status });
     const title = `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
     // A panel view is not an editor group, so this always opens in the editor area above.
     const modified = toUri(after);

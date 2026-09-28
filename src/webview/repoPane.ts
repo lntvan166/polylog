@@ -63,11 +63,20 @@ export class RepoPane {
   }
 
   update(repos: readonly Repo[], repoIds: string[] | null): void {
-    if (repos !== this.repos) this.accents = assignAccents(repos);
+    // Every filter change comes here (each Search keystroke too): rebuild only when the
+    // pane would look different.
+    const reposKey = repos.map((r) => `${r.id}\0${r.name}`).join("\n");
+    const idsKey = repoIds === null ? null : repoIds.join("\n");
+    if (reposKey === this.reposKey && idsKey === this.idsKey) return;
+    if (reposKey !== this.reposKey) this.accents = assignAccents(repos);
+    this.reposKey = reposKey;
+    this.idsKey = idsKey;
     this.repos = repos;
     this.repoIds = repoIds;
     this.render();
   }
+  private reposKey: string | undefined;
+  private idsKey: string | null | undefined;
 
   /** toggle: tick/untick (checkbox, Space, Ctrl/Cmd-click); otherwise show only this repo. */
   private activate(i: number, toggle: boolean): void {

@@ -24,6 +24,9 @@ const SKELETON_ROWS = 8;
  */
 export class CommitList {
   private rowHeight = 0;
+  private frame = 0;
+  /** The repo column's width, read once per layout change rather than on every scroll paint. */
+  private column: number | undefined;
   private props: ListProps = { rows: [], repoNames: new Map(), accents: new Map(), historyPath: undefined, selected: -1, now: 0, skeleton: false };
 
   constructor(
@@ -32,13 +35,24 @@ export class CommitList {
     private readonly onSelect: (index: number) => void,
     private readonly onOpen: () => void,
   ) {
-    root.addEventListener("scroll", () => this.paint(), { passive: true });
+    // Several scroll events can arrive per frame: paint once, before the frame.
+    root.addEventListener("scroll", () => {
+      if (this.frame) return;
+      this.frame = requestAnimationFrame(() => {
+        this.frame = 0;
+        this.paint();
+      });
+    }, { passive: true });
     window.addEventListener("resize", () => {
       this.rowHeight = 0;
+      this.column = undefined;
       this.paint();
     });
     // Dragging a divider narrows the Log without a window resize: re-fit the repo names.
-    new ResizeObserver(() => this.fitChips()).observe(root);
+    new ResizeObserver(() => {
+      this.column = undefined;
+      this.fitChips();
+    }).observe(root);
     root.addEventListener("keydown", (e) => this.onKey(e));
     body.addEventListener("click", (e) => {
       const row = (e.target as Element).closest<HTMLElement>(".row[data-index]");
@@ -51,6 +65,7 @@ export class CommitList {
   update(next: ListProps): void {
     const moved = next.selected !== this.props.selected;
     this.props = next;
+    this.column = undefined; // the repo column may have changed with the repo list
     if (moved && next.selected >= 0) this.scrollToIndex(next.selected);
     this.paint();
   }
@@ -108,8 +123,11 @@ export class CommitList {
   private fitChips(): void {
     const first = this.body.querySelector<HTMLElement>(".row:not(.skeleton)");
     if (!first) return;
-    const column = parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]);
-    if (!Number.isFinite(column)) return;
+    const column = (this.column ??= parseFloat(getComputedStyle(first).gridTemplateColumns.split(" ")[0]));
+    if (!Number.isFinite(column)) {
+      this.column = undefined;
+      return;
+    }
     const chips = [...this.body.querySelectorAll<HTMLElement>(".row .chip")];
     if (chips.length === 0) return;
     // Every chip shares one font and padding: read them once, then only write.
