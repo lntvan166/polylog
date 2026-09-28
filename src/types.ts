@@ -32,6 +32,10 @@ export interface FileChange {
   added: number | null;
   deleted: number | null;
   status?: ChangeStatus;
+  /** Uncommitted changes only: every change is in the index (git add). */
+  staged?: boolean;
+  /** Uncommitted changes only: a new file git does not track yet. */
+  untracked?: boolean;
 }
 
 export interface RepoFailure {
