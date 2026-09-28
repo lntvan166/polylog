@@ -64,12 +64,20 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.hideUncommitted", () => log.setUncommittedOn(false)),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("polylog.showUncommitted")) void log.uncommittedSettingChanged();
+      if (e.affectsConfiguration("polylog.excludeRepos") || e.affectsConfiguration("polylog.scanDepth")) void log.reposSettingChanged();
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
     // repository, or a save. Only that repository is read again.
-    discovery.onDidChangeRepoState((root) => log.workingTreeChanged(root)),
+    discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.head)),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && log.workingTreeChanged(doc.uri.fsPath)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
+    // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
+    vscode.commands.registerCommand("polylog.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
+    vscode.commands.registerCommand("polylog.repoHide", (arg?: unknown) => log.repoHide(arg)),
+    vscode.commands.registerCommand("polylog.repoShowAll", () => log.repoShowAll()),
+    vscode.commands.registerCommand("polylog.repoExclude", (arg?: unknown) => log.repoExclude(arg)),
+    vscode.commands.registerCommand("polylog.repoOpenFolder", (arg?: unknown) => log.repoOpenFolder(arg)),
+    vscode.commands.registerCommand("polylog.repoCopyPath", (arg?: unknown) => log.repoCopyPath(arg)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),

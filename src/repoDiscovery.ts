@@ -6,7 +6,18 @@ import type { Repo } from "./types";
 
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
-interface GitRepository { rootUri: vscode.Uri; state?: { onDidChange?: vscode.Event<void> } }
+interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
+interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> } }
+
+/** A repository's state change in vscode.git: its root, and what its HEAD and upstream were. */
+export interface RepoStateChange {
+  root: string;
+  /** HEAD's commit, branch, upstream and ahead/behind, as one string: equal means unmoved. */
+  head: string;
+}
+
+const headKey = (h: GitBranch | undefined) =>
+  h ? [h.commit, h.name, h.upstream?.remote, h.upstream?.name, h.ahead, h.behind].map((x) => x ?? "").join("\0") : "";
 type GitState = "uninitialized" | "initialized";
 interface GitAPI {
   /** The binary vscode.git found (from git.path or its own search). */
@@ -46,7 +57,7 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly gitFound = new vscode.EventEmitter<void>();
   /** vscode.git has activated and reported its git binary (see gitPath). */
   readonly onDidFindGit = this.gitFound.event;
-  private readonly repoStateChanged = new vscode.EventEmitter<string>();
+  private readonly repoStateChanged = new vscode.EventEmitter<RepoStateChange>();
   /** A repository's state changed in vscode.git (a save, a stage, a checkout): its root. */
   readonly onDidChangeRepoState = this.repoStateChanged.event;
 
@@ -76,7 +87,7 @@ export class RepoDiscovery implements vscode.Disposable {
     const watching = new Map<GitRepository, vscode.Disposable>();
     const watch = (r: GitRepository) => {
       const root = r.rootUri.fsPath;
-      const d = r.state?.onDidChange?.(() => this.repoStateChanged.fire(root));
+      const d = r.state?.onDidChange?.(() => this.repoStateChanged.fire({ root, head: headKey(r.state?.HEAD) }));
       if (d) watching.set(r, d);
     };
     const unwatch = (r: GitRepository) => {

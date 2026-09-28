@@ -31,6 +31,8 @@ export type HostMessage =
    * commits the webview already has. `review`: Review Uncommitted's new totals.
    */
   | { type: "pinned"; rows: Commit[]; review: { files: number; repos: number } | null }
+  /** Each repository's distance from its upstream (only those ahead or behind). */
+  | { type: "sync"; byRepo: Record<string, { ahead: number; behind: number }> }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
   | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] };
 

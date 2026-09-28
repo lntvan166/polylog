@@ -8,6 +8,7 @@ import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPat
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { GitError, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
+import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { isAbortError } from "./pool";
 
@@ -173,6 +174,24 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     const only = parseStatus(await runGit(wt, statusArgs([":(literal)a.ts"])));
     assert.deepStrictEqual(only.map((e) => e.path), ["a.ts"], "the Path filter narrows it");
     console.log("ok - real git: uncommitted changes, staged or not, new, deleted, renamed and untracked");
+  }
+  {
+    // Ahead/behind against a real upstream: one commit to pull, two not pushed; none without one.
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-upstream-"));
+    const who = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const g = (args: string[]) => execFileSync("git", args, { cwd, env: { ...process.env, ...who } }).toString().trim();
+    g(["init", "-q", "-b", "main"]);
+    g(["commit", "-q", "--allow-empty", "-m", "base"]);
+    await assert.rejects(runGit(cwd, aheadBehindArgs()), "no upstream: git fails, and nothing is shown");
+    g(["branch", "up"]);
+    g(["checkout", "-q", "up"]);
+    g(["commit", "-q", "--allow-empty", "-m", "theirs"]);
+    g(["checkout", "-q", "main"]);
+    g(["commit", "-q", "--allow-empty", "-m", "mine 1"]);
+    g(["commit", "-q", "--allow-empty", "-m", "mine 2"]);
+    g(["branch", "-q", "--set-upstream-to=up"]);
+    assert.deepStrictEqual(parseAheadBehind(await runGit(cwd, aheadBehindArgs())), { ahead: 2, behind: 1 });
+    console.log("ok - real git: commits ahead of and behind the upstream");
   }
   {
     // Aborted just after git exited but before its output closed, a run must still settle: a

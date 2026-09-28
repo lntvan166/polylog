@@ -107,6 +107,9 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
+    case "sync":
+      repoPane.setSync(m.byRepo);
+      return;
     case "suggestions":
       if (m.authors) filters.setAuthors(m.authors);
       if (m.branches) filters.setBranches(m.branches);

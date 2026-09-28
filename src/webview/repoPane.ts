@@ -2,6 +2,7 @@ import type { Repo } from "../types";
 import { byId, clear, h } from "./dom";
 import { fitName, textStyle } from "./measure";
 import { fuzzyMatch, isChecked, pickOnly, toggleRepo, visibleRepos } from "./repoPaneModel";
+import { syncLabel, type AheadBehind } from "../upstream";
 import { accentOf, assignAccents } from "./view";
 
 interface Row {
@@ -76,6 +77,13 @@ export class RepoPane {
     this.render();
   }
   private reposKey: string | undefined;
+  /** Each repository's distance from its upstream (only those ahead or behind). */
+  private sync: Readonly<Record<string, AheadBehind>> = {};
+
+  setSync(byRepo: Readonly<Record<string, AheadBehind>>): void {
+    this.sync = byRepo;
+    this.render();
+  }
   private idsKey: string | null | undefined;
 
   /** toggle: tick/untick (checkbox, Space, Ctrl/Cmd-click); otherwise show only this repo. */
@@ -155,6 +163,8 @@ export class RepoPane {
     this.rows.forEach((row, i) => {
       const checked = row.id === null ? this.repoIds === null : isChecked(this.repoIds, row.id);
       const accent = row.id === null ? null : accentOf(this.accents, row.id);
+      const ab = row.id === null ? undefined : this.sync[row.id];
+      const badge = ab ? syncLabel(ab) : null;
       // VS Code Elements' checkbox, for VS Code's own box, tick and hover. Presentational:
       // the row is the listbox option and handles the click and the keyboard.
       const box = document.createElement("vscode-checkbox");
@@ -172,12 +182,15 @@ export class RepoPane {
         "data-row": String(i),
         title: row.id ?? "Show commits from every repository",
         // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
-        "aria-label": row.id === null ? `${row.name}, ${count}` : row.name,
+        "aria-label": row.id === null ? `${row.name}, ${count}` : badge ? `${row.name}, ${badge.title}` : row.name,
+        // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
+        "data-vscode-context": JSON.stringify(row.id === null ? { preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: row.id, preventDefaultContextMenuItems: true }),
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),
         h("span", { class: "repo-name", "data-name": row.id === null ? undefined : row.name }, row.id === null ? [row.name] : this.highlighted(row.name)),
         row.id === null ? h("span", { class: "repo-count" }, [count]) : null,
+        badge ? h("span", { class: badge.behind ? "repo-sync behind" : "repo-sync", title: badge.title, "aria-hidden": "true" }, [badge.text]) : null,
       ]));
     });
     if (this.rows.length === 1 && this.repos.length > 0) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
