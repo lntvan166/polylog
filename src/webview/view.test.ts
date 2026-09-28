@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, reviewLabel, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
   relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
@@ -177,4 +177,14 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(chipsThatFit([50, 60, 70], 20, 30, 3), 0, "no room: everything behind +3");
   assert.strictEqual(chipsThatFit([], 100, 30, 3), 0);
   console.log("ok - author chips keep their width; the ones that do not fit collapse into +N");
+}
+{
+  const clean = emptyState({ repoCount: 3, filter: ALL, review: true });
+  assert.deepStrictEqual([clean.title, clean.action], ["No uncommitted changes", undefined]);
+  assert.match(clean.body, /Every repository is clean/);
+  assert.match(emptyState({ repoCount: 3, filter: { ...ALL, path: "src" }, review: true }).body, /touches “src”/, "under a Path filter, it says so");
+  assert.strictEqual(reviewLabel({ files: 4, repos: 2 }), "4 files in 2 repositories");
+  assert.strictEqual(reviewLabel({ files: 1, repos: 1 }), "1 file in 1 repository");
+  assert.strictEqual(reviewLabel({ files: 0, repos: 0 }), "nothing to review");
+  console.log("ok - Review Uncommitted's mode bar and empty state");
 }

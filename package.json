@@ -114,6 +114,12 @@
         "icon": "$(history)"
       },
       {
+        "command": "polylog.reviewUncommitted",
+        "title": "Review Uncommitted Changes",
+        "category": "Polylog",
+        "icon": "$(checklist)"
+      },
+      {
         "command": "polylog.showUncommitted",
         "title": "Show Uncommitted Changes",
         "category": "Polylog",
@@ -178,6 +184,11 @@
         }
       ],
       "view/title": [
+        {
+          "command": "polylog.reviewUncommitted",
+          "when": "view == polylog.log",
+          "group": "navigation@0"
+        },
         {
           "command": "polylog.showUncommitted",
           "when": "view == polylog.log && !polylog.showUncommitted",

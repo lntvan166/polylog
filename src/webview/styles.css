@@ -143,6 +143,8 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .path-filter { flex: 1 1 130px; min-width: 100px; }
 /* File History already filters to one file. */
 .app.history .path-filter { display: none; }
+/* Review Uncommitted: uncommitted work has no message, author, branch or date to filter on. */
+.app.review :is(#search, .author-field, #branch, #date, #custom-range) { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 /* The focus outline would hide the error while typing: it takes the error color too. */
 .filters input[aria-invalid="true"]:focus-visible { outline-color: var(--vscode-inputValidation-errorBorder); }

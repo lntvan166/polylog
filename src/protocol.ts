@@ -23,7 +23,7 @@ export interface BranchName {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[] }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[]; review: { files: number; repos: number } | null }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
@@ -39,6 +39,7 @@ export type WebviewMessage =
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth: number }
   | { type: "exitHistory" }
+  | { type: "exitReview" }
   /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
   | { type: "openSettings" };

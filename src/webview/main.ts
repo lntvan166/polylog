@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, reviewLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -24,6 +24,7 @@ const state = {
   repos: [] as Repo[],
   filter: DEFAULT_FILTER as FilterState,
   history: null as { repoName: string; path: string } | null,
+  review: null as { files: number; repos: number } | null,
   rows: [] as Commit[],
   failures: [] as RepoFailure[],
   dismissed: false,
@@ -50,9 +51,14 @@ const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds 
 const appEl = byId("app");
 const modebar = byId("modebar");
 const historyPath = byId("history-path");
+const modeHistory = byId("mode-history");
+const modeReview = byId("mode-review");
+const reviewSummary = byId("review-summary");
 const exitHistory = () => post({ type: "exitHistory" });
-byId("mode-all").addEventListener("click", exitHistory);
+const exitReview = () => post({ type: "exitReview" });
+byId("mode-all").addEventListener("click", () => (state.review ? exitReview() : exitHistory()));
 byId("history-close").addEventListener("click", exitHistory);
+byId("review-close").addEventListener("click", exitReview);
 const splitter = byId("splitter");
 const paneWidth = new PaneWidth();
 
@@ -93,8 +99,13 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
       state.history = m.history;
-      modebar.hidden = !m.history;
+      state.review = m.review;
+      modebar.hidden = !m.history && !m.review;
+      modeHistory.hidden = !m.history;
+      modeReview.hidden = !m.review;
       appEl.classList.toggle("history", !!m.history);
+      appEl.classList.toggle("review", !!m.review);
+      reviewSummary.textContent = m.review ? reviewLabel(m.review) : "";
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;
@@ -178,7 +189,7 @@ function render(): void {
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
-  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
+  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path, review: state.review !== null }) : null);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;

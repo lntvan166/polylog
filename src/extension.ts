@@ -60,6 +60,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(arg)),
     vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(arg)),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
+    vscode.commands.registerCommand("polylog.reviewUncommitted", () => log.reviewUncommitted()),
     vscode.commands.registerCommand("polylog.showUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", true, vscode.ConfigurationTarget.Global)),
     vscode.commands.registerCommand("polylog.hideUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", false, vscode.ConfigurationTarget.Global)),
     vscode.workspace.onDidChangeConfiguration((e) => {

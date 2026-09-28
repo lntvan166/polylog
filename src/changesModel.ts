@@ -15,6 +15,22 @@ export interface ChangesState {
   error?: string;
   /** File history: the file to highlight in the tree. */
   focusPath?: string;
+  /** Review Uncommitted: every repository's uncommitted files, one group each (commit/files unused). */
+  groups?: ChangesGroup[];
+}
+
+export interface ChangesGroup {
+  commit: Commit;
+  repoRoot: string;
+  repoName: string;
+  files: FileChange[];
+}
+
+/** Which repository and revision a file node belongs to, for opening its diff. */
+export interface Owner {
+  repoId: string;
+  sha: string;
+  parent: string | null;
 }
 
 interface Base {
@@ -26,7 +42,7 @@ interface Base {
 }
 export interface CommitDesc extends Base { kind: "commit"; children: NodeDesc[] }
 export interface FolderDesc extends Base { kind: "folder"; path: string; children: NodeDesc[] }
-export interface FileDesc extends Base { kind: "file"; path: string; file: FileChange; openable: boolean }
+export interface FileDesc extends Base { kind: "file"; path: string; file: FileChange; openable: boolean; owner: Owner }
 export type NodeDesc = CommitDesc | FolderDesc | FileDesc;
 
 export interface Decoration {
@@ -53,6 +69,7 @@ export function decorationFor(status: ChangeStatus | undefined): Decoration | un
 export const NO_SELECTION = "Select a commit in the Log to see its changed files.";
 export const LOADING = "Loading changed files…";
 export const NO_FILES = "This commit changes no files.";
+export const NO_UNCOMMITTED = "No uncommitted changes.";
 
 export function firstOpenable(files: readonly FileChange[]): FileChange | undefined {
   return files.find((f) => f.added !== null);
@@ -66,16 +83,16 @@ function stat(f: FileChange): string {
   return f.staged ? `${shown} · staged` : shown;
 }
 
-function describeNodes(nodes: readonly TreeNode[], parent: string, base: string): NodeDesc[] {
+function describeNodes(nodes: readonly TreeNode[], parent: string, base: string, owner: Owner): NodeDesc[] {
   return nodes.map((n): NodeDesc => {
     if (n.kind === "folder") {
       const path = parent ? `${parent}/${n.name}` : n.name;
-      return { kind: "folder", id: `${base}/d:${path}`, label: n.name, description: String(n.count), tooltip: path, path, children: describeNodes(n.children, path, base) };
+      return { kind: "folder", id: `${base}/d:${path}`, label: n.name, description: String(n.count), tooltip: path, path, children: describeNodes(n.children, path, base, owner) };
     }
     const f = n.file;
     return {
       kind: "file", id: `${base}/f:${f.path}`, label: n.name, description: stat(f),
-      tooltip: f.oldPath ? `${f.oldPath} → ${f.path}` : f.path, path: f.path, file: f, openable: f.added !== null,
+      tooltip: f.oldPath ? `${f.oldPath} → ${f.path}` : f.path, path: f.path, file: f, openable: f.added !== null, owner,
     };
   });
 }
@@ -86,7 +103,20 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
   const c = s.commit;
   const base = commitKey(c);
   const tooltip = `${s.message || c.subject}\n\n${c.author} <${c.email}> · ${absoluteTime(c.time)} · ${s.repoName}\n${c.sha}`;
-  const children = s.status === "ready" ? describeNodes(fileTree(s.files), "", base) : [];
+  if (s.groups) {
+    const roots = s.groups.filter((g) => g.files.length > 0).map((g): CommitDesc => {
+      const key = commitKey(g.commit);
+      const n = g.files.length;
+      const owner = { repoId: g.commit.repoId, sha: g.commit.sha, parent: g.commit.parents[0] ?? null };
+      return {
+        kind: "commit", id: key, label: g.repoName, description: `${n} ${n === 1 ? "file" : "files"} · not committed`,
+        tooltip: `${g.repoName}: changes since the last commit, staged or not`, children: describeNodes(fileTree(g.files), "", key, owner),
+      };
+    });
+    return { message: roots.length === 0 ? NO_UNCOMMITTED : undefined, roots };
+  }
+  const owner = { repoId: c.repoId, sha: c.sha, parent: c.parents[0] ?? null };
+  const children = s.status === "ready" ? describeNodes(fileTree(s.files), "", base, owner) : [];
   const pending = c.sha === UNCOMMITTED;
   const n = s.files.length;
   const description = pending ? `${n} ${n === 1 ? "file" : "files"} · not committed` : `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`;

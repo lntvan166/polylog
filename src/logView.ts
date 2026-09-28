@@ -43,6 +43,8 @@ export interface LogSnapshot {
   /** Each repository's user.email, in repo order (test seam). */
   me: string[];
   history: { repoId: string; path: string } | null;
+  /** Review Uncommitted is open. */
+  review: boolean;
   /** What a window reload would restore. */
   persistedFilter: FilterState | undefined;
   branches: BranchName[];
@@ -95,6 +97,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
+  /** Review Uncommitted: the Log lists repositories with changes, the tree all their files. */
+  private review = false;
   /** Each repository's uncommitted changes, read only while they are shown. */
   private uncommitted = new Map<string, { head: string | null; files: FileChange[] }>();
   private uncommittedRead = new AbortController();
@@ -203,6 +207,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       case "exitHistory":
         await this.setHistory(null);
         return;
+      case "exitReview":
+        await this.leaveReview();
+        return;
       case "wantSuggestions":
         if (m.kind === "authors" || m.kind === "branches") await this.loadSuggestions(m.kind);
         return;
@@ -231,7 +238,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches, authors: this.authors });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, branches: this.branches, authors: this.authors, review: this.review ? this.reviewSummary() : null });
   }
 
   /**
@@ -242,9 +249,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async fileHistory(arg?: unknown): Promise<void> {
     if (this.repos.length === 0) await this.loadRepos();
     let target: { repoId: string; path: string } | undefined;
-    const current = this.deps.changes.current();
-    if (arg && typeof arg === "object" && (arg as { kind?: unknown }).kind === "file" && current) {
-      target = { repoId: current.commit.repoId, path: (arg as { path: string }).path };
+    const fromTree = this.treeFile(arg);
+    if (fromTree) {
+      target = { repoId: fromTree.repo.id, path: fromTree.path };
     } else {
       const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
       if (uri?.scheme === SCHEME) {
@@ -270,12 +277,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async openWorkingFile(arg?: unknown): Promise<void> {
     if (this.repos.length === 0) await this.loadRepos();
     const roots = this.repos.map((r) => r.root);
-    const current = this.deps.changes.current();
-    const node = arg as { kind?: unknown; path?: unknown } | undefined;
     let file: string | undefined;
     let line: number | undefined;
-    if (node && typeof node === "object" && node.kind === "file" && current?.files.some((f) => f.path === node.path)) {
-      file = workingFile({ root: current.repoRoot, ref: null, path: node.path as string }, roots);
+    const fromTree = this.treeFile(arg);
+    if (fromTree) {
+      file = workingFile({ root: fromTree.repo.root, ref: null, path: fromTree.path }, roots);
     } else {
       const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
       if (uri?.scheme === SCHEME) {
@@ -301,6 +307,21 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
     const at = line === undefined ? undefined : new vscode.Range(line, 0, line, 0);
     await vscode.window.showTextDocument(target, { preview: false, selection: at });
+  }
+
+  /**
+   * A file node from the Changes tree (its right-click passes the node): which repository it
+   * belongs to, and its path, if it really is a file of what the tree shows. In Review
+   * Uncommitted the tree spans several repositories, so the node's own owner decides.
+   */
+  private treeFile(arg: unknown): { repo: Repo; path: string } | undefined {
+    const node = arg as { kind?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
+    const current = this.deps.changes.current();
+    if (!node || typeof node !== "object" || node.kind !== "file" || typeof node.path !== "string" || !current) return undefined;
+    const repoId = typeof node.owner?.repoId === "string" ? node.owner.repoId : current.commit.repoId;
+    const files = current.groups ? current.groups.find((g) => g.commit.repoId === repoId)?.files ?? [] : current.files;
+    const repo = this.repos.find((r) => r.id === repoId);
+    return repo && files.some((f) => f.path === node.path) ? { repo, path: node.path } : undefined;
   }
 
   /** The workspace repository containing a file (innermost first), and its repo-relative path. */
@@ -333,6 +354,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * it restores what the user had before (even if they changed it while in history).
    */
   private async setHistory(history: { repoId: string; path: string } | null): Promise<void> {
+    if (history) this.review = false; // File History replaces Review Uncommitted
     if (history && !this.history) {
       const { date, from, to, text, author, mine, authors } = this.filter;
       this.beforeHistory = { date, from, to, text, author, mine, authors };
@@ -476,6 +498,19 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const t = Date.now();
     // Uncommitted changes are read alongside the page, only while they are shown.
     const working = this.readUncommitted();
+    if (this.review) {
+      // Review Uncommitted lists repositories with changes, not commits: no git log at all.
+      await working;
+      if (ctl.signal.aborted) return;
+      this.rows = [];
+      this.failures = [];
+      this.done = true;
+      this.queryState = null;
+      this.showReviewTree();
+      this.postInit();
+      this.post({ type: "page", rows: this.shownRows(), append: false, failures: [], done: true, now: nowSec() });
+      return;
+    }
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
@@ -524,7 +559,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   snapshot(): LogSnapshot {
     return {
       repos: this.repos, filter: this.filter, rows: this.shownRows(), failures: this.failures, done: this.done,
-      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
+      readyCount: this.readyCount, me: this.repos.flatMap((r) => this.meByRepo.get(r.id) ?? []), history: this.history, review: this.review, persistedFilter: this.context.workspaceState.get<FilterState>(FILTER_KEY), branches: this.branches, authors: this.authors, branchUse: this.branchUse, changes: this.deps.changes.snapshot(), changesVisible: this.deps.changes.visible,
       layout: this.layout(),
       stats: {
         msToFirstRows: this.stats.firstRowsAt ? this.stats.firstRowsAt - this.stats.createdAt : null,
@@ -547,6 +582,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // detail already loading for the one that is.
     const found = this.findCommit(repoId, sha);
     if (!found) return;
+    if (sha === UNCOMMITTED && this.review) {
+      this.deps.changes.revealGroup(commitKey(found.commit));
+      return;
+    }
     if (sha === UNCOMMITTED) {
       // Not a commit: its files come from git status, already read.
       this.detail.abort();
@@ -579,7 +618,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
   private clearTreeIfGone(): void {
     const current = this.deps.changes.current();
-    if (!current) return;
+    if (!current || this.review) return;
     const key = commitKey(current.commit);
     if (this.shownRows().some((c) => commitKey(c) === key)) return;
     this.detail.abort();
@@ -668,6 +707,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * (uncommitted work has no message, author or branch; File History is about one file).
    */
   private uncommittedShown(): boolean {
+    if (this.review) return true;
     const f = this.filter;
     const filtered = f.text.trim() !== "" || f.author.trim() !== "" || (f.authors ?? []).length > 0 || f.mine || f.branch !== "";
     return this.uncommittedOn() && this.history === null && !filtered;
@@ -683,7 +723,49 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       if (!w || w.files.length === 0) continue;
       pinned.push({ repoId: repo.id, sha: UNCOMMITTED, time: now, author: "", email: "", subject: "Uncommitted changes", parents: w.head ? [w.head] : [], uncommitted: w.files.length });
     }
-    return [...pinned, ...this.rows];
+    return this.review ? pinned : [...pinned, ...this.rows];
+  }
+
+  /** Opens Review Uncommitted: every repository's uncommitted files in one tree. */
+  async reviewUncommitted(): Promise<void> {
+    if (this.repos.length === 0) await this.loadRepos();
+    await vscode.commands.executeCommand(`${LogView.id}.focus`);
+    if (this.history) this.leaveHistory();
+    this.review = true;
+    this.postInit();
+    await this.reload();
+  }
+
+  private async leaveReview(): Promise<void> {
+    if (!this.review) return;
+    this.review = false;
+    this.deps.changes.set(null);
+    this.postInit();
+    await this.reload();
+  }
+
+  /** The review tree: one group per repository with uncommitted files. */
+  private showReviewTree(): void {
+    const pinned = this.shownRows();
+    const groups = pinned.flatMap((commit) => {
+      const repo = this.repos.find((r) => r.id === commit.repoId);
+      return repo ? [{ commit, repoRoot: repo.root, repoName: repo.name, files: this.uncommitted.get(repo.id)?.files ?? [] }] : [];
+    });
+    const first = groups[0];
+    const placeholder: Commit = { repoId: "", sha: UNCOMMITTED, time: nowSec(), author: "", email: "", subject: "Uncommitted changes", parents: [] };
+    this.deps.changes.set({ commit: first?.commit ?? placeholder, repoRoot: first?.repoRoot ?? "", repoName: first?.repoName ?? "", status: "ready", message: "", files: [], groups });
+  }
+
+  /** How much there is to review, for the mode bar. */
+  private reviewSummary(): { files: number; repos: number } {
+    let files = 0;
+    let repos = 0;
+    for (const w of this.uncommitted.values()) {
+      if (w.files.length === 0) continue;
+      files += w.files.length;
+      repos++;
+    }
+    return { files, repos };
   }
 
   /**
@@ -733,6 +815,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.readUncommitted();
     if (this.uncommittedRead.signal.aborted) return;
     this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+    if (this.review) {
+      this.showReviewTree();
+      this.postInit();
+      return;
+    }
     const current = this.deps.changes.current();
     if (current?.commit.sha === UNCOMMITTED) {
       const still = this.shownRows().find((c) => c.repoId === current.commit.repoId && c.sha === UNCOMMITTED);

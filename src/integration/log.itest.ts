@@ -194,6 +194,47 @@ describe("Polylog panel", () => {
     await until("six rows, no pinned row", (x) => x.rows.length === 6 && !x.rows.some((r) => r.sha === UNCOMMITTED));
   });
 
+  it("Review Uncommitted: every repository's uncommitted files in one tree, then back to the log", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
+    const git = (root: string, ...args: string[]) => cp.execFileSync("git", args, { cwd: root }).toString().trim();
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 1;\n");
+    fs.writeFileSync(path.join(api.root, "upload.go"), "package upload\n\nfunc Retry() { retry() }\n");
+    fs.writeFileSync(path.join(api.root, "notes.md"), "n\n");
+    try {
+      await vscode.commands.executeCommand("polylog.reviewUncommitted");
+      let s = await until("the review", (x) => x.review && x.rows.length === 2 && x.changes.items.length > 0);
+      assert.ok(s.rows.every((r) => r.sha === UNCOMMITTED), "only the repositories with changes, no commits (the rows toggle is off)");
+      const roots = s.changes.items.filter((i) => !i.startsWith(" "));
+      assert.deepStrictEqual(roots.sort(), ["acme-api | 2 files · not committed", "acme-web | 1 file · not committed"], "one group per repository");
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
+      const input = await waitFor("a working-tree diff", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+        return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
+      });
+      assert.match(input.modified.fsPath, /acme-api[\\/]upload\.go$/);
+      // A group's file knows its repository: Open File on acme-web's file (the second group;
+      // groups follow repo order) goes to acme-web, not to the first group's repository.
+      await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", path: "client.ts", owner: { repoId: web.id, sha: UNCOMMITTED, parent: null } });
+      await waitFor("client.ts in acme-web", () => (vscode.window.activeTextEditor?.document.uri.fsPath.endsWith(path.join("acme-web", "client.ts")) ? true : undefined));
+      await send({ type: "exitReview" });
+      s = await until("the log again", (x) => !x.review && x.rows.length === 6);
+      assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED), "and no pinned rows, since the toggle is off");
+    } finally {
+      await closeEditors();
+      for (const root of [web.root, api.root]) {
+        git(root, "checkout", "--", ".");
+        git(root, "clean", "-fdq");
+      }
+    }
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });
