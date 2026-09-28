@@ -60,6 +60,10 @@ describe("Polylog panel", () => {
     const web = s.repos.find((r) => r.name === "acme-web")!;
     await send({ type: "filter", filter: { ...ALL, repoIds: [web.id] } });
     s = await until("acme-web rows only", (x) => x.rows.length === 2 && x.rows.every((r) => r.repoId === web.id));
+    assert.deepStrictEqual(s.persistedFilter?.repoIds, [web.id], "the ticked repositories are saved for the next window");
+    await send({ type: "ready" }); // the webview re-created (a reload, or VS Code dropping it)
+    s = await until("the replay", (x) => x.rows.length === 2);
+    assert.deepStrictEqual(s.filter.repoIds, [web.id], "and a re-created webview gets them back");
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
   });

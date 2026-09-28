@@ -83,6 +83,9 @@ export class RepoPane {
     const row = this.rows[i];
     if (!row) return;
     const allIds = this.repos.map((r) => r.id);
+    // A box ticks itself when clicked; the pane must be rebuilt even when the filter comes out
+    // the same (All when all are shown, or the last repo), or the boxes stop telling the truth.
+    this.idsKey = undefined;
     if (row.id === null) this.onChange(null);
     else this.onChange(toggle ? toggleRepo(this.repoIds, row.id, allIds) : pickOnly(row.id));
   }

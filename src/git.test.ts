@@ -174,6 +174,18 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual(only.map((e) => e.path), ["a.ts"], "the Path filter narrows it");
     console.log("ok - real git: uncommitted changes, staged or not, new, deleted, renamed and untracked");
   }
+  {
+    // Aborted just after git exited but before its output closed, a run must still settle: a
+    // promise left pending hangs whatever awaits it (a reload, Load More's in-progress flag).
+    // A shell alias leaves a child holding stdout open, so "close" comes 400 ms after "exit".
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-abort-"));
+    const ctl = new AbortController();
+    const run = runGit(cwd, ["-c", "alias.lag=!(sleep 0.4 &)", "lag"], ctl.signal).then(() => "resolved", (e) => (isAbortError(e) ? "aborted" : `rejected: ${e}`));
+    setTimeout(() => ctl.abort(), 150);
+    const r = await Promise.race([run, new Promise((ok) => setTimeout(() => ok("pending"), 3000))]);
+    assert.strictEqual(r, "aborted", "an abort after git exited still settles the run, as aborted");
+    console.log("ok - an aborted git run always settles, however late the abort");
+  }
 })().catch((e) => {
   console.error(e);
   process.exit(1);
