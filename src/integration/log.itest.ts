@@ -12,10 +12,15 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const ALL = { text: "", author: "", mine: false, branch: "", repoIds: null, date: "all" as const };
 
 async function waitFor<T>(what: string, probe: () => PromiseLike<T | undefined> | T | undefined, ms = 20000): Promise<T> {
-  const end = Date.now() + ms;
+  const start = Date.now();
+  const end = start + ms;
   for (;;) {
     const v = await probe();
-    if (v !== undefined) return v;
+    if (v !== undefined) {
+      // On a slow CI runner, name the step that took the time.
+      if (Date.now() - start > 3000) console.log(`    (slow wait: ${what}, ${Date.now() - start} ms)`);
+      return v;
+    }
     if (Date.now() > end) throw new Error(`timed out waiting for ${what}`);
     await sleep(100);
   }
@@ -164,10 +169,10 @@ describe("Polylog panel", () => {
 
       await closeEditors();
       await vscode.commands.executeCommand("polylog.openDiff", { repoId: web.id, sha: UNCOMMITTED, parent: head, path: "client.ts" });
-      const input = await diffTab().catch(async () => waitFor("a working-tree diff", () => {
+      const input = await waitFor("a working-tree diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
         return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
-      }));
+      });
       assert.strictEqual(input.modified.scheme, "file", "the right side is the real, editable file");
       assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "export const ok = true;\n", "the left side is the last commit");
 
@@ -252,6 +257,8 @@ describe("Polylog panel", () => {
       let s = await until("the review", (x) => x.review && x.rows.length === 2 && x.changes.items.length > 0);
       assert.ok(s.rows.every((r) => r.sha === UNCOMMITTED), "only the repositories with changes, no commits (the rows toggle is off)");
       const roots = (x: LogSnapshot) => x.changes.items.filter((i) => !i.startsWith(" "));
+      // The webview selects the first row when the rows arrive: let that land before clicking.
+      await until("the webview's own first selection", (x) => roots(x).length === 1);
       // The tree shows the repository clicked in the Log, not all of them.
       await send({ type: "select", repoId: api.id, sha: UNCOMMITTED });
       s = await until("acme-api's files only", (x) => roots(x).length === 1 && roots(x)[0].startsWith("acme-api"));
