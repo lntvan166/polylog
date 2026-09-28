@@ -466,3 +466,39 @@ them), and given back on close, even if the user changed them while in the histo
 - **Tests:** unit tests; a real-git test (folder, partial name, glob, `*.md`); and
   integration tests for a file in only one repo, a glob, path plus author, an unsafe path
   dropped by the host, and File History ignoring and then restoring it.
+
+## 22. Amendment: uncommitted changes (2026-09-28, maintainer request)
+
+Review what is about to be committed, across every repository.
+
+- **Data** (`workingTree.ts`): `git status --porcelain=v2 -z --untracked-files=all` plus
+  `git diff <HEAD|empty tree> --numstat -z -M`, per selected repo, under the Path filter
+  (after `--`).
+  - Each file is one change against the last commit, staged or not.
+  - `staged` means everything is in the index; untracked files are new.
+  - "Added then deleted again" counts as nothing.
+  - Constraint 1 holds: git computes everything.
+- **Read only while shown**, in parallel with the page. Refreshed on VS Code Git's
+  repository state events and on saves (debounced 400 ms). A newer read aborts an older
+  one.
+- **Rows on top** (toggle `polylog.showUncommitted`, off by default, eye icons in the Log
+  toolbar):
+  - One pseudo-commit per repo with changes: `sha = UNCOMMITTED` (git's null id), with
+    `uncommitted` holding the file count, pinned above the commits.
+  - Hidden while a search, author (chips or Me) or branch filter is on, and in File
+    History.
+  - Not counted as commits in the footer.
+- **Review Uncommitted** (checklist icon; a mode like File History, and File History
+  replaces it):
+  - The Log lists only the pinned rows, with no `git log`.
+  - The Changes tree shows `groups`: one root per repository.
+  - Search, author, branch and date are hidden; Path and the repository selection apply.
+  - Selecting a row reveals its group.
+  - The mode bar reads "Uncommitted: N files in M repositories"; × or All commits closes it.
+- **A tree across repositories:** every file node carries its `owner` (repo, revision,
+  parent). It is used for the diff command, the decoration URI (the same path can exist in
+  two repos) and Open File / File History from the tree.
+- **Diffs:** the last commit on the left, the real `file:` on the right, so it can be
+  edited while reviewing. New files have an empty left side, deleted files an empty right.
+- **Staged vs unstaged:** shown together against the last commit, with a "staged" marker,
+  as chosen by the maintainer (a split was the alternative).

@@ -145,6 +145,7 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .app.history .path-filter { display: none; }
 /* Review Uncommitted: uncommitted work has no message, author, branch or date to filter on. */
 .app.review :is(#search, .author-field, #branch, #date, #custom-range) { display: none; }
+.app.review .footer .note { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 /* The focus outline would hide the error while typing: it takes the error color too. */
 .filters input[aria-invalid="true"]:focus-visible { outline-color: var(--vscode-inputValidation-errorBorder); }

@@ -193,7 +193,9 @@ function render(): void {
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
-  countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
+  // Pinned uncommitted rows are not commits; in Review Uncommitted the mode bar says it all.
+  const commits = state.rows.filter((r) => r.uncommitted === undefined).length;
+  countEl.textContent = state.review === null && commits > 0 ? countLabel(commits) : "";
 }
 
 document.addEventListener("keydown", (e) => {
