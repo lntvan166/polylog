@@ -81,8 +81,10 @@ export class RepoPane {
   private sync: Readonly<Record<string, AheadBehind>> = {};
 
   setSync(byRepo: Readonly<Record<string, AheadBehind>>): void {
+    if (JSON.stringify(byRepo) === JSON.stringify(this.sync)) return;
     this.sync = byRepo;
-    this.render();
+    // Arrives on its own (a fetch in any repo): never scroll the list the user is reading.
+    this.render(false);
   }
   private idsKey: string | null | undefined;
 
@@ -155,7 +157,7 @@ export class RepoPane {
     return parts;
   }
 
-  private render(): void {
+  private render(reveal = true): void {
     this.rows = [{ id: null, name: "All repositories" }, ...visibleRepos(this.repos, this.filterInput.value)];
     this.active = Math.min(this.active, this.rows.length - 1);
     const count = this.repoIds === null ? String(this.repos.length) : `${this.repoIds.length}/${this.repos.length}`;
@@ -196,6 +198,6 @@ export class RepoPane {
     if (this.rows.length === 1 && this.repos.length > 0) this.list.append(h("p", { class: "hint" }, ["No repositories match."]));
     this.fitNames();
     this.list.setAttribute("aria-activedescendant", `repo-row-${this.active}`);
-    this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });
+    if (reveal) this.list.querySelector(".repo-row.active")?.scrollIntoView({ block: "nearest" });
   }
 }

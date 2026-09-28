@@ -337,13 +337,29 @@ describe("Polylog panel", () => {
     await vscode.commands.executeCommand("polylog.repoCopyPath", on(libs.id));
     assert.strictEqual(await vscode.env.clipboard.readText(), libs.root);
 
+    // With the pane hidden, a commit row's Show Only brings the pane back: no invisible filter.
+    await vscode.commands.executeCommand("polylog.hideRepos");
+    await vscode.commands.executeCommand("polylog.repoShowOnly", on(web.id, "commit"));
+    s = await until("acme-web only, pane shown", (x) => x.filter.repoIds?.length === 1 && x.rows.length === 2);
+    assert.strictEqual(s.layout.groupByRepo, true, "the filter is never one the user cannot see");
+    await vscode.commands.executeCommand("polylog.repoShowAll");
+    await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
+
     const cfg = () => vscode.workspace.getConfiguration("polylog");
+    // The user's own (global) exclusions stay: arrays do not merge across settings scopes.
+    await cfg().update("excludeRepos", ["no-such-repo-*"], vscode.ConfigurationTarget.Global);
     try {
+      // Excluding the repo shown alone must not leave a filter that matches nothing.
+      await vscode.commands.executeCommand("polylog.repoShowOnly", on(libs.id));
+      await until("acme-libs only", (x) => x.filter.repoIds?.[0] === libs.id);
       await vscode.commands.executeCommand("polylog.repoExclude", on(libs.id));
       s = await until("acme-libs left out", (x) => x.repos.length === 2 && !x.repos.some((r) => r.id === libs.id));
-      assert.deepStrictEqual(cfg().get("excludeRepos"), [libs.root.replace(/\\/g, "/")], "its exact path, not its name (another repo may share it)");
+      const inspected = cfg().inspect<string[]>("excludeRepos");
+      assert.deepStrictEqual(inspected?.globalValue, ["no-such-repo-*", libs.root.replace(/\\/g, "/")], "its exact path, added to the user's own list (not a workspace file inside a repo)");
+      assert.strictEqual(inspected?.workspaceValue, undefined);
+      s = await until("every remaining repository shown", (x) => x.filter.repoIds === null && x.rows.length > 0);
     } finally {
-      await cfg().update("excludeRepos", undefined, vscode.ConfigurationTarget.Workspace);
+      await cfg().update("excludeRepos", undefined, vscode.ConfigurationTarget.Global);
     }
     await send({ type: "refresh" });
     await until("three repositories again", (x) => x.repos.length === 3 && x.rows.length === 6);
@@ -355,7 +371,9 @@ describe("Polylog panel", () => {
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
     const branch = git("rev-parse", "--abbrev-ref", "HEAD");
     // An upstream one commit ahead (made without touching the working tree).
-    const theirs = git("commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "theirs");
+    const theirs = cp.execFileSync("git", ["commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "theirs"], {
+      cwd: web.root, env: { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" },
+    }).toString().trim();
     git("update-ref", "refs/heads/polylog-up", theirs);
     git("branch", "--set-upstream-to=polylog-up", branch);
     try {

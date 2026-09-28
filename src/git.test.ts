@@ -177,9 +177,12 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
   }
   {
     // Ahead/behind against a real upstream: one commit to pull, two not pushed; none without one.
-    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-upstream-"));
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-upstream-"));
+    const cwd = path.join(home, "repo");
+    fs.mkdirSync(cwd);
+    // An isolated HOME: the developer's own git config (signing, hooks) stays out.
     const who = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
-    const g = (args: string[]) => execFileSync("git", args, { cwd, env: { ...process.env, ...who } }).toString().trim();
+    const g = (args: string[]) => execFileSync("git", args, { cwd, env: { ...gitEnv(home), ...who } }).toString().trim();
     g(["init", "-q", "-b", "main"]);
     g(["commit", "-q", "--allow-empty", "-m", "base"]);
     await assert.rejects(runGit(cwd, aheadBehindArgs()), "no upstream: git fails, and nothing is shown");
@@ -191,6 +194,7 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     g(["commit", "-q", "--allow-empty", "-m", "mine 2"]);
     g(["branch", "-q", "--set-upstream-to=up"]);
     assert.deepStrictEqual(parseAheadBehind(await runGit(cwd, aheadBehindArgs())), { ahead: 2, behind: 1 });
+    fs.rmSync(home, { recursive: true, force: true });
     console.log("ok - real git: commits ahead of and behind the upstream");
   }
   {

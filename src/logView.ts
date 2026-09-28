@@ -601,22 +601,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     void this.readSync(ids);
   }, 400);
 
-  /** Each repository's HEAD and upstream as VS Code's Git last reported them. */
-  private readonly heads = new Map<string, string>();
-
   /**
    * VS Code's Git reported a new state for a repository (a save, a stage, a fetch, a pull):
    * its uncommitted changes may have moved; its distance from its upstream only if HEAD or
-   * the upstream did. The first report of each repository (vscode.git opening it) needs
-   * nothing: the background read covers it.
+   * the upstream did (a save does not move them).
    */
-  repoStateChanged(root: string, head: string): void {
+  repoStateChanged(root: string, headMoved: boolean): void {
     this.workingTreeChanged(root);
+    if (!headMoved) return;
     const repo = this.innermost(root)?.r;
     if (!repo) return;
-    const before = this.heads.get(repo.id);
-    this.heads.set(repo.id, head);
-    if (before === undefined || before === head) return;
     this.syncTouched.add(repo.id);
     this.syncSoon();
   }
@@ -629,6 +623,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Sets the repo filter from the host (a right-click): the webview gets it with init. */
   private async setRepoFilter(repoIds: string[] | null): Promise<void> {
+    const key = (ids: string[] | null) => (ids === null ? null : ids.join("\0"));
+    if (key(repoIds) === key(this.filter.repoIds)) return;
+    // A filter the user cannot see is a trap: picking repositories shows the pane.
+    if (repoIds !== null && this.context.globalState.get<boolean>(HIDE_REPOS_KEY, false)) {
+      await this.context.globalState.update(HIDE_REPOS_KEY, false);
+      await vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, false);
+    }
     this.filter = { ...this.filter, repoIds };
     this.persistFilter();
     this.postInit();
@@ -667,24 +668,36 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /**
    * Right-click → Exclude from Polylog: adds the repository's exact path to polylog.excludeRepos
-   * (this workspace's settings), so a repo elsewhere with the same name stays. Undo puts it back.
+   * (so a repo elsewhere with the same name stays), with an Undo. It goes where the setting
+   * already applies from: settings arrays do not merge across scopes, so writing to another
+   * would drop the user's own entries. With none yet, the user settings: an absolute path
+   * belongs to this machine, not in a workspace file that may sit inside a repository.
    */
   async repoExclude(arg: unknown): Promise<void> {
     const repo = this.contextRepo(arg);
     if (!repo) return;
-    const config = vscode.workspace.getConfiguration("polylog");
-    const target = vscode.workspace.workspaceFolders?.length ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
-    const inspected = config.inspect<string[]>("excludeRepos");
-    const before = (target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue) ?? [];
+    const inspected = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+    const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+    const previous = target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue;
     const pattern = repo.root.replace(/\\/g, "/");
-    if (before.includes(pattern)) return;
-    await config.update("excludeRepos", [...before, pattern], target);
-    await this.refreshRepos();
+    if ((previous ?? []).includes(pattern)) return;
+    // The repo leaves the filter too, or a filter of only it would match nothing.
+    const ids = this.filter.repoIds;
+    if (ids?.includes(repo.id)) {
+      const rest = ids.filter((id) => id !== repo.id);
+      this.filter = { ...this.filter, repoIds: rest.length > 0 ? rest : null };
+      this.persistFilter();
+    }
+    // The configuration listener lists the repositories again (reposSettingChanged).
+    await vscode.workspace.getConfiguration("polylog").update("excludeRepos", [...(previous ?? []), pattern], target);
     void vscode.window.showInformationMessage(`Polylog: ${repo.name} is excluded (polylog.excludeRepos).`, "Undo").then(async (pick) => {
       if (pick !== "Undo") return;
-      const now = (target === vscode.ConfigurationTarget.Workspace ? config.inspect<string[]>("excludeRepos")?.workspaceValue : config.inspect<string[]>("excludeRepos")?.globalValue) ?? [];
-      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", now.filter((p) => p !== pattern), target);
-      await this.refreshRepos();
+      const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
+      const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
+      const rest = current.filter((p) => p !== pattern);
+      // Back to exactly what was there, down to "not set" (an empty list would still override).
+      const restored = rest.length === 0 && previous === undefined ? undefined : rest;
+      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", restored, target);
     });
   }
 

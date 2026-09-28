@@ -9,11 +9,11 @@ import type { Repo } from "./types";
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
 interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> } }
 
-/** A repository's state change in vscode.git: its root, and what its HEAD and upstream were. */
+/** A repository's state change in vscode.git. */
 export interface RepoStateChange {
   root: string;
-  /** HEAD's commit, branch, upstream and ahead/behind, as one string: equal means unmoved. */
-  head: string;
+  /** Its HEAD commit, branch, upstream or ahead/behind differ from the last report (or from when it was first seen). */
+  headMoved: boolean;
 }
 
 const headKey = (h: GitBranch | undefined) =>
@@ -87,7 +87,14 @@ export class RepoDiscovery implements vscode.Disposable {
     const watching = new Map<GitRepository, vscode.Disposable>();
     const watch = (r: GitRepository) => {
       const root = r.rootUri.fsPath;
-      const d = r.state?.onDidChange?.(() => this.repoStateChanged.fire({ root, head: headKey(r.state?.HEAD) }));
+      // Where HEAD stood when first seen, so the first report after a fetch counts as a move.
+      let head = headKey(r.state?.HEAD);
+      const d = r.state?.onDidChange?.(() => {
+        const now = headKey(r.state?.HEAD);
+        const headMoved = now !== head;
+        head = now;
+        this.repoStateChanged.fire({ root, headMoved });
+      });
       if (d) watching.set(r, d);
     };
     const unwatch = (r: GitRepository) => {
