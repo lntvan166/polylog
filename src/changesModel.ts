@@ -1,5 +1,5 @@
 import { fileTree, type TreeNode } from "./fileTree";
-import { commitKey, type ChangeStatus, type Commit, type FileChange } from "./types";
+import { commitKey, UNCOMMITTED, type ChangeStatus, type Commit, type FileChange } from "./types";
 import { absoluteTime, relativeTime } from "./webview/view";
 
 export type ChangesStatus = "loading" | "ready" | "error";
@@ -59,9 +59,11 @@ export function firstOpenable(files: readonly FileChange[]): FileChange | undefi
 }
 
 function stat(f: FileChange): string {
-  if (f.added === null) return "binary";
+  if (f.untracked) return "new";
+  if (f.added === null) return f.staged ? "binary · staged" : "binary";
   const counts = `+${f.added} −${f.deleted}`;
-  return f.oldPath ? `← ${f.oldPath}  ${counts}` : counts;
+  const shown = f.oldPath ? `← ${f.oldPath}  ${counts}` : counts;
+  return f.staged ? `${shown} · staged` : shown;
 }
 
 function describeNodes(nodes: readonly TreeNode[], parent: string, base: string): NodeDesc[] {
@@ -85,7 +87,10 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
   const base = commitKey(c);
   const tooltip = `${s.message || c.subject}\n\n${c.author} <${c.email}> · ${absoluteTime(c.time)} · ${s.repoName}\n${c.sha}`;
   const children = s.status === "ready" ? describeNodes(fileTree(s.files), "", base) : [];
-  const root: CommitDesc = { kind: "commit", id: base, label: c.subject, description: `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`, tooltip, children };
+  const pending = c.sha === UNCOMMITTED;
+  const n = s.files.length;
+  const description = pending ? `${n} ${n === 1 ? "file" : "files"} · not committed` : `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`;
+  const root: CommitDesc = { kind: "commit", id: base, label: c.subject, description, tooltip: pending ? `${s.repoName}: changes since the last commit, staged or not` : tooltip, children };
   const message =
     s.status === "loading" ? LOADING
     : s.status === "error" ? `Could not read this commit: ${s.error ?? "unknown error"}`

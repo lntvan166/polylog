@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import type { OpenDiffArgs } from "../changesTree";
 import type { LogSnapshot } from "../logView";
 import type { WebviewMessage } from "../protocol";
-import type { Commit } from "../types";
+import { UNCOMMITTED, type Commit } from "../types";
 import { EXPECTED_ORDER } from "./fixture";
 
 const snapshot = () => vscode.commands.executeCommand<LogSnapshot>("polylog._itest.snapshot");
@@ -137,6 +137,61 @@ describe("Polylog panel", () => {
     assert.strictEqual(s.filter.path, "client.ts");
     await send({ type: "filter", filter: ALL });
     await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("uncommitted changes: pinned above the commits when the toggle is on, and they follow a save", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const cfg = vscode.workspace.getConfiguration("polylog");
+    await send({ type: "filter", filter: ALL });
+    const web = (await until("six rows", (x) => x.rows.length === 6)).repos.find((r) => r.name === "acme-web")!;
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = false;\n");
+    fs.writeFileSync(path.join(web.root, "notes.md"), "todo\n");
+    try {
+      await send({ type: "refresh" });
+      await sleep(500);
+      assert.ok(!(await snapshot()).rows.some((r) => r.sha === UNCOMMITTED), "off by default");
+      await cfg.update("showUncommitted", true, vscode.ConfigurationTarget.Global);
+      let s = await until("the pinned row", (x) => x.rows[0]?.sha === UNCOMMITTED && x.rows.length === 7);
+      assert.deepStrictEqual([s.rows[0].repoId, s.rows[0].uncommitted], [web.id, 2], "one row for the repo with changes, with its file count");
+
+      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
+      s = await until("its files", (x) => x.changes.items.length === 3);
+      assert.deepStrictEqual(s.changes.items.slice(1).sort(), ["  client.ts | +1 −1", "  notes.md | new"]);
+
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.openDiff", { repoId: web.id, sha: UNCOMMITTED, parent: head, path: "client.ts" });
+      const input = await diffTab().catch(async () => waitFor("a working-tree diff", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+        return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
+      }));
+      assert.strictEqual(input.modified.scheme, "file", "the right side is the real, editable file");
+      assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "export const ok = true;\n", "the left side is the last commit");
+
+      // A save in the editor refreshes the row.
+      const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(web.root, "notes.md")));
+      fs.writeFileSync(path.join(web.root, "extra.ts"), "x\n");
+      const edit = new vscode.WorkspaceEdit();
+      edit.insert(doc.uri, new vscode.Position(0, 0), "more ");
+      await vscode.workspace.applyEdit(edit);
+      await doc.save();
+      await until("the row after a save", (x) => x.rows[0]?.uncommitted === 3);
+
+      await send({ type: "filter", filter: { ...ALL, text: "retry" } });
+      await until("no pinned row while searching", (x) => x.rows.length === 1 && x.rows[0].sha !== UNCOMMITTED);
+      await send({ type: "filter", filter: ALL });
+      await until("the pinned row again", (x) => x.rows[0]?.sha === UNCOMMITTED);
+    } finally {
+      await cfg.update("showUncommitted", undefined, vscode.ConfigurationTarget.Global);
+      await closeEditors();
+      git("checkout", "--", ".");
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+    await until("six rows, no pinned row", (x) => x.rows.length === 6 && !x.rows.some((r) => r.sha === UNCOMMITTED));
   });
 
   it("Me means each repository's own user.email", async () => {

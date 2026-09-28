@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import { decorationFor, describeChanges, firstOpenable, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
-import type { Commit } from "./types";
+import { UNCOMMITTED, type Commit } from "./types";
 
 const NOW = 1790164800;
 const commit: Commit = {
@@ -86,4 +86,22 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
   assert.deepStrictEqual(decorationFor("T"), { badge: "T", color: "gitDecoration.modifiedResourceForeground", tooltip: "Type changed" });
   assert.strictEqual(decorationFor(undefined), undefined);
   console.log("ok - each change status maps to the theme's git decoration color and a badge");
+}
+
+{
+  const wt: Commit = { repoId: "/ws/acme-web", sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["c".repeat(40)], uncommitted: 3 };
+  const d = describeChanges({ commit: wt, repoRoot: "/ws/acme-web", repoName: "acme-web", status: "ready", message: "", files: [
+    { path: "src/app.ts", added: 3, deleted: 1, status: "M", staged: false },
+    { path: "src/staged.ts", added: 1, deleted: 0, status: "M", staged: true },
+    { path: "notes.md", added: 0, deleted: 0, status: "A", staged: false, untracked: true },
+  ] }, NOW);
+  const root = d.roots[0];
+  assert.strictEqual(root.label, "Uncommitted changes");
+  assert.strictEqual(root.description, "3 files · not committed", "no sha, author or age for work that is not a commit");
+  const files = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [n] : n.children.flatMap(files));
+  const byLabel = new Map(files(root).map((f) => [f.label, f.description]));
+  assert.strictEqual(byLabel.get("staged.ts"), "+1 −0 · staged", "fully staged files say so");
+  assert.strictEqual(byLabel.get("notes.md"), "new", "an untracked file has no counts yet");
+  assert.strictEqual(byLabel.get("app.ts"), "+3 −1");
+  console.log("ok - uncommitted changes describe themselves: file count, staged, new");
 }

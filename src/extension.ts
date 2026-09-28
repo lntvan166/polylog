@@ -20,6 +20,11 @@ export function activate(context: vscode.ExtensionContext): void {
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Clicking the Log or Changes header collapses that view; expand it again. Settle
   // first: switching to another panel tab hides both, one event at a time.
+  const syncUncommittedContext = () =>
+    void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false));
+  syncUncommittedContext();
+  // A burst of saves or git events costs one read.
+  const uncommittedSoon = debounce(() => void log.uncommittedChanged(), 400);
   // Hidden again within 10 s of an undo means the user hid it on purpose (keepExpanded.ts).
   const undo = new UndoCollapse(10_000);
   const undoCollapse = debounce(() => {
@@ -55,6 +60,17 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(arg)),
     vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(arg)),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
+    vscode.commands.registerCommand("polylog.showUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", true, vscode.ConfigurationTarget.Global)),
+    vscode.commands.registerCommand("polylog.hideUncommitted", () => vscode.workspace.getConfiguration("polylog").update("showUncommitted", false, vscode.ConfigurationTarget.Global)),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!e.affectsConfiguration("polylog.showUncommitted")) return;
+      syncUncommittedContext();
+      void log.uncommittedToggled();
+    }),
+    // Uncommitted changes follow the working tree: VS Code's Git reporting a change, or a save.
+    discovery.onDidChangeRepoState(() => uncommittedSoon()),
+    vscode.workspace.onDidSaveTextDocument(() => uncommittedSoon()),
+    { dispose: () => uncommittedSoon.cancel() },
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.

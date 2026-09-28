@@ -114,6 +114,18 @@
         "icon": "$(history)"
       },
       {
+        "command": "polylog.showUncommitted",
+        "title": "Show Uncommitted Changes",
+        "category": "Polylog",
+        "icon": "$(eye-closed)"
+      },
+      {
+        "command": "polylog.hideUncommitted",
+        "title": "Hide Uncommitted Changes",
+        "category": "Polylog",
+        "icon": "$(eye)"
+      },
+      {
         "command": "polylog.openWorkingFile",
         "title": "Open File",
         "category": "Polylog",
@@ -166,6 +178,16 @@
         }
       ],
       "view/title": [
+        {
+          "command": "polylog.showUncommitted",
+          "when": "view == polylog.log && !polylog.showUncommitted",
+          "group": "navigation@1"
+        },
+        {
+          "command": "polylog.hideUncommitted",
+          "when": "view == polylog.log && polylog.showUncommitted",
+          "group": "navigation@1"
+        },
         {
           "command": "polylog.showRepos",
           "when": "view == polylog.log && polylog.hideRepos",
@@ -234,6 +256,11 @@
           "minimum": 0,
           "maximum": 6,
           "markdownDescription": "Folder levels to search the workspace folders for repositories. Polylog shows these together with the repositories the Git extension has open. See also `#git.repositoryScanMaxDepth#`."
+        },
+        "polylog.showUncommitted": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Pin each repository's uncommitted changes (staged or not, and new files) above its commits in the Log. Toggle it from the Log's toolbar."
         },
         "polylog.keepViewsExpanded": {
           "type": "boolean",

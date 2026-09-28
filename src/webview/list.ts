@@ -121,8 +121,9 @@ export class CommitList {
   private renderRow(c: Commit, i: number): HTMLElement {
     const accent = accentOf(this.props.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
+    const pending = c.uncommitted !== undefined;
     return h("div", {
-      class: "row",
+      class: pending ? "row uncommitted" : "row",
       role: "row",
       id: `row-${i}`,
       "aria-rowindex": String(i + 1),
@@ -130,13 +131,16 @@ export class CommitList {
       "data-index": String(i),
     }, [
       h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name, "data-name": name }, [name]),
-      h("span", { class: "subject", role: "gridcell", title: c.subject }, [
+      h("span", { class: "subject", role: "gridcell", title: pending ? "Changes since the last commit, staged or not" : c.subject }, pending ? [
+        h("span", { class: "pending-dot", "aria-hidden": "true" }, ["●"]),
+        `${c.subject} · ${c.uncommitted} ${c.uncommitted === 1 ? "file" : "files"}`,
+      ] : [
         c.subject,
         // File history: the file had another name in this commit.
         this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null,
       ]),
       h("span", { class: "author", role: "gridcell" }, [c.author]),
-      h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
+      h("span", { class: "date", role: "gridcell", title: pending ? "Not committed yet" : absoluteTime(c.time) }, [pending ? "now" : relativeTime(this.props.now, c.time)]),
     ]);
   }
 

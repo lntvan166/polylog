@@ -6,7 +6,7 @@ import type { Repo } from "./types";
 
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
-interface GitRepository { rootUri: vscode.Uri }
+interface GitRepository { rootUri: vscode.Uri; state?: { onDidChange?: vscode.Event<void> } }
 type GitState = "uninitialized" | "initialized";
 interface GitAPI {
   /** The binary vscode.git found (from git.path or its own search). */
@@ -46,6 +46,9 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly gitFound = new vscode.EventEmitter<void>();
   /** vscode.git has activated and reported its git binary (see gitPath). */
   readonly onDidFindGit = this.gitFound.event;
+  private readonly repoStateChanged = new vscode.EventEmitter<void>();
+  /** A repository's state changed in vscode.git (a save, a stage, a checkout). */
+  readonly onDidChangeRepoState = this.repoStateChanged.event;
 
   async list(settings: Settings): Promise<Repo[]> {
     if (!this.started) {
@@ -69,6 +72,12 @@ export class RepoDiscovery implements vscode.Disposable {
     }
     this.api = api;
     if (this.gitPath()) this.gitFound.fire();
+    const watch = (r: GitRepository) => {
+      const d = r.state?.onDidChange?.(() => this.repoStateChanged.fire());
+      if (d) this.disposables.push(d);
+    };
+    api.repositories.forEach(watch);
+    this.disposables.push(api.onDidOpenRepository(watch));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const settleSoon = () => {
       clearTimeout(timer);
@@ -89,6 +98,7 @@ export class RepoDiscovery implements vscode.Disposable {
 
   dispose(): void {
     this.gitFound.dispose();
+    this.repoStateChanged.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }
