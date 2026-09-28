@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, reviewLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, reviewLabel, repoColumnChars, countLabel, emptyState, reselect, withPinned, type EmptyAction } from "./view";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -132,19 +132,31 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         state.rows = state.rows.concat(m.rows);
         state.failures = m.failures.length > 0 ? state.failures.concat(m.failures) : state.failures;
       } else {
-        const prev = state.rows[state.selected];
-        const next = reselect(prev ? commitKey(prev) : null, m.rows);
-        const kept = prev !== undefined && next >= 0 && commitKey(m.rows[next]) === commitKey(prev);
-        state.rows = m.rows;
         state.failures = m.failures;
         state.dismissed = false;
-        if (!kept) list.resetScroll();
-        select(next, false);
+        replaceRows(m.rows);
+      }
+      break;
+    case "pinned":
+      replaceRows(withPinned(state.rows, m.rows));
+      if (m.review && state.review) {
+        state.review = m.review;
+        reviewSummary.textContent = reviewLabel(m.review);
       }
       break;
   }
   render();
 });
+
+/** New rows for the list, keeping the selected commit (and the scroll) when it is still listed. */
+function replaceRows(rows: Commit[]): void {
+  const prev = state.rows[state.selected];
+  const next = reselect(prev ? commitKey(prev) : null, rows);
+  const kept = prev !== undefined && next >= 0 && commitKey(rows[next]) === commitKey(prev);
+  state.rows = rows;
+  if (!kept) list.resetScroll();
+  select(next, false);
+}
 
 function select(index: number, andRender = true): void {
   state.selected = index;

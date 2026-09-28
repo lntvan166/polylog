@@ -40,12 +40,29 @@ describe("Polylog startup", () => {
       await sleep(5);
     }
     const msAllPinned = Date.now() - t1;
+    // One editor save in one dirty repository, with the rows shown: what does it cost?
+    await sleep(2000);
+    const before = (await snapshot())!;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(dirty[0].root, "UNCOMMITTED.md")));
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(doc.uri, new vscode.Position(0, 0), "more\n");
+    await vscode.workspace.applyEdit(edit);
+    await doc.save();
+    await sleep(2500); // the save, then VS Code's Git reporting the same repository
+    const after = (await snapshot())!;
+    const posted = (s: LogSnapshot) => Object.values(s.posts).reduce((n, p) => n + p.bytes, 0);
+    const save = {
+      spawns: after.spawnLog.length - before.spawnLog.length,
+      reposRead: new Set(after.spawnLog.slice(before.spawnLog.length).map((x) => x.root)).size,
+      postBytes: posted(after) - posted(before),
+    };
+    await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     await vscode.commands.executeCommand("polylog.hideUncommitted");
     for (const r of dirty) fs.rmSync(path.join(r.root, "UNCOMMITTED.md"));
     console.log("PERF " + JSON.stringify({
       msFirstRows, reposAtFirstRows: first.repos.length, reposSettled: settled.repos.length,
       rowsSettled: settled.rows.length, stats: settled.stats, branches: settled.branches.length,
-      uncommitted: { msFirstPinned, msAllPinned, dirty: dirty.length },
+      uncommitted: { msFirstPinned, msAllPinned, dirty: dirty.length, save },
     }));
   });
 });

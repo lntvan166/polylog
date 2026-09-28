@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentOf, ACCENT_COUNT, assignAccents, reviewLabel, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
+  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange, withPinned,
 } from "./view";
 
 const NOW = 1790164800;
@@ -105,6 +105,17 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(reselect(null, rows), 0);
   assert.strictEqual(reselect("/ws/acme-web\0a", []), -1, "no rows, no selection");
   console.log("ok - reselect keeps the selection across a replay or refresh");
+}
+{
+  const c = (repoId: string, sha: string, uncommitted?: number) => ({ repoId, sha, uncommitted });
+  const U = "0".repeat(40);
+  const rows = [c("/ws/acme-api", U, 2), c("/ws/acme-web", "a"), c("/ws/acme-api", "b")];
+  assert.deepStrictEqual(withPinned(rows, [c("/ws/acme-web", U, 1), c("/ws/acme-api", U, 3)]).map((r) => [r.repoId, r.sha, r.uncommitted]),
+    [["/ws/acme-web", U, 1], ["/ws/acme-api", U, 3], ["/ws/acme-web", "a", undefined], ["/ws/acme-api", "b", undefined]],
+    "the new pinned rows replace the old ones, above the commits already loaded");
+  assert.deepStrictEqual(withPinned(rows, []).map((r) => r.sha), ["a", "b"], "none left: only the commits");
+  assert.deepStrictEqual(withPinned([], [c("/ws/acme-web", U, 1)]).map((r) => r.sha), [U], "Review Uncommitted: only pinned rows");
+  console.log("ok - pinned rows are replaced without resending the commits");
 }
 {
   const by = emptyState({ repoCount: 3, filter: { ...ALL, author: "rin" } });

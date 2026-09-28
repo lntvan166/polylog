@@ -26,6 +26,11 @@ export type HostMessage =
   | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; branches: BranchName[]; authors: AuthorName[]; review: { files: number; repos: number } | null }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
+  /**
+   * The uncommitted rows changed (a save, the toggle): they replace the pinned rows above the
+   * commits the webview already has. `review`: Review Uncommitted's new totals.
+   */
+  | { type: "pinned"; rows: Commit[]; review: { files: number; repos: number } | null }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
   | { type: "suggestions"; authors?: AuthorName[]; branches?: BranchName[] };
 

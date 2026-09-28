@@ -52,12 +52,6 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return this.view.onDidChangeVisibility;
   }
 
-  /** Review Uncommitted: scroll to a repository's group (its root id is the pinned row's key). */
-  revealGroup(id: string): void {
-    const root = this.roots.find((r) => r.id === id);
-    if (root && this.view.visible) void this.view.reveal(root, { select: true, focus: false, expand: true }).then(undefined, () => undefined);
-  }
-
   /** Revealing needs a node: with no commit selected there is nothing to reveal quietly. */
   get canExpand(): boolean {
     return this.roots.length > 0;

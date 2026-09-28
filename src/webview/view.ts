@@ -265,3 +265,11 @@ export function reselect(prevKey: string | null, rows: readonly { repoId: string
   const i = rows.findIndex((r) => commitKey(r) === prevKey);
   return i < 0 ? 0 : i;
 }
+
+/**
+ * The rows after a "pinned" message: its uncommitted rows replace the pinned ones at the top,
+ * and the commits already loaded stay as they are.
+ */
+export function withPinned<T extends { uncommitted?: number }>(rows: readonly T[], pinned: readonly T[]): T[] {
+  return [...pinned, ...rows.filter((r) => r.uncommitted === undefined)];
+}

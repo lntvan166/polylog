@@ -177,8 +177,41 @@ describe("Polylog panel", () => {
       const edit = new vscode.WorkspaceEdit();
       edit.insert(doc.uri, new vscode.Position(0, 0), "more ");
       await vscode.workspace.applyEdit(edit);
+      let mark = await snapshot();
       await doc.save();
       await until("the row after a save", (x) => x.rows[0]?.uncommitted === 3);
+      // Only the saved file's repository is read again (VS Code's Git reports it too, a moment later).
+      await sleep(1500);
+      const statusSince = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length).filter((x) => x.cmd === "status").map((x) => x.root);
+      let now = await snapshot();
+      const read = statusSince(mark, now);
+      assert.ok(read.length > 0 && read.every((root) => root === web.root), `a save re-reads only its own repository, not all of them (read: ${read.join(", ")})`);
+
+      // A save that changes nothing git reports posts nothing to the Log.
+      mark = now;
+      const again = new vscode.WorkspaceEdit();
+      again.insert(doc.uri, new vscode.Position(0, 0), "x");
+      await vscode.workspace.applyEdit(again);
+      await doc.save();
+      await sleep(1500);
+      now = await snapshot();
+      assert.ok(statusSince(mark, now).length > 0, "it was read again");
+      const posted = (s: LogSnapshot) => (s.posts.page?.count ?? 0) + (s.posts.pinned?.count ?? 0);
+      assert.strictEqual(posted(now), posted(mark), "and nothing was posted: the same files, the same counts");
+
+      // A save outside every repository reads nothing.
+      mark = now;
+      const outside = path.join(require("os").tmpdir(), `polylog-outside-${Date.now()}.txt`);
+      fs.writeFileSync(outside, "a\n");
+      const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
+      const edit3 = new vscode.WorkspaceEdit();
+      edit3.insert(other.uri, new vscode.Position(0, 0), "b");
+      await vscode.workspace.applyEdit(edit3);
+      await other.save();
+      await sleep(1000);
+      assert.deepStrictEqual(statusSince(mark, await snapshot()), [], "a file outside every repository is not a working-tree change");
+      await closeEditors();
+      fs.rmSync(outside, { force: true });
 
       await send({ type: "filter", filter: { ...ALL, text: "retry" } });
       await until("no pinned row while searching", (x) => x.rows.length === 1 && x.rows[0].sha !== UNCOMMITTED);
@@ -218,8 +251,16 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.reviewUncommitted");
       let s = await until("the review", (x) => x.review && x.rows.length === 2 && x.changes.items.length > 0);
       assert.ok(s.rows.every((r) => r.sha === UNCOMMITTED), "only the repositories with changes, no commits (the rows toggle is off)");
-      const roots = s.changes.items.filter((i) => !i.startsWith(" "));
-      assert.deepStrictEqual(roots.sort(), ["acme-api | 2 files · not committed", "acme-web | 1 file · not committed"], "one group per repository");
+      const roots = (x: LogSnapshot) => x.changes.items.filter((i) => !i.startsWith(" "));
+      // The tree shows the repository clicked in the Log, not all of them.
+      await send({ type: "select", repoId: api.id, sha: UNCOMMITTED });
+      s = await until("acme-api's files only", (x) => roots(x).length === 1 && roots(x)[0].startsWith("acme-api"));
+      assert.deepStrictEqual(roots(s), ["acme-api | 2 files · not committed"]);
+      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
+      s = await until("acme-web's files only", (x) => roots(x).length === 1 && roots(x)[0].startsWith("acme-web"));
+      assert.deepStrictEqual(roots(s), ["acme-web | 1 file · not committed"]);
+      await send({ type: "select", repoId: api.id, sha: UNCOMMITTED });
+      await until("acme-api again", (x) => roots(x)[0]?.startsWith("acme-api") === true);
       await closeEditors();
       await vscode.commands.executeCommand("polylog.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
       const input = await waitFor("a working-tree diff", () => {
@@ -227,8 +268,9 @@ describe("Polylog panel", () => {
         return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
       });
       assert.match(input.modified.fsPath, /acme-api[\\/]upload\.go$/);
-      // A group's file knows its repository: Open File on acme-web's file (the second group;
-      // groups follow repo order) goes to acme-web, not to the first group's repository.
+      // A group's file knows its repository: Open File on acme-web's file goes to acme-web.
+      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
+      await until("acme-web shown", (x) => roots(x)[0]?.startsWith("acme-web") === true);
       await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", path: "client.ts", owner: { repoId: web.id, sha: UNCOMMITTED, parent: null } });
       await waitFor("client.ts in acme-web", () => (vscode.window.activeTextEditor?.document.uri.fsPath.endsWith(path.join("acme-web", "client.ts")) ? true : undefined));
       await send({ type: "exitReview" });

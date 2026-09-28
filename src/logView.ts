@@ -55,9 +55,25 @@ export interface LogSnapshot {
   changesVisible: boolean;
   layout: Layout;
   stats: { msToFirstRows: number | null; reloads: number; discoveries: number; spawns: number; discoveryMs: number; fetchMs: number; msToResolve: number; msToReady: number };
+  /** Each git process started: in which repository, and which subcommand (the last 2,000). */
+  spawnLog: { root: string; cmd: string }[];
+  /** Messages posted to the webview, by type, and their total size in bytes (integration runs only). */
+  posts: Record<string, { count: number; bytes: number }>;
 }
 
+/** Posts are measured only in integration runs: sizing a 1 MB page costs milliseconds. */
+const MEASURE_POSTS = process.env.POLYLOG_ITEST === "1";
+
 const nowSec = () => Math.floor(Date.now() / 1000);
+
+/** One repository's uncommitted changes; `seq` orders reads of it. */
+interface Working { head: string | null; files: FileChange[]; seq: number }
+
+/** Whether a new read shows the same row and files as the last one (then nothing is posted). */
+function sameWorking(old: Pick<Working, "head" | "files"> | undefined, next: Pick<Working, "head" | "files">): boolean {
+  if ((old?.files.length ?? 0) === 0 && next.files.length === 0) return true; // no row either way
+  return old !== undefined && old.head === next.head && JSON.stringify(old.files) === JSON.stringify(next.files);
+}
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const toUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...encodeRevision(r) });
 
@@ -97,11 +113,27 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
-  /** Review Uncommitted: the Log lists repositories with changes, the tree all their files. */
+  /** Review Uncommitted: the Log lists repositories with changes, the tree the clicked one's files. */
   private review = false;
+  /** The repository whose files Review Uncommitted shows (the row clicked in the Log). */
+  private reviewRepo: string | undefined;
   /** Each repository's uncommitted changes, read only while they are shown. */
-  private uncommitted = new Map<string, { head: string | null; files: FileChange[] }>();
+  private uncommitted = new Map<string, Working>();
+  /** The Path filter's pathspec the map was read under (a new one reads every repository again). */
+  private uncommittedSpec: string | undefined;
+  /** Orders reads of one repository: a slower, older read never replaces a newer one. */
+  private uncommittedSeq = 0;
+  /** The read of every repository; a newer one (or hiding the rows) aborts it. */
   private uncommittedRead = new AbortController();
+  /** Reads of single repositories after a save or a git event; a read of every repository aborts them. */
+  private repoReads = new AbortController();
+  /** Repositories whose working tree changed since the last read, read together after a burst. */
+  private readonly touched = new Set<string>();
+  private readonly touchedSoon = debounce(() => {
+    const ids = new Set(this.touched);
+    this.touched.clear();
+    void this.uncommittedChanged(ids);
+  }, 400);
   private readonly visibilityChanged = new vscode.EventEmitter<void>();
   readonly onDidChangeVisibility = this.visibilityChanged.event;
   private readonly reloadSoon = debounce(() => void this.reload(), SEARCH_DEBOUNCE_MS);
@@ -110,12 +142,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Startup and load cost, for the perf harness and the integration suite. */
   private readonly stats = { createdAt: Date.now(), firstRowsAt: 0, reloads: 0, discoveries: 0, spawns: 0, discoveryMs: 0, fetchMs: 0, resolvedAt: 0, readyAt: 0 };
+  private readonly spawnLog: { root: string; cmd: string }[] = [];
+  private readonly posts: Record<string, { count: number; bytes: number }> = {};
   private readonly run: RunGit;
   private firstLoad: Promise<void> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
     this.run = (cwd, args, signal) => {
       this.stats.spawns++;
+      this.spawnLog.push({ root: cwd, cmd: args[0] ?? "" });
+      if (this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
       return deps.run(cwd, args, signal);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
@@ -326,11 +362,16 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The workspace repository containing a file (innermost first), and its repo-relative path. */
   private locate(fsPath: string): { repoId: string; path: string } | undefined {
-    const inside = this.repos
+    const inside = this.innermost(fsPath);
+    return inside && inside.rel !== "" ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
+  }
+
+  /** The innermost workspace repository at or above a path ("" when it is the root itself). */
+  private innermost(fsPath: string): { r: Repo; rel: string } | undefined {
+    return this.repos
       .map((r) => ({ r, rel: path.relative(r.root, fsPath) }))
-      .filter((x) => x.rel !== "" && x.rel !== ".." && !x.rel.startsWith(`..${path.sep}`) && !path.isAbsolute(x.rel))
+      .filter((x) => x.rel !== ".." && !x.rel.startsWith(`..${path.sep}`) && !path.isAbsolute(x.rel))
       .sort((a, b) => a.rel.length - b.rel.length)[0];
-    return inside ? { repoId: inside.r.id, path: inside.rel.split(path.sep).join("/") } : undefined;
   }
 
   /** Save the filter; while File History forces all time, save the range the user will come back to. */
@@ -512,11 +553,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       return;
     }
     try {
+      // The commits do not wait for the uncommitted read: its rows follow as they land.
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
         now: nowSec(), prev: null, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
-      await working;
       if (ctl.signal.aborted) return;
       this.rows = page.rows;
       this.failures = page.failures;
@@ -567,6 +608,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         discoveryMs: this.stats.discoveryMs, fetchMs: this.stats.fetchMs,
         msToResolve: this.stats.resolvedAt - this.stats.createdAt, msToReady: this.stats.readyAt - this.stats.createdAt,
       },
+      spawnLog: [...this.spawnLog],
+      posts: structuredClone(this.posts),
     };
   }
 
@@ -583,7 +626,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const found = this.findCommit(repoId, sha);
     if (!found) return;
     if (sha === UNCOMMITTED && this.review) {
-      this.deps.changes.revealGroup(commitKey(found.commit));
+      // The tree shows the repository clicked, not every one.
+      this.reviewRepo = repoId;
+      this.showReviewTree();
       return;
     }
     if (sha === UNCOMMITTED) {
@@ -699,6 +744,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The toggle as last set from the toolbar, before the setting is written back. */
   private uncommittedPref: boolean | undefined;
+  /** The toggle the rows were last read (or dropped) for. */
+  private uncommittedApplied = vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false) === true;
 
   /** The "Show Uncommitted Changes" toggle (polylog.showUncommitted). */
   private uncommittedOn(): boolean {
@@ -722,11 +769,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async uncommittedSettingChanged(): Promise<void> {
     const setting = vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false) === true;
     void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", setting);
-    if (setting === this.uncommittedOn()) {
-      this.uncommittedPref = undefined; // the setting caught up
-      return;
-    }
-    this.uncommittedPref = undefined;
+    this.uncommittedPref = undefined; // the setting is the source again
+    // Our own write coming back, after the toolbar already acted, needs nothing.
+    if (setting === this.uncommittedApplied) return;
     await this.uncommittedToggled();
   }
 
@@ -744,6 +789,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** The rows the Log shows: each repository's uncommitted changes pinned above the commits. */
   private shownRows(): Commit[] {
     if (!this.uncommittedShown()) return this.rows;
+    const pinned = this.pinnedRows();
+    return this.review ? pinned : [...pinned, ...this.rows];
+  }
+
+  /** One row per repository with uncommitted changes, in repository order. */
+  private pinnedRows(): Commit[] {
+    if (!this.uncommittedShown()) return [];
     const now = nowSec();
     const pinned: Commit[] = [];
     for (const repo of this.repos) {
@@ -751,7 +803,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       if (!w || w.files.length === 0) continue;
       pinned.push({ repoId: repo.id, sha: UNCOMMITTED, time: now, author: "", email: "", subject: "Uncommitted changes", parents: w.head ? [w.head] : [], uncommitted: w.files.length });
     }
-    return this.review ? pinned : [...pinned, ...this.rows];
+    return pinned;
   }
 
   /** Opens Review Uncommitted: every repository's uncommitted files in one tree. */
@@ -760,6 +812,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await vscode.commands.executeCommand(`${LogView.id}.focus`);
     if (this.history) this.leaveHistory();
     this.review = true;
+    this.reviewRepo = undefined;
     this.postInit();
     await this.reload();
   }
@@ -772,9 +825,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     await this.reload();
   }
 
-  /** The review tree: one group per repository with uncommitted files. */
+  /** The review tree: the clicked repository's uncommitted files (every repository's until a click). */
   private showReviewTree(): void {
-    const pinned = this.shownRows();
+    const rows = this.shownRows();
+    const clicked = rows.filter((c) => c.repoId === this.reviewRepo);
+    const pinned = clicked.length > 0 ? clicked : rows;
     const groups = pinned.flatMap((commit) => {
       const repo = this.repos.find((r) => r.id === commit.repoId);
       return repo ? [{ commit, repoRoot: repo.root, repoName: repo.name, files: this.uncommitted.get(repo.id)?.files ?? [] }] : [];
@@ -797,36 +852,64 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /**
-   * Reads each selected repository's uncommitted changes (git status + numstat, under the Path
-   * filter), or forgets them when they are not shown. A newer read aborts an older one.
+   * Reads the selected repositories' uncommitted changes (git status + numstat, under the Path
+   * filter), or forgets them when they are not shown. `only`: just these repositories (their
+   * working tree changed). Each result is merged in as it lands, and the Log is told only when
+   * a repository's changes really differ from what it shows.
    */
-  private async readUncommitted(progressive = false): Promise<void> {
-    this.uncommittedRead.abort();
+  private async readUncommitted(only?: ReadonlySet<string>): Promise<void> {
     if (!this.uncommittedShown()) {
+      this.uncommittedRead.abort();
+      this.repoReads.abort();
+      if (this.hasPinned()) this.publishUncommittedSoon();
       this.uncommitted = new Map();
+      this.uncommittedSpec = undefined;
       return;
     }
-    const ctl = (this.uncommittedRead = new AbortController());
     const path = this.filter.path === undefined ? undefined : normalizePath(this.filter.path);
     const specs = path ? [pathspecOf(path)] : [];
-    const repos = selectRepos(this.filter, this.repos);
-    // Refreshing keeps each repo's last result until its new one lands: no flicker.
-    const next = new Map([...this.uncommitted].filter(([id]) => repos.some((r) => r.id === id)));
-    if (progressive) this.uncommitted = next;
+    const spec = specs.join("\0");
+    let repos = selectRepos(this.filter, this.repos);
+    let ctl: AbortController;
+    if (only) {
+      // Under another Path filter, a read of every repository is already on its way.
+      if (spec !== this.uncommittedSpec) return;
+      repos = repos.filter((r) => only.has(r.id));
+      ctl = this.repoReads;
+    } else {
+      this.uncommittedRead.abort();
+      this.repoReads.abort();
+      this.repoReads = new AbortController();
+      ctl = this.uncommittedRead = new AbortController();
+      // Until its new result lands, each repository keeps its last one (no flicker), unless the
+      // Path filter changed: then the old rows answer another question.
+      const keep = spec === this.uncommittedSpec ? new Set(repos.map((r) => r.id)) : new Set<string>();
+      for (const [id, w] of this.uncommitted) {
+        if (keep.has(id)) continue;
+        this.uncommitted.delete(id);
+        if (w.files.length > 0) this.publishUncommittedSoon();
+      }
+      this.uncommittedSpec = spec;
+    }
     await runPool(repos, this.settings().maxConcurrency, async (r, signal) => {
+      const seq = ++this.uncommittedSeq;
       // One call for a clean repo: --branch carries the last commit's id too.
       const out = await this.run(r.root, statusArgs(specs), signal);
       const head = headOf(out);
       const status = parseStatus(out);
       const files = status.length === 0 ? [] : uncommittedFiles(status, parseNumstat(await this.run(r.root, numstatArgs(head, specs), signal)));
       if (ctl.signal.aborted) return;
-      const before = next.get(r.id)?.files.length ?? 0;
-      next.set(r.id, { head, files });
+      const old = this.uncommitted.get(r.id);
+      if (old && old.seq > seq) return;
+      this.uncommitted.set(r.id, { head, files, seq });
       // Show each repository as soon as it is read, rather than after the slowest one.
-      if (progressive && (files.length > 0 || before > 0)) this.publishUncommittedSoon();
+      if (!sameWorking(old, { head, files })) this.publishUncommittedSoon();
     }, ctl.signal);
-    if (ctl.signal.aborted) return;
-    this.uncommitted = next;
+  }
+
+  private hasPinned(): boolean {
+    for (const w of this.uncommitted.values()) if (w.files.length > 0) return true;
+    return false;
   }
 
   private publishTimer: ReturnType<typeof setTimeout> | undefined;
@@ -840,12 +923,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }, 80);
   }
 
-  /** Posts the rows (and the review tree, or the selected uncommitted row's files) as they are now. */
+  /**
+   * Posts the pinned rows (and the review tree, or the selected uncommitted row's files) as they
+   * are now. Only the pinned rows: the webview keeps its commits, however many are loaded.
+   */
   private publishUncommitted(): void {
-    this.post({ type: "page", rows: this.shownRows(), append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
+    this.post({ type: "pinned", rows: this.pinnedRows(), review: this.review ? this.reviewSummary() : null });
     if (this.review) {
       this.showReviewTree();
-      this.postInit();
       return;
     }
     const current = this.deps.changes.current();
@@ -858,25 +943,35 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** The toggle changed: read (or drop) the uncommitted changes, showing repos as they come. */
   async uncommittedToggled(): Promise<void> {
+    this.uncommittedApplied = this.uncommittedOn();
     if (!this.uncommittedShown()) this.clearTreeIfGone();
-    await this.readUncommitted(true);
-    if (this.uncommittedRead.signal.aborted) return;
-    this.clearTreeIfGone();
-    this.publishUncommitted();
+    await this.readUncommitted();
   }
 
   /**
-   * Something in a repository changed (a save, VS Code's Git reporting a new state): read
-   * the uncommitted changes again, if they are shown, and refresh the Log and the tree.
+   * A file was saved, or VS Code's Git reported a new state for a repository: if uncommitted
+   * changes are shown, read that repository again (after a burst settles), and nothing else.
    */
-  async uncommittedChanged(): Promise<void> {
+  workingTreeChanged(fsPath: string): void {
     if (!this.uncommittedShown()) return;
-    await this.readUncommitted(true);
-    if (this.uncommittedRead.signal.aborted) return;
-    this.publishUncommitted();
+    const repo = this.innermost(fsPath)?.r;
+    if (!repo) return; // outside every repository of the workspace
+    this.touched.add(repo.id);
+    this.touchedSoon();
+  }
+
+  /** Reads these repositories' uncommitted changes again; the Log hears only of real changes. */
+  async uncommittedChanged(ids: ReadonlySet<string>): Promise<void> {
+    if (!this.uncommittedShown()) return;
+    await this.readUncommitted(ids);
   }
 
   private post(m: HostMessage): void {
+    if (MEASURE_POSTS) {
+      const p = (this.posts[m.type] ??= { count: 0, bytes: 0 });
+      p.count++;
+      p.bytes += JSON.stringify(m).length;
+    }
     void this.webviewView?.webview.postMessage(m);
   }
 
@@ -884,6 +979,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.query.abort();
     this.detail.abort();
     this.uncommittedRead.abort();
+    this.repoReads.abort();
+    this.touchedSoon.cancel();
     clearTimeout(this.publishTimer);
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();

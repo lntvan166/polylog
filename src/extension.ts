@@ -23,8 +23,6 @@ export function activate(context: vscode.ExtensionContext): void {
   const syncUncommittedContext = () =>
     void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false));
   syncUncommittedContext();
-  // A burst of saves or git events costs one read.
-  const uncommittedSoon = debounce(() => void log.uncommittedChanged(), 400);
   // Hidden again within 10 s of an undo means the user hid it on purpose (keepExpanded.ts).
   const undo = new UndoCollapse(10_000);
   const undoCollapse = debounce(() => {
@@ -67,10 +65,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("polylog.showUncommitted")) void log.uncommittedSettingChanged();
     }),
-    // Uncommitted changes follow the working tree: VS Code's Git reporting a change, or a save.
-    discovery.onDidChangeRepoState(() => uncommittedSoon()),
-    vscode.workspace.onDidSaveTextDocument(() => uncommittedSoon()),
-    { dispose: () => uncommittedSoon.cancel() },
+    // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
+    // repository, or a save. Only that repository is read again.
+    discovery.onDidChangeRepoState((root) => log.workingTreeChanged(root)),
+    vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && log.workingTreeChanged(doc.uri.fsPath)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
