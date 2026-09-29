@@ -87,11 +87,17 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
   - **↓3 ↑2** beside a name: commits on its upstream you haven't pulled, and commits you
-    haven't pushed (as of your last fetch; Polylog never fetches).
+    haven't pushed, as of the last fetch. **Fetch All** (the cloud in the Log's toolbar)
+    runs `git fetch` in every repository, a few at a time, and never prompts for
+    credentials; Polylog fetches only when you ask. **Show Only Repositories Behind**
+    (right-click, or the Log's `…` menu) then ticks just the ones with commits to pull.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
     with an Undo).
+- **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message),
+  or Open on Remote, its page on GitHub, GitLab, Bitbucket or Azure DevOps (from the
+  repository's `origin`; credentials in the URL are never opened).
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in

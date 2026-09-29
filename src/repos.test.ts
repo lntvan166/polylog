@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-  authorSuggestions, branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots } from "./repos";
+  addExclusion, authorSuggestions, branchSuggestions, excludeRepos, globToRegExp, labelRepos, mergeRoots, undoExclusion } from "./repos";
 
 {
   const repos = labelRepos(["/w/acme-web", "/w/acme-api", "/w/acme-web"]);
@@ -65,4 +65,16 @@ import {
   ], "one entry per email across repos (case-insensitive), most commits first, the most used name");
   assert.strictEqual(authorSuggestions([web], 1).length, 1, "capped");
   console.log("ok - author suggestions: one per email across repositories, most commits first");
+}
+{
+  // Exclude from Polylog: the repo's exact path joins the list already in effect in that scope.
+  assert.deepStrictEqual(addExclusion(undefined, "/ws/acme-libs"), ["/ws/acme-libs"], "no list yet");
+  assert.deepStrictEqual(addExclusion(["**/vendor/**"], "/ws/acme-libs"), ["**/vendor/**", "/ws/acme-libs"], "the user's own entries stay");
+  assert.strictEqual(addExclusion(["/ws/acme-libs"], "/ws/acme-libs"), null, "already there: nothing to write");
+  // Undo: back to exactly what was there, down to "not set" (an empty list would still override other scopes).
+  assert.strictEqual(undoExclusion(["/ws/acme-libs"], "/ws/acme-libs", undefined), undefined);
+  assert.deepStrictEqual(undoExclusion(["**/vendor/**", "/ws/acme-libs"], "/ws/acme-libs", ["**/vendor/**"]), ["**/vendor/**"]);
+  assert.deepStrictEqual(undoExclusion(["/ws/acme-libs"], "/ws/acme-libs", []), [], "an empty list the user had stays an empty list");
+  assert.deepStrictEqual(undoExclusion(["/ws/acme-libs", "acme-scratch"], "/ws/acme-libs", undefined), ["acme-scratch"], "entries added since stay");
+  console.log("ok - Exclude adds the exact path to the list in effect; Undo restores it exactly");
 }

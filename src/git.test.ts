@@ -6,7 +6,7 @@ import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
-import { GitError, runGit } from "./git";
+import { GitError, GitRunner, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
@@ -196,6 +196,21 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     assert.deepStrictEqual(parseAheadBehind(await runGit(cwd, aheadBehindArgs())), { ahead: 2, behind: 1 });
     fs.rmSync(home, { recursive: true, force: true });
     console.log("ok - real git: commits ahead of and behind the upstream");
+  }
+  if (process.platform !== "win32") {
+    // Fetch All's timeout: aborting kills git's whole process tree (ssh, remote helpers), not
+    // only git. A shell alias stands in for a helper that keeps running.
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-tree-"));
+    const marker = `polylog-tree-${process.pid}-${Date.now()}`;
+    const ctl = new AbortController();
+    const run = new GitRunner(() => ["git"]).run(cwd, ["-c", `alias.hang=!sh -c 'sleep 30; : ${marker}'`, "hang"], ctl.signal, { tree: true });
+    await new Promise((r) => setTimeout(r, 300));
+    ctl.abort();
+    await assert.rejects(run, (e: unknown) => isAbortError(e));
+    await new Promise((r) => setTimeout(r, 300));
+    const left = (() => { try { return execFileSync("pgrep", ["-f", marker]).toString().trim(); } catch { return ""; } })();
+    assert.strictEqual(left, "", "no helper process is left behind");
+    console.log("ok - aborting a tree run kills git's children too");
   }
   {
     // Aborted just after git exited but before its output closed, a run must still settle: a

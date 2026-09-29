@@ -106,3 +106,19 @@ export function authorSuggestions(outputs: readonly string[], limit = 200): Auth
     .sort((x, y) => y.count - x.count || (x.name < y.name ? -1 : x.name > y.name ? 1 : 0))
     .slice(0, limit);
 }
+
+/** Exclude from Polylog: the list with the repository's exact path added, or null if already in it. */
+export function addExclusion(previous: readonly string[] | undefined, pattern: string): string[] | null {
+  const list = previous ?? [];
+  return list.includes(pattern) ? null : [...list, pattern];
+}
+
+/**
+ * Undo an exclusion: the pattern leaves the list as it is now (entries added since stay), and
+ * when nothing else is left and the scope had no list before, the setting is unset again
+ * rather than an empty list, which would still override the other scopes.
+ */
+export function undoExclusion(current: readonly string[], pattern: string, previous: readonly string[] | undefined): string[] | undefined {
+  const rest = current.filter((p) => p !== pattern);
+  return rest.length === 0 && previous === undefined ? undefined : rest;
+}

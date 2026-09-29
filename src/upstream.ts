@@ -36,3 +36,20 @@ export function syncLabel(s: AheadBehind): { text: string; title: string; behind
   }
   return parts.length === 0 ? null : { text: parts.join(" "), title: titles.join(", "), behind: s.behind > 0 };
 }
+
+/**
+ * Fetch All: each repository's default remote, as VS Code's own Fetch; --prune per
+ * git.pruneOnFetch. Submodules are listed (and fetched) as repositories of their own: a parent
+ * fetching them at the same moment would race it for their refs.
+ */
+export function fetchArgs(prune: boolean): string[] {
+  return ["fetch", "--quiet", "--recurse-submodules=no", ...(prune ? ["--prune"] : [])];
+}
+
+/** Fetch All runs unattended: no terminal prompt, and no GUI credential dialog either. */
+export const FETCH_ENV: Record<string, string> = { GCM_INTERACTIVE: "never", SSH_ASKPASS_REQUIRE: "never" };
+
+/** The repositories with commits to pull, in repository order. */
+export function behindRepos(repoIds: readonly string[], sync: Readonly<Record<string, AheadBehind>>): string[] {
+  return repoIds.filter((id) => (sync[id]?.behind ?? 0) > 0);
+}
