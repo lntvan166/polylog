@@ -11,6 +11,7 @@ import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
+import { commitWebUrl } from "./remoteUrl";
 import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
@@ -704,6 +705,51 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private contextRepo(arg: unknown): Repo | undefined {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     return typeof id === "string" ? this.repos.find((r) => r.id === id) : undefined;
+  }
+
+  /** The commit a right-click on a Log row was on: a real commit of a listed repository. */
+  private contextCommit(arg: unknown): { repo: Repo; sha: string } | undefined {
+    const repo = this.contextRepo(arg);
+    const sha = (arg as { sha?: unknown } | undefined)?.sha;
+    return repo && typeof sha === "string" && isSha(sha) && sha !== UNCOMMITTED ? { repo, sha } : undefined;
+  }
+
+  /** Right-click a commit → Copy Commit ID. */
+  async commitCopySha(arg: unknown): Promise<void> {
+    const c = this.contextCommit(arg);
+    if (c) await vscode.env.clipboard.writeText(c.sha);
+  }
+
+  /** Right-click a commit → Copy Message: the whole message (the row shows only the subject). */
+  async commitCopyMessage(arg: unknown): Promise<void> {
+    const c = this.contextCommit(arg);
+    if (!c) return;
+    const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], new AbortController().signal);
+    await vscode.env.clipboard.writeText(message.trim());
+  }
+
+  /**
+   * Right-click a commit → Open on Remote: its page on GitHub, GitLab, Bitbucket, Azure DevOps…,
+   * from the repository's origin (or its first remote). Returns the URL opened.
+   */
+  async commitOpenOnRemote(arg: unknown): Promise<string | undefined> {
+    const c = this.contextCommit(arg);
+    if (!c) return undefined;
+    const signal = new AbortController().signal;
+    const urlOf = (name: string) => this.run(c.repo.root, ["remote", "get-url", "--", name], signal).then((s) => s.trim(), () => "");
+    let remote = await urlOf("origin");
+    if (!remote) {
+      const names = await this.run(c.repo.root, ["remote"], signal).then((s) => s.split("\n").map((x) => x.trim()).filter(Boolean), () => []);
+      if (names[0]) remote = await urlOf(names[0]);
+    }
+    const url = remote ? commitWebUrl(remote, c.sha) : null;
+    if (!url) {
+      void vscode.window.showInformationMessage(`Polylog: ${c.repo.name} has no remote with a web page for this commit.`);
+      return undefined;
+    }
+    // The integration suite checks the URL without launching a browser.
+    if (process.env.POLYLOG_ITEST !== "1") await vscode.env.openExternal(vscode.Uri.parse(url, true));
+    return url;
   }
 
   /** Sets the repo filter from the host (a right-click): the webview gets it with init. */

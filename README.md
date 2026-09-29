@@ -95,6 +95,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
     with an Undo).
+- **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message),
+  or Open on Remote, its page on GitHub, GitLab, Bitbucket or Azure DevOps (from the
+  repository's `origin`; credentials in the URL are never opened).
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in

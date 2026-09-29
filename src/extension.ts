@@ -73,6 +73,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
     vscode.commands.registerCommand("polylog.fetchAll", () => log.fetchAll()),
+    // Right-click a commit row in the Log.
+    vscode.commands.registerCommand("polylog.commitCopySha", (arg?: unknown) => log.commitCopySha(arg)),
+    vscode.commands.registerCommand("polylog.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(arg)),
+    vscode.commands.registerCommand("polylog.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(arg)),
     vscode.commands.registerCommand("polylog.showBehind", () => log.showBehind()),
     vscode.commands.registerCommand("polylog.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
     vscode.commands.registerCommand("polylog.repoHide", (arg?: unknown) => log.repoHide(arg)),

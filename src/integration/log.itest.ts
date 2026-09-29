@@ -397,6 +397,33 @@ describe("Polylog panel", () => {
     await until("three repositories again", (x) => x.repos.length === 3 && x.rows.length === 6);
   });
 
+  it("right-click a commit: Copy Commit ID, Copy Message, Open on Remote", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s = await until("six rows", (x) => x.rows.length === 6);
+    const c = bySubject(s, "feat: add retry to uploader");
+    const repo = s.repos.find((r) => r.id === c.repoId)!;
+    const on = { webviewSection: "commit", repoId: c.repoId, sha: c.sha };
+    await vscode.commands.executeCommand("polylog.commitCopySha", on);
+    assert.strictEqual(await vscode.env.clipboard.readText(), c.sha);
+    await vscode.commands.executeCommand("polylog.commitCopyMessage", on);
+    const full = cp.execFileSync("git", ["show", "-s", "--format=%B", c.sha], { cwd: repo.root }).toString().trim();
+    assert.strictEqual(await vscode.env.clipboard.readText(), full, "the whole message, not only the subject the row shows");
+
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: repo.root }).toString().trim();
+    assert.strictEqual(await vscode.commands.executeCommand("polylog.commitOpenOnRemote", on), undefined, "no remote: nothing to open");
+    git("remote", "add", "origin", "git@github.com:acme/acme-api.git");
+    try {
+      assert.strictEqual(await vscode.commands.executeCommand("polylog.commitOpenOnRemote", on), `https://github.com/acme/acme-api/commit/${c.sha}`);
+    } finally {
+      git("remote", "remove", "origin");
+    }
+    await vscode.env.clipboard.writeText("unchanged");
+    await vscode.commands.executeCommand("polylog.commitCopySha", { ...on, sha: "not-a-sha" });
+    await vscode.commands.executeCommand("polylog.commitCopySha", { ...on, sha: UNCOMMITTED });
+    assert.strictEqual(await vscode.env.clipboard.readText(), "unchanged", "only a real commit of a listed repository");
+  });
+
   it("the Repositories pane shows how far each repository is from its upstream, following VS Code's Git", async () => {
     const cp = require("child_process") as typeof import("child_process");
     const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;

@@ -148,8 +148,12 @@ export class CommitList {
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
       // Right-click: the repository's menu (package.json webview/context), not Cut/Copy/Paste.
-      // File History is one file of one repository: the repo filter does not apply there.
-      "data-vscode-context": JSON.stringify({ webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, preventDefaultContextMenuItems: true }),
+      // Right-click: the commit's and its repository's menu (package.json webview/context). File
+      // History is one file of one repository, so the repo filter items do not apply there;
+      // an uncommitted row is no commit, so the commit items do not.
+      "data-vscode-context": JSON.stringify(pending
+        ? { webviewSection: "uncommitted", repoId: c.repoId, preventDefaultContextMenuItems: true }
+        : { webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name, "data-name": name }, [name]),
       h("span", { class: "subject", role: "gridcell", title: pending ? "Changes since the last commit, staged or not" : c.subject }, pending ? [
