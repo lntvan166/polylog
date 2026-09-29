@@ -672,20 +672,52 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   async repoPull(arg: unknown): Promise<void> {
     const repo = this.contextRepo(arg);
-    if (!repo) return;
-    const viaVsCode = this.deps.discovery.pullWithVsCodeGit(repo.root);
+    if (!repo || this.pulling.has(repo.id)) return;
+    this.pulling.add(repo.id);
     try {
+      // Both would fetch into the same remote-tracking refs: let Fetch All finish first.
+      if (this.fetching) await this.fetching;
+      // VS Code's own Pull (git.pull) reports its own errors (conflicts, a dirty tree) in its words.
+      const viaVsCode = this.deps.discovery.vsCodeGitHas(repo.root);
       await vscode.window.withProgress({ location: { viewId: LogView.id }, title: `Pulling ${repo.name}` }, async () => {
-        if (viaVsCode) await viaVsCode();
-        else await this.run(repo.root, ["pull", "--ff-only", "--quiet"], this.fetchCtl.signal, { tree: true, env: FETCH_ENV });
+        if (viaVsCode) await this.deps.discovery.pullWithVsCodeGit(repo.root);
+        else await this.pullFastForward(repo);
       });
     } catch (e) {
-      if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not pull ${repo.name}: ${messageOf(e)}`);
+      if (!isAbortError(e) || !this.fetchCtl.signal.aborted) {
+        const why = isAbortError(e) ? `no answer after ${FETCH_TIMEOUT_MS / 1000} s`
+          : /fast-forward/i.test(messageOf(e)) ? "it has diverged from its upstream, and Polylog only fast-forwards here. Pull it in Source Control or a terminal"
+          : messageOf(e);
+        void vscode.window.showErrorMessage(`Polylog could not pull ${repo.name}: ${why}.`);
+      }
+    } finally {
+      this.pulling.delete(repo.id);
     }
     // The new commits, the branch's distance from its upstream, and its working tree.
     this.forgetUncommittedRead();
     await this.reload();
     await this.readSync(new Set([repo.id]));
+  }
+
+  /** Repositories being pulled: a second click on one waits for nothing and does nothing. */
+  private readonly pulling = new Set<string>();
+
+  /**
+   * Pull for a repository VS Code's Git has not opened: fast-forward only (never a merge commit;
+   * it stops if the branch diverged), no prompts, no submodules, and a minute to answer.
+   */
+  private async pullFastForward(repo: Repo): Promise<void> {
+    const ctl = new AbortController();
+    const outer = this.fetchCtl.signal;
+    const stop = () => ctl.abort();
+    const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
+    outer.addEventListener("abort", stop, { once: true });
+    try {
+      await this.run(repo.root, ["pull", "--ff-only", "--quiet", "--recurse-submodules=no"], ctl.signal, { tree: true, env: FETCH_ENV });
+    } finally {
+      clearTimeout(timer);
+      outer.removeEventListener("abort", stop);
+    }
   }
 
   /** Show Only Repositories Behind: tick the repositories with commits to pull (as of the last fetch). */

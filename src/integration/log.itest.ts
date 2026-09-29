@@ -421,8 +421,11 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.fetchAll");
       await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
 
+      const mark = await snapshot();
       await vscode.commands.executeCommand("polylog.repoPull", { webviewSection: "repo", repoId: web.id });
-      assert.strictEqual(git(web.root, "rev-parse", "HEAD"), theirs, "the branch moved to the remote's commit");
+      await waitFor("the branch at the remote's commit", () => (git(web.root, "rev-parse", "HEAD") === theirs ? true : undefined));
+      const ours = (await snapshot()).spawnLog.slice(mark.spawnLog.length).filter((x) => x.cmd === "pull");
+      assert.deepStrictEqual(ours, [], "VS Code's own Git pulled it (its Pull, with its settings and messages), not Polylog's fallback");
       const s = await until("the pulled commit in the Log, no badge", (x) => x.sync[web.id] === undefined && x.rows.some((r) => r.subject === "chore: pulled from the remote"));
       assert.strictEqual(s.rows.length, 7);
     } finally {

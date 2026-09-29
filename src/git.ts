@@ -17,8 +17,10 @@ const CONFIG = [
   "-c", "color.ui=never",
 ];
 
-function firstLine(stderr: string): string {
-  const line = stderr.split("\n").find((l) => l.trim() !== "") ?? "";
+/** git's message for a failure: its fatal:/error: line (hint: lines come first), else the first line. */
+export function errorLine(stderr: string): string {
+  const lines = stderr.split("\n").map((l) => l.trim()).filter((l) => l !== "");
+  const line = lines.find((l) => /^(fatal|error): /.test(l)) ?? lines.find((l) => !/^(hint|warning):/.test(l)) ?? lines[0] ?? "";
   return line.replace(/^(fatal|error): /, "").trim();
 }
 
@@ -81,7 +83,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
       if (code === 0) resolve(Buffer.concat(out).toString("utf8"));
-      else reject(new GitError(firstLine(Buffer.concat(err).toString("utf8")) || `git exited with code ${code}`, code));
+      else reject(new GitError(errorLine(Buffer.concat(err).toString("utf8")) || `git exited with code ${code}`, code));
     });
   });
 }
