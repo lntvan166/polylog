@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.5.0] — 2026-09-29
+
+### Added
+
+- **Pull a repository from its right-click menu.** On a repository showing ↓ (in the
+  Repositories pane, or on its commits in the Log), **Pull** runs VS Code's own Pull: your
+  pull and rebase settings, its credential prompts, and its messages; conflicts show in
+  Source Control. VS Code's Git reads the repository again first, so a remote or upstream
+  just set in a terminal is seen. For a repository VS Code's Git does not have open,
+  Polylog runs `git pull --ff-only`: it only moves the branch forward, never makes a merge
+  commit, says so plainly when the branch has diverged, and stops after a minute without
+  an answer. Afterwards the pulled commits appear in the Log and ↓ goes.
+
+### Changed
+
+- **git failures are reported by their `fatal:` or `error:` line**, not by the first
+  `hint:` line git prints before it.
+
 ## [0.4.0] — 2026-09-29
 
 ### Added
