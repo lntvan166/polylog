@@ -17,8 +17,8 @@ import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, syncLabel } 
   console.log("ok - the Repositories pane badge: ↓ to pull, ↑ not pushed");
 }
 {
-  assert.deepStrictEqual(fetchArgs(false), ["fetch", "--quiet"], "the default remote, as VS Code's Fetch");
-  assert.deepStrictEqual(fetchArgs(true), ["fetch", "--quiet", "--prune"], "git.pruneOnFetch");
+  assert.deepStrictEqual(fetchArgs(false), ["fetch", "--quiet", "--recurse-submodules=no"], "the default remote, as VS Code's Fetch; submodules fetch on their own");
+  assert.deepStrictEqual(fetchArgs(true), ["fetch", "--quiet", "--recurse-submodules=no", "--prune"], "git.pruneOnFetch");
   const sync = { "/ws/acme-api": { ahead: 0, behind: 3 }, "/ws/acme-libs": { ahead: 2, behind: 0 }, "/ws/acme-web": { ahead: 1, behind: 1 } };
   assert.deepStrictEqual(behindRepos(["/ws/acme-web", "/ws/acme-api", "/ws/acme-libs"], sync), ["/ws/acme-web", "/ws/acme-api"], "behind only (not merely ahead), in repo order");
   assert.deepStrictEqual(behindRepos(["/ws/acme-web"], {}), []);

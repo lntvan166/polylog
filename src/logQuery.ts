@@ -1,10 +1,11 @@
+import type { RunOptions } from "./git";
 import { hasOtherAuthors, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, selectRepos, type FilterState } from "./filterModel";
 import { countRecords, parseHistory, parseLog } from "./gitLog";
 import { takeReady, type RepoProgress } from "./mergeStream";
 import { abortError, runPool } from "./pool";
 import type { Commit, Repo, RepoFailure } from "./types";
 
-export type RunGit = (cwd: string, args: string[], signal: AbortSignal) => Promise<string>;
+export type RunGit = (cwd: string, args: string[], signal: AbortSignal, opts?: RunOptions) => Promise<string>;
 
 export interface QueryState {
   /** Fixed at the first page so --since does not drift while paging. */

@@ -14,7 +14,7 @@ import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef }
 import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
+import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
 import { headOf, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { renderHtml } from "./webview/html";
 
@@ -63,6 +63,8 @@ export interface LogSnapshot {
   spawnLog: { root: string; cmd: string }[];
   /** Each repository's distance from its upstream (only those with one). */
   sync: Record<string, AheadBehind>;
+  /** Repositories VS Code's Git reports changes for (the others are always read again). */
+  reported: string[];
   /** Messages posted to the webview, by type, and their total size in bytes (integration runs only). */
   posts: Record<string, { count: number; bytes: number }>;
 }
@@ -138,6 +140,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   private uncommittedDone: string | undefined;
   private uncommittedInFlight: string | undefined;
+  /** The read of every repository in flight: an identical request waits for it (Review needs it whole). */
+  private uncommittedReading: Promise<void> | undefined;
   /** Reads of single repositories after a save or a git event; a read of every repository aborts them. */
   private repoReads = new AbortController();
   /** Repositories whose working tree changed since the last read, read together after a burst. */
@@ -161,11 +165,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private firstLoad: Promise<void> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly deps: LogDeps) {
-    this.run = (cwd, args, signal) => {
+    this.run = (cwd, args, signal, opts) => {
       this.stats.spawns++;
       this.spawnLog.push({ root: cwd, cmd: args[0] ?? "" });
       if (this.spawnLog.length > 2000) this.spawnLog.splice(0, this.spawnLog.length - 2000);
-      return deps.run(cwd, args, signal);
+      return deps.run(cwd, args, signal, opts);
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
@@ -451,6 +455,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.backgroundFor = undefined;
     this.meFor = undefined;
     this.forgetUncommittedRead();
+    this.fetchCtl.abort();
+    this.fetchCtl = new AbortController();
     await this.reload();
     const current = this.deps.changes.current();
     if (current) await this.showDetail(current.commit.repoId, current.commit.sha);
@@ -620,8 +626,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const prune = vscode.workspace.getConfiguration("git").get<boolean>("pruneOnFetch", false) === true;
     // Network work, not disk: fewer at once than the log reads.
     const limit = Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY);
+    const outer = this.fetchCtl.signal;
     const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Fetching" }, () =>
-      runPool(repos, limit, (r) => this.fetchOne(r, prune), new AbortController().signal));
+      runPool(repos, limit, (r) => this.fetchOne(r, prune, outer), outer));
+    if (outer.aborted) return { fetched: 0, failed: [] }; // disposed, or git changed: say nothing
     const failed = settled.flatMap((s, i) => (s.status === "rejected" ? [{ repo: repos[i], reason: s.reason }] : []));
     if (failed.length > 0) {
       const why = (e: unknown) => (isAbortError(e) ? `no answer after ${FETCH_TIMEOUT_MS / 1000} s` : messageOf(e));
@@ -639,13 +647,20 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
   }
 
-  private async fetchOne(repo: Repo, prune: boolean): Promise<string> {
+  /** Aborted by dispose and by a new git binary: a fetch in flight stops, with its helpers. */
+  private fetchCtl = new AbortController();
+
+  private async fetchOne(repo: Repo, prune: boolean, outer: AbortSignal): Promise<string> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    const stop = () => ctl.abort();
+    const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
+    outer.addEventListener("abort", stop, { once: true });
     try {
-      return await this.run(repo.root, fetchArgs(prune), ctl.signal);
+      // tree: a timeout also kills ssh and the credential helpers git started.
+      return await this.run(repo.root, fetchArgs(prune), ctl.signal, { tree: true, env: FETCH_ENV });
     } finally {
       clearTimeout(timer);
+      outer.removeEventListener("abort", stop);
     }
   }
 
@@ -854,6 +869,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       },
       spawnLog: [...this.spawnLog],
       sync: Object.fromEntries(this.sync),
+      reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
     };
   }
@@ -1059,6 +1075,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.history) this.leaveHistory();
     this.review = true;
     this.reviewRepo = undefined;
+    // The last look before a commit: read every repository fresh, not from what events kept.
+    this.forgetUncommittedRead();
     this.postInit();
     await this.reload();
   }
@@ -1125,7 +1143,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       ctl = this.repoReads;
     } else {
       const readKey = `${spec}\n${repos.map((r) => r.id).join("\0")}`;
-      if (readKey === this.uncommittedDone || (readKey === this.uncommittedInFlight && !this.uncommittedRead.signal.aborted)) return;
+      if (readKey === this.uncommittedInFlight && !this.uncommittedRead.signal.aborted && this.uncommittedReading) return this.uncommittedReading;
+      if (readKey === this.uncommittedDone) {
+        // Kept current by VS Code's Git and saves, except where it reports nothing: read those.
+        const unreported = repos.filter((r) => !this.deps.discovery.reportsChanges(r.root));
+        if (unreported.length > 0) await this.readUncommitted(new Set(unreported.map((r) => r.id)));
+        return;
+      }
       this.uncommittedDone = undefined;
       this.uncommittedInFlight = readKey;
       this.uncommittedRead.abort();
@@ -1142,7 +1166,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
       this.uncommittedSpec = spec;
     }
-    await runPool(repos, this.settings().maxConcurrency, async (r, signal) => {
+    const reading = runPool(repos, this.settings().maxConcurrency, async (r, signal) => {
       const seq = ++this.uncommittedSeq;
       // One call for a clean repo: --branch carries the last commit's id too.
       const out = await this.run(r.root, statusArgs(specs), signal);
@@ -1156,15 +1180,25 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // Show each repository as soon as it is read, rather than after the slowest one.
       if (!sameWorking(old, { head, files })) this.publishUncommittedSoon();
     }, ctl.signal);
-    if (!only && !ctl.signal.aborted && this.uncommittedRead === ctl) {
-      this.uncommittedDone = this.uncommittedInFlight;
-      this.uncommittedInFlight = undefined;
+    if (only) {
+      await reading;
+      return;
     }
+    const done = reading.then((settled) => {
+      if (this.uncommittedRead !== ctl) return;
+      this.uncommittedReading = undefined;
+      // Done only if every repository answered: one that failed is read again next time.
+      if (!ctl.signal.aborted && settled.every((s) => s.status === "fulfilled")) this.uncommittedDone = this.uncommittedInFlight;
+      this.uncommittedInFlight = undefined;
+    });
+    this.uncommittedReading = done;
+    await done;
   }
 
   /** Refresh, or a new git binary: the next read of every repository really reads. */
   private forgetUncommittedRead(): void {
     this.uncommittedDone = this.uncommittedInFlight = undefined;
+    this.uncommittedReading = undefined;
   }
 
   private hasPinned(): boolean {
@@ -1240,6 +1274,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.detail.abort();
     this.uncommittedRead.abort();
     this.repoReads.abort();
+    this.fetchCtl.abort();
     this.touchedSoon.cancel();
     this.syncSoon.cancel();
     clearTimeout(this.publishTimer);

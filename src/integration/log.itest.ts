@@ -231,13 +231,32 @@ describe("Polylog panel", () => {
       await closeEditors();
       fs.rmSync(outside, { force: true });
 
-      // A date change cannot change the working tree: no git status at all. Refresh reads again.
-      await sleep(1000);
-      mark = await snapshot();
+      // A date change cannot change the working tree: repositories VS Code's Git reports on are
+      // not read again (a late report of acme-web's own saves may still read acme-web).
+      mark = await waitFor("git to go quiet", async () => {
+        const a = await snapshot();
+        await sleep(1500);
+        const b = await snapshot();
+        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
+      });
+      assert.ok(mark.reported.length > 0, "VS Code's Git reports on the fixture repositories (else this proves nothing)");
       await send({ type: "filter", filter: { ...ALL, date: "30d" } });
       now = await until("the 30-day page", (x) => x.filter.date === "30d" && x.stats.reloads > mark.stats.reloads);
       await sleep(300);
-      assert.deepStrictEqual(statusSince(mark, await snapshot()), [], "the working tree is not read again for a date change");
+      const reread = statusSince(mark, await snapshot()).filter((root) => mark.reported.includes(root) && root !== web.root);
+      assert.deepStrictEqual(reread, [], "the working tree is not read again for a date change");
+      // Where VS Code's Git reports nothing (here git.autorefresh off), no event keeps them
+      // current: those repositories are read every time.
+      const gitCfg = () => vscode.workspace.getConfiguration("git");
+      await gitCfg().update("autorefresh", false, vscode.ConfigurationTarget.Global);
+      try {
+        mark = await snapshot();
+        await send({ type: "filter", filter: { ...ALL, date: "7d" } });
+        await until("the 7-day page", (x) => x.filter.date === "7d" && x.stats.reloads > mark.stats.reloads);
+        await waitFor("every repository read again", async () => (new Set(statusSince(mark, await snapshot())).size === mark.repos.length ? true : undefined));
+      } finally {
+        await gitCfg().update("autorefresh", undefined, vscode.ConfigurationTarget.Global);
+      }
       await send({ type: "filter", filter: ALL });
       await until("all time again", (x) => x.filter.date === "all" && x.rows[0]?.sha === UNCOMMITTED);
       mark = await snapshot();
@@ -417,14 +436,14 @@ describe("Polylog panel", () => {
     const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
     const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-remote-"));
     const branch = git(web.root, "rev-parse", "--abbrev-ref", "HEAD");
-    git(remote, "clone", "-q", "--bare", web.root, "web.git");
-    const bare = path.join(remote, "web.git");
-    git(web.root, "remote", "add", "origin", bare);
-    git(web.root, "fetch", "-q", "origin");
-    git(web.root, "branch", `--set-upstream-to=origin/${branch}`, branch);
-    // acme-api's remote cannot be reached: its fetch fails, the others still run.
-    git(api.root, "remote", "add", "origin", path.join(remote, "missing.git"));
     try {
+      git(remote, "clone", "-q", "--bare", web.root, "web.git");
+      const bare = path.join(remote, "web.git");
+      git(web.root, "remote", "add", "origin", bare);
+      git(web.root, "fetch", "-q", "origin");
+      git(web.root, "branch", `--set-upstream-to=origin/${branch}`, branch);
+      // acme-api's remote cannot be reached: its fetch fails, the others still run.
+      git(api.root, "remote", "add", "origin", path.join(remote, "missing.git"));
       // Someone pushed a commit: it is on the remote only.
       const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "theirs");
       git(bare, "update-ref", `refs/heads/${branch}`, theirs);
@@ -439,9 +458,11 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.repoShowAll");
       await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
     } finally {
-      git(web.root, "branch", "--unset-upstream", branch);
-      git(web.root, "remote", "remove", "origin");
-      git(api.root, "remote", "remove", "origin");
+      // Each step on its own: one failing must not leave the others' state for later tests.
+      const quietly = (f: () => unknown) => { try { f(); } catch { /* not set up */ } };
+      quietly(() => git(web.root, "branch", "--unset-upstream", branch));
+      quietly(() => git(web.root, "remote", "remove", "origin"));
+      quietly(() => git(api.root, "remote", "remove", "origin"));
       fs.rmSync(remote, { recursive: true, force: true });
     }
     await send({ type: "refresh" });

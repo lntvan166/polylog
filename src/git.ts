@@ -28,15 +28,44 @@ const NOT_RUNNABLE = new Set(["ENOENT", "EACCES", "ENOTDIR", "EISDIR", "EINVAL",
 
 class NotRunnable extends Error {}
 
-function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSignal): Promise<string> {
+export interface RunOptions {
+  /**
+   * Abort kills git's whole process tree (ssh, remote helpers, credential helpers), not only
+   * git: for network commands, whose helpers would otherwise outlive a timeout.
+   */
+  tree?: boolean;
+  /** Added to the environment. */
+  env?: Record<string, string>;
+}
+
+/** Kills a process and everything it started: its process group on POSIX, taskkill /T on Windows. */
+function killTree(pid: number): void {
+  try {
+    if (process.platform === "win32") spawn("taskkill", ["/T", "/F", "/PID", String(pid)], { windowsHide: true, stdio: "ignore" }).on("error", () => undefined);
+    else process.kill(-pid, "SIGTERM");
+  } catch {
+    // already gone
+  }
+}
+
+function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSignal, opts: RunOptions = {}): Promise<string> {
   return new Promise((resolve, reject) => {
+    if (opts.tree && signal?.aborted) return reject(abortError());
     const child = spawn(binary, [...CONFIG, ...args], {
       cwd,
-      signal,
+      // A tree run handles the abort itself (below): killing only git would orphan its helpers.
+      signal: opts.tree ? undefined : signal,
+      // Its own process group, so the whole tree can be killed at once (POSIX only).
+      detached: opts.tree === true && process.platform !== "win32",
       windowsHide: true,
       // No credential prompts; no index.lock contention with VS Code's own git.
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0" },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_OPTIONAL_LOCKS: "0", ...opts.env },
     });
+    const onAbort = () => {
+      if (child.pid !== undefined) killTree(child.pid);
+      reject(abortError());
+    };
+    if (opts.tree) signal?.addEventListener("abort", onAbort, { once: true });
     const out: Buffer[] = [];
     const err: Buffer[] = [];
     child.stdout.on("data", (d: Buffer) => out.push(d));
@@ -47,6 +76,7 @@ function spawnGit(binary: string, cwd: string, args: string[], signal?: AbortSig
       else reject(e);
     });
     child.on("close", (code) => {
+      signal?.removeEventListener("abort", onAbort);
       // Aborted: usually rejected already by the "error" handler, but not when git had exited
       // before the abort (Node then emits no error). Settling twice is harmless; never is a hang.
       if (signal?.aborted) return reject(abortError());
@@ -85,11 +115,11 @@ export class GitRunner {
     this.generation++;
   }
 
-  readonly run = async (cwd: string, args: string[], signal?: AbortSignal): Promise<string> => {
+  readonly run = async (cwd: string, args: string[], signal?: AbortSignal, opts?: RunOptions): Promise<string> => {
     const generation = this.generation;
     if (this.resolved) {
       try {
-        return await spawnGit(this.resolved, cwd, args, signal);
+        return await spawnGit(this.resolved, cwd, args, signal, opts);
       } catch (e) {
         if (!(e instanceof NotRunnable)) throw e;
         await this.checkFolder(cwd);
@@ -99,7 +129,7 @@ export class GitRunner {
     const tried: string[] = [];
     for (const binary of this.candidates()) {
       try {
-        const out = await spawnGit(binary, cwd, args, signal);
+        const out = await spawnGit(binary, cwd, args, signal, opts);
         this.remember(binary, generation);
         return out;
       } catch (e) {

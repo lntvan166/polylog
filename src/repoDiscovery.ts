@@ -45,6 +45,17 @@ export class RepoDiscovery implements vscode.Disposable {
   readonly onDidChange = this.emitter.event;
   private readonly disposables: vscode.Disposable[] = [this.emitter];
 
+  /** Roots vscode.git reports state changes for. */
+  private readonly watched = new Set<string>();
+
+  /**
+   * Whether VS Code's Git reports this repository's changes (it opened the repository, and
+   * git.autorefresh is on). Repositories it does not watch get no events at all.
+   */
+  reportsChanges(root: string): boolean {
+    return this.watched.has(root) && vscode.workspace.getConfiguration("git").get<boolean>("autorefresh", true) !== false;
+  }
+
   /** The git binary VS Code's Git extension uses, once it has activated. */
   gitPath(): string | undefined {
     const p = this.api?.git?.path;
@@ -88,19 +99,24 @@ export class RepoDiscovery implements vscode.Disposable {
     const watch = (r: GitRepository) => {
       const root = r.rootUri.fsPath;
       // Where HEAD stood when first seen, so the first report after a fetch counts as a move.
-      let head = headKey(r.state?.HEAD);
+      // Unknown until vscode.git's first status: learning it is not a move; a report without
+      // it (a failed status) keeps the last one known.
+      let head = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
       const d = r.state?.onDidChange?.(() => {
-        const now = headKey(r.state?.HEAD);
-        // Unknown until vscode.git's first status: learning it is not a move.
-        const headMoved = head !== "" && now !== head;
-        head = now;
+        const now = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
+        const headMoved = head !== undefined && now !== undefined && now !== head;
+        if (now !== undefined) head = now;
         this.repoStateChanged.fire({ root, headMoved });
       });
-      if (d) watching.set(r, d);
+      if (d) {
+        watching.set(r, d);
+        this.watched.add(root);
+      }
     };
     const unwatch = (r: GitRepository) => {
       watching.get(r)?.dispose();
       watching.delete(r);
+      this.watched.delete(r.rootUri.fsPath);
     };
     api.repositories.forEach(watch);
     this.disposables.push(api.onDidOpenRepository(watch), api.onDidCloseRepository(unwatch), {
