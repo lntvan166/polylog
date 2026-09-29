@@ -7,6 +7,34 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.0] — 2026-09-29
+
+### Added
+
+- **Fetch All.** The cloud in the Log's toolbar (or the Command Palette) runs `git fetch`
+  in every repository, 8 at a time, so the ↓/↑ counts are current. It follows VS Code's
+  `git.pruneOnFetch`, never asks for credentials (no terminal prompt, no credential
+  dialog), and stops a repository that does not answer after 60 s, together with the
+  ssh or credential helpers git started. Failures are named in one warning. This is the
+  only thing Polylog ever changes in a repository, and only when you click it.
+- **Show Only Repositories Behind**, in the right-click menu and the Log's `…` menu while
+  any repository is behind: ticks just the ones with commits to pull.
+- **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message,
+  not only the subject), or Open on Remote, the commit's page on GitHub, GitLab,
+  Bitbucket or Azure DevOps. The page is built from the repository's remote, only ever
+  as an http(s) link to that remote's host; credentials in the URL are never opened.
+
+### Performance
+
+- **Startup runs 67 fewer git processes on 68 repositories** (205 instead of 272). In
+  0.3.0 VS Code Git's first report of each repository counted as its branch moving, so
+  every repository's ↓/↑ was read twice.
+- **A date change no longer re-reads every working tree** while uncommitted changes are
+  shown (68 `git status` to none on 68 repositories). Saves and VS Code Git's reports keep
+  them current. Repositories VS Code Git does not report on (Git disabled, deeper than its
+  scan depth, ignored, `git.autorefresh` off) are still read every time; Refresh and
+  Review Uncommitted always read fresh.
+
 ## [0.3.0] — 2026-09-29
 
 ### Added
