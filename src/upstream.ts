@@ -36,3 +36,13 @@ export function syncLabel(s: AheadBehind): { text: string; title: string; behind
   }
   return parts.length === 0 ? null : { text: parts.join(" "), title: titles.join(", "), behind: s.behind > 0 };
 }
+
+/** Fetch All: each repository's default remote, as VS Code's own Fetch; --prune per git.pruneOnFetch. */
+export function fetchArgs(prune: boolean): string[] {
+  return prune ? ["fetch", "--quiet", "--prune"] : ["fetch", "--quiet"];
+}
+
+/** The repositories with commits to pull, in repository order. */
+export function behindRepos(repoIds: readonly string[], sync: Readonly<Record<string, AheadBehind>>): string[] {
+  return repoIds.filter((id) => (sync[id]?.behind ?? 0) > 0);
+}

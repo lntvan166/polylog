@@ -11,10 +11,10 @@ import { isAbortError, runPool } from "./pool";
 import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
-import { authorSuggestions, branchSuggestions } from "./repos";
+import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { aheadBehindArgs, parseAheadBehind, type AheadBehind } from "./upstream";
+import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
 import { headOf, numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
 import { renderHtml } from "./webview/html";
 
@@ -24,6 +24,9 @@ export const HIDE_REPOS_KEY = "polylog.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
 const PANE_WIDTH_KEY = "polylog.repoPaneWidth";
 const DEFAULT_PANE_WIDTH = 190;
+/** Fetch All: network-bound, so fewer at once than the log reads; and a fetch that hangs stops. */
+const FETCH_CONCURRENCY = 8;
+const FETCH_TIMEOUT_MS = 60_000;
 /** Without it, typing a six-character term launches 408 child processes. */
 const SEARCH_DEBOUNCE_MS = 250;
 
@@ -596,6 +599,64 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (key(next) === key(this.sync)) return;
     this.sync = next;
     this.postSync();
+    void vscode.commands.executeCommand("setContext", "polylog.anyBehind", behindRepos([...next.keys()], Object.fromEntries(next)).length > 0);
+  }
+
+  private fetching: Promise<{ fetched: number; failed: string[] }> | undefined;
+
+  /**
+   * Fetch All (the Log's toolbar): git fetch in every repository, a few at a time, then read how
+   * far each is from its upstream again. The only thing Polylog changes in a repository, and only
+   * when asked. Never prompts (GIT_TERMINAL_PROMPT=0); a fetch that hangs stops after a minute.
+   */
+  fetchAll(): Promise<{ fetched: number; failed: string[] }> {
+    this.fetching ??= this.runFetchAll().finally(() => (this.fetching = undefined));
+    return this.fetching;
+  }
+
+  private async runFetchAll(): Promise<{ fetched: number; failed: string[] }> {
+    if (this.repos.length === 0) await this.loadRepos();
+    const repos = [...this.repos];
+    const prune = vscode.workspace.getConfiguration("git").get<boolean>("pruneOnFetch", false) === true;
+    // Network work, not disk: fewer at once than the log reads.
+    const limit = Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY);
+    const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Fetching" }, () =>
+      runPool(repos, limit, (r) => this.fetchOne(r, prune), new AbortController().signal));
+    const failed = settled.flatMap((s, i) => (s.status === "rejected" ? [{ repo: repos[i], reason: s.reason }] : []));
+    if (failed.length > 0) {
+      const why = (e: unknown) => (isAbortError(e) ? `no answer after ${FETCH_TIMEOUT_MS / 1000} s` : messageOf(e));
+      const list = failed.slice(0, 3).map((f) => `${f.repo.name} (${why(f.reason)})`).join(", ");
+      const more = failed.length > 3 ? ` and ${failed.length - 3} more` : "";
+      void vscode.window.showWarningMessage(`Polylog could not fetch ${failed.length} of ${repos.length} repositories: ${list}${more}.`);
+    } else {
+      vscode.window.setStatusBarMessage(`Polylog: fetched ${repos.length} repositories`, 4000);
+    }
+    // New remote branches: the Branch box's suggestions and a branch-mode page are out of date.
+    this.suggestionsFor.delete("branches");
+    if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
+    if (this.filter.branch) await this.reload();
+    await this.readSync();
+    return { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
+  }
+
+  private async fetchOne(repo: Repo, prune: boolean): Promise<string> {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await this.run(repo.root, fetchArgs(prune), ctl.signal);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** Show Only Repositories Behind: tick the repositories with commits to pull (as of the last fetch). */
+  async showBehind(): Promise<void> {
+    const ids = behindRepos(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
+    if (ids.length === 0) {
+      void vscode.window.showInformationMessage("Polylog: no repository is behind its upstream (as of the last fetch).");
+      return;
+    }
+    await this.setRepoFilter(ids);
   }
 
   private postSync(): void {
@@ -689,7 +750,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const target = inspected?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
     const previous = target === vscode.ConfigurationTarget.Workspace ? inspected?.workspaceValue : inspected?.globalValue;
     const pattern = repo.root.replace(/\\/g, "/");
-    if ((previous ?? []).includes(pattern)) return;
+    const next = addExclusion(previous, pattern);
+    if (!next) return;
     // The repo leaves the filter too, or a filter of only it would match nothing.
     const ids = this.filter.repoIds;
     if (ids?.includes(repo.id)) {
@@ -698,15 +760,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       this.persistFilter();
     }
     // The configuration listener lists the repositories again (reposSettingChanged).
-    await vscode.workspace.getConfiguration("polylog").update("excludeRepos", [...(previous ?? []), pattern], target);
+    await vscode.workspace.getConfiguration("polylog").update("excludeRepos", next, target);
     void vscode.window.showInformationMessage(`Polylog: ${repo.name} is excluded (polylog.excludeRepos).`, "Undo").then(async (pick) => {
       if (pick !== "Undo") return;
       const now = vscode.workspace.getConfiguration("polylog").inspect<string[]>("excludeRepos");
       const current = (target === vscode.ConfigurationTarget.Workspace ? now?.workspaceValue : now?.globalValue) ?? [];
-      const rest = current.filter((p) => p !== pattern);
-      // Back to exactly what was there, down to "not set" (an empty list would still override).
-      const restored = rest.length === 0 && previous === undefined ? undefined : rest;
-      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", restored, target);
+      await vscode.workspace.getConfiguration("polylog").update("excludeRepos", undoExclusion(current, pattern, previous), target);
     });
   }
 

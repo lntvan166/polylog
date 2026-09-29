@@ -378,7 +378,7 @@ describe("Polylog panel", () => {
     await until("three repositories again", (x) => x.repos.length === 3 && x.rows.length === 6);
   });
 
-  it("the Repositories pane shows how far each repository is from its upstream", async () => {
+  it("the Repositories pane shows how far each repository is from its upstream, following VS Code's Git", async () => {
     const cp = require("child_process") as typeof import("child_process");
     const web = (await snapshot()).repos.find((r) => r.name === "acme-web")!;
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
@@ -390,7 +390,7 @@ describe("Polylog panel", () => {
     git("update-ref", "refs/heads/polylog-up", theirs);
     git("branch", "--set-upstream-to=polylog-up", branch);
     try {
-      await send({ type: "refresh" });
+      // No Refresh: VS Code's Git sees the new upstream and reports it; that repo is read again.
       const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
       assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
       assert.ok(Object.keys(s.sync).every((id) => id === web.id), "repositories without an upstream show nothing");
@@ -398,8 +398,54 @@ describe("Polylog panel", () => {
       git("branch", "--unset-upstream", branch);
       git("branch", "-D", "polylog-up");
     }
-    await send({ type: "refresh" });
     await until("no badge once it has no upstream", (x) => x.sync[web.id] === undefined);
+    // Refresh reads every repository again too.
+    await send({ type: "refresh" });
+    await until("still none after Refresh", (x) => x.sync[web.id] === undefined && x.rows.length > 0);
+  });
+
+  it("Fetch All fetches every repository, then Show Only Repositories Behind picks the ones to pull", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    const fs = require("fs") as typeof import("fs");
+    const os = require("os") as typeof import("os");
+    const path = require("path") as typeof import("path");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
+    const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-remote-"));
+    const branch = git(web.root, "rev-parse", "--abbrev-ref", "HEAD");
+    git(remote, "clone", "-q", "--bare", web.root, "web.git");
+    const bare = path.join(remote, "web.git");
+    git(web.root, "remote", "add", "origin", bare);
+    git(web.root, "fetch", "-q", "origin");
+    git(web.root, "branch", `--set-upstream-to=origin/${branch}`, branch);
+    // acme-api's remote cannot be reached: its fetch fails, the others still run.
+    git(api.root, "remote", "add", "origin", path.join(remote, "missing.git"));
+    try {
+      // Someone pushed a commit: it is on the remote only.
+      const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "theirs");
+      git(bare, "update-ref", `refs/heads/${branch}`, theirs);
+      assert.strictEqual((await snapshot()).sync[web.id], undefined, "not known before a fetch: Polylog never fetches on its own");
+      const result = await vscode.commands.executeCommand<{ fetched: number; failed: string[] }>("polylog.fetchAll");
+      assert.deepStrictEqual(result, { fetched: 2, failed: ["acme-api"] }, "every repository fetched; the unreachable one named");
+      const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
+      assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
+
+      await vscode.commands.executeCommand("polylog.showBehind");
+      await until("only the repository behind", (x) => x.filter.repoIds?.join() === web.id && x.rows.every((r) => r.repoId === web.id));
+      await vscode.commands.executeCommand("polylog.repoShowAll");
+      await until("every repository", (x) => x.filter.repoIds === null && x.rows.length === 6);
+    } finally {
+      git(web.root, "branch", "--unset-upstream", branch);
+      git(web.root, "remote", "remove", "origin");
+      git(api.root, "remote", "remove", "origin");
+      fs.rmSync(remote, { recursive: true, force: true });
+    }
+    await send({ type: "refresh" });
+    await until("no badge without the remote", (x) => x.sync[web.id] === undefined && x.rows.length === 6);
   });
 
   it("hiding the Repositories pane clears its repo filter", async () => {

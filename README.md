@@ -87,7 +87,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Repositories pane.** Pick which repositories to show, with fuzzy search and
   multi-select. Toggle it with **Group by Repository** in the Log's title bar.
   - **↓3 ↑2** beside a name: commits on its upstream you haven't pulled, and commits you
-    haven't pushed (as of your last fetch; Polylog never fetches).
+    haven't pushed, as of the last fetch. **Fetch All** (the cloud in the Log's toolbar)
+    runs `git fetch` in every repository, a few at a time, and never prompts for
+    credentials; Polylog fetches only when you ask. **Show Only Repositories Behind**
+    (right-click, or the Log's `…` menu) then ticks just the ones with commits to pull.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,

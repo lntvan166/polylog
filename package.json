@@ -166,6 +166,17 @@
         "command": "polylog.repoCopyPath",
         "title": "Copy Path",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.fetchAll",
+        "title": "Fetch All Repositories",
+        "category": "Polylog",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "polylog.showBehind",
+        "title": "Show Only Repositories Behind",
+        "category": "Polylog"
       }
     ],
     "menus": {
@@ -262,6 +273,16 @@
           "command": "polylog.hideRepos",
           "when": "view == polylog.log && !polylog.hideRepos",
           "group": "navigation"
+        },
+        {
+          "command": "polylog.fetchAll",
+          "when": "view == polylog.log",
+          "group": "navigation@2"
+        },
+        {
+          "command": "polylog.showBehind",
+          "when": "view == polylog.log && polylog.anyBehind",
+          "group": "1_filter@1"
         }
       ],
       "explorer/context": [
@@ -312,6 +333,11 @@
           "command": "polylog.repoShowAll",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit)$/ && polylog.repoFiltered",
           "group": "1_filter@3"
+        },
+        {
+          "command": "polylog.showBehind",
+          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit)$/ && polylog.anyBehind",
+          "group": "1_filter@4"
         },
         {
           "command": "polylog.repoOpenFolder",

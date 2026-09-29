@@ -72,6 +72,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && log.workingTreeChanged(doc.uri.fsPath)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
+    vscode.commands.registerCommand("polylog.fetchAll", () => log.fetchAll()),
+    vscode.commands.registerCommand("polylog.showBehind", () => log.showBehind()),
     vscode.commands.registerCommand("polylog.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
     vscode.commands.registerCommand("polylog.repoHide", (arg?: unknown) => log.repoHide(arg)),
     vscode.commands.registerCommand("polylog.repoShowAll", () => log.repoShowAll()),
