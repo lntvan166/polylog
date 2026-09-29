@@ -8,6 +8,8 @@ export interface ListProps {
   repoNames: ReadonlyMap<string, string>;
   /** Each repository's hue (view.ts assignAccents), fixed for the repo list. */
   accents: ReadonlyMap<string, number>;
+  /** Repositories with commits to pull: their rows' menu offers Pull. */
+  behind?: ReadonlySet<string>;
   /** File history: the file's current path, to flag rows where it had another name. */
   historyPath?: string;
   selected: number;
@@ -152,8 +154,8 @@ export class CommitList {
       // History is one file of one repository, so the repo filter items do not apply there;
       // an uncommitted row is no commit, so the commit items do not.
       "data-vscode-context": JSON.stringify(pending
-        ? { webviewSection: "uncommitted", repoId: c.repoId, preventDefaultContextMenuItems: true }
-        : { webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, preventDefaultContextMenuItems: true }),
+        ? { webviewSection: "uncommitted", repoId: c.repoId, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }
+        : { webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name, "data-name": name }, [name]),
       h("span", { class: "subject", role: "gridcell", title: pending ? "Changes since the last commit, staged or not" : c.subject }, pending ? [

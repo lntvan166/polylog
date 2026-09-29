@@ -1,3 +1,4 @@
+import * as path from "path";
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
 import { excludeRepos, labelRepos, mergeRoots } from "./repos";
@@ -7,13 +8,22 @@ import type { Repo } from "./types";
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
-interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> } }
+interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> }; status?(): Promise<void> }
 
 /** A repository's state change in vscode.git. */
 export interface RepoStateChange {
   root: string;
   /** Its HEAD commit, branch, upstream or ahead/behind differ from the last report (or from when it was first seen). */
   headMoved: boolean;
+}
+
+/** Two folder paths are one: normalized, no trailing separator, case-insensitive where the file system is. */
+function sameRoot(a: string, b: string): boolean {
+  const norm = (p: string) => {
+    const n = path.normalize(p).replace(/[\\/]+$/, "");
+    return process.platform === "win32" || process.platform === "darwin" ? n.toLowerCase() : n;
+  };
+  return norm(a) === norm(b);
 }
 
 const headKey = (h: GitBranch | undefined) =>
@@ -25,6 +35,8 @@ interface GitAPI {
   state: GitState;
   onDidChangeState: vscode.Event<GitState>;
   repositories: GitRepository[];
+  /** The open repository containing a file or folder (case- and symlink-aware), if any. */
+  getRepository?(uri: vscode.Uri): GitRepository | null;
   onDidOpenRepository: vscode.Event<GitRepository>;
   onDidCloseRepository: vscode.Event<GitRepository>;
 }
@@ -44,6 +56,32 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private readonly disposables: vscode.Disposable[] = [this.emitter];
+
+  /**
+   * Whether VS Code's Git has exactly this repository open (not merely a parent of it): then its
+   * own commands can act on it. Its lookup handles case and symlinks; the roots are compared
+   * normalized, so a nested repository it has not opened never resolves to its parent.
+   */
+  private vsCodeGitRepo(root: string): GitRepository | undefined {
+    const found = this.api?.getRepository?.(vscode.Uri.file(root)) ?? this.api?.repositories.find((r) => sameRoot(r.rootUri.fsPath, root));
+    return found && sameRoot(found.rootUri.fsPath, root) ? found : undefined;
+  }
+
+  vsCodeGitHas(root: string): boolean {
+    return this.vsCodeGitRepo(root) !== undefined;
+  }
+
+  /**
+   * VS Code's own Pull (git.pull) on this repository, which reports its errors in its own words.
+   * Its view of the repository can lag a change made in a terminal (a remote just added, an
+   * upstream just set): it reads the repository again first.
+   */
+  async pullWithVsCodeGit(root: string): Promise<void> {
+    const repo = this.vsCodeGitRepo(root);
+    if (!repo) throw new Error("VS Code's Git does not have this repository open");
+    await repo.status?.();
+    await vscode.commands.executeCommand("git.pull", repo.rootUri);
+  }
 
   /** Roots vscode.git reports state changes for. */
   private readonly watched = new Set<string>();

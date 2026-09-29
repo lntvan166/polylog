@@ -78,6 +78,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.commitCopyMessage", (arg?: unknown) => log.commitCopyMessage(arg)),
     vscode.commands.registerCommand("polylog.commitOpenOnRemote", (arg?: unknown) => log.commitOpenOnRemote(arg)),
     vscode.commands.registerCommand("polylog.showBehind", () => log.showBehind()),
+    vscode.commands.registerCommand("polylog.repoPull", (arg?: unknown) => log.repoPull(arg)),
     vscode.commands.registerCommand("polylog.repoShowOnly", (arg?: unknown) => log.repoShowOnly(arg)),
     vscode.commands.registerCommand("polylog.repoHide", (arg?: unknown) => log.repoHide(arg)),
     vscode.commands.registerCommand("polylog.repoShowAll", () => log.repoShowAll()),

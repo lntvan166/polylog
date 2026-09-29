@@ -186,7 +186,8 @@ export class RepoPane {
         // The visible name may be cut in the middle (fitNames): screen readers get the whole one.
         "aria-label": row.id === null ? `${row.name}, ${count}` : badge ? `${row.name}, ${badge.title}` : row.name,
         // Right-click a repository: Show Only, Hide, Exclude… (package.json webview/context).
-        "data-vscode-context": JSON.stringify(row.id === null ? { preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: row.id, preventDefaultContextMenuItems: true }),
+        // behind: the menu offers Pull (package.json webview/context).
+        "data-vscode-context": JSON.stringify(row.id === null ? { preventDefaultContextMenuItems: true } : { webviewSection: "repo", repoId: row.id, behind: (ab?.behind ?? 0) > 0, preventDefaultContextMenuItems: true }),
       }, [
         box,
         accent === null ? h("span", { class: "repo-dot all", "aria-hidden": "true" }) : h("span", { class: `repo-dot accent-${accent}`, "aria-hidden": "true" }),

@@ -75,6 +75,8 @@ window.addEventListener("resize", () => showPaneWidth(paneWidth.fit(window.inner
 let accents: ReadonlyMap<string, number> = new Map();
 let skeletonTimer: ReturnType<typeof setTimeout> | undefined;
 let selectedKey: string | null = null;
+/** Repositories with commits to pull (their rows' right-click offers Pull). */
+let behind: ReadonlySet<string> = new Set();
 
 moreEl.addEventListener("click", () => {
   if (state.loading) return;
@@ -109,7 +111,8 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       break;
     case "sync":
       repoPane.setSync(m.byRepo);
-      return;
+      behind = new Set(Object.entries(m.byRepo).filter(([, ab]) => ab.behind > 0).map(([id]) => id));
+      break;
     case "suggestions":
       if (m.authors) filters.setAuthors(m.authors);
       if (m.branches) filters.setBranches(m.branches);
@@ -224,7 +227,7 @@ function runEmptyAction(action: EmptyAction): void {
 function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
   list.update({
-    rows: state.rows, repoNames: names, accents,
+    rows: state.rows, repoNames: names, accents, behind,
     historyPath: state.history?.path,
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,

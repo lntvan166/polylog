@@ -6,7 +6,7 @@ import * as path from "path";
 import { parseShow, showArgs } from "./commitDetail";
 import { DEFAULT_FILTER, historyArgs, historyPathsArgs, logArgs, parseHistoryPaths, type FilterState } from "./filterModel";
 import { commitAt, gitEnv, makeRepo } from "./fixtures";
-import { GitError, GitRunner, runGit } from "./git";
+import { errorLine, GitError, GitRunner, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
 import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
@@ -28,6 +28,15 @@ makeRepo(api, [
 const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } } = {}) =>
   parseLog(await runGit(api, logArgs(f, { pageSize: 50, now: o.now ?? 10_000, cursor: o.cursor })), api);
 
+{
+  // git's real message is the fatal:/error: line; hint: lines come first (git pull --ff-only, 2.43).
+  const diverged = "hint: Diverging branches can't be fast-forwarded, you need to either:\nhint:\nhint:   git merge --no-ff\nfatal: Not possible to fast-forward, aborting.\n";
+  assert.strictEqual(errorLine(diverged), "Not possible to fast-forward, aborting.");
+  assert.strictEqual(errorLine("warning: x\nerror: cannot lock ref 'refs/heads/main'\n"), "cannot lock ref 'refs/heads/main'");
+  assert.strictEqual(errorLine("\nsomething odd happened\n"), "something odd happened", "no fatal/error line: the first real line");
+  assert.strictEqual(errorLine("hint: only hints\n"), "hint: only hints");
+  console.log("ok - a git failure is reported by its fatal:/error: line, not its first hint");
+}
 (async () => {
   {
     const cs = await log(ALL);
