@@ -724,8 +724,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async commitCopyMessage(arg: unknown): Promise<void> {
     const c = this.contextCommit(arg);
     if (!c) return;
-    const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], new AbortController().signal);
-    await vscode.env.clipboard.writeText(message.trim());
+    try {
+      const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], new AbortController().signal);
+      await vscode.env.clipboard.writeText(message.trim());
+    } catch (e) {
+      void vscode.window.showErrorMessage(`Polylog could not read the commit message: ${messageOf(e)}`);
+    }
   }
 
   /**
@@ -739,6 +743,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const urlOf = (name: string) => this.run(c.repo.root, ["remote", "get-url", "--", name], signal).then((s) => s.trim(), () => "");
     let remote = await urlOf("origin");
     if (!remote) {
+      // No origin: the first remote git lists (alphabetical).
       const names = await this.run(c.repo.root, ["remote"], signal).then((s) => s.split("\n").map((x) => x.trim()).filter(Boolean), () => []);
       if (names[0]) remote = await urlOf(names[0]);
     }
