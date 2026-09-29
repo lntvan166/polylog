@@ -128,6 +128,13 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private uncommittedSeq = 0;
   /** The read of every repository; a newer one (or hiding the rows) aborts it. */
   private uncommittedRead = new AbortController();
+  /**
+   * The repositories and Path filter of the last complete read of every repository (and of the
+   * one in flight). The same again reads nothing: saves and VS Code's Git events keep each
+   * repository current, so a date or text change has nothing new to find. Refresh clears it.
+   */
+  private uncommittedDone: string | undefined;
+  private uncommittedInFlight: string | undefined;
   /** Reads of single repositories after a save or a git event; a read of every repository aborts them. */
   private repoReads = new AbortController();
   /** Repositories whose working tree changed since the last read, read together after a burst. */
@@ -236,6 +243,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       }
       case "refresh":
         this.reloadSoon.cancel();
+        this.forgetUncommittedRead();
         await this.refreshRepos(true);
         return;
       case "loadMore":
@@ -439,6 +447,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.reloadSoon.cancel();
     this.backgroundFor = undefined;
     this.meFor = undefined;
+    this.forgetUncommittedRead();
     await this.reload();
     const current = this.deps.changes.current();
     if (current) await this.showDetail(current.commit.repoId, current.commit.sha);
@@ -1042,6 +1051,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       if (this.hasPinned()) this.publishUncommittedSoon();
       this.uncommitted = new Map();
       this.uncommittedSpec = undefined;
+      this.uncommittedDone = this.uncommittedInFlight = undefined;
       return;
     }
     const path = this.filter.path === undefined ? undefined : normalizePath(this.filter.path);
@@ -1055,6 +1065,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       repos = repos.filter((r) => only.has(r.id));
       ctl = this.repoReads;
     } else {
+      const readKey = `${spec}\n${repos.map((r) => r.id).join("\0")}`;
+      if (readKey === this.uncommittedDone || (readKey === this.uncommittedInFlight && !this.uncommittedRead.signal.aborted)) return;
+      this.uncommittedDone = undefined;
+      this.uncommittedInFlight = readKey;
       this.uncommittedRead.abort();
       this.repoReads.abort();
       this.repoReads = new AbortController();
@@ -1083,6 +1097,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       // Show each repository as soon as it is read, rather than after the slowest one.
       if (!sameWorking(old, { head, files })) this.publishUncommittedSoon();
     }, ctl.signal);
+    if (!only && !ctl.signal.aborted && this.uncommittedRead === ctl) {
+      this.uncommittedDone = this.uncommittedInFlight;
+      this.uncommittedInFlight = undefined;
+    }
+  }
+
+  /** Refresh, or a new git binary: the next read of every repository really reads. */
+  private forgetUncommittedRead(): void {
+    this.uncommittedDone = this.uncommittedInFlight = undefined;
   }
 
   private hasPinned(): boolean {

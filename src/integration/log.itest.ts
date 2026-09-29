@@ -231,6 +231,19 @@ describe("Polylog panel", () => {
       await closeEditors();
       fs.rmSync(outside, { force: true });
 
+      // A date change cannot change the working tree: no git status at all. Refresh reads again.
+      await sleep(1000);
+      mark = await snapshot();
+      await send({ type: "filter", filter: { ...ALL, date: "30d" } });
+      now = await until("the 30-day page", (x) => x.filter.date === "30d" && x.stats.reloads > mark.stats.reloads);
+      await sleep(300);
+      assert.deepStrictEqual(statusSince(mark, await snapshot()), [], "the working tree is not read again for a date change");
+      await send({ type: "filter", filter: ALL });
+      await until("all time again", (x) => x.filter.date === "all" && x.rows[0]?.sha === UNCOMMITTED);
+      mark = await snapshot();
+      await send({ type: "refresh" });
+      await waitFor("Refresh reads it again", async () => (statusSince(mark, await snapshot()).length >= 3 ? true : undefined));
+
       await send({ type: "filter", filter: { ...ALL, text: "retry" } });
       await until("no pinned row while searching", (x) => x.rows.length === 1 && x.rows[0].sha !== UNCOMMITTED);
       await send({ type: "filter", filter: ALL });

@@ -91,7 +91,8 @@ export class RepoDiscovery implements vscode.Disposable {
       let head = headKey(r.state?.HEAD);
       const d = r.state?.onDidChange?.(() => {
         const now = headKey(r.state?.HEAD);
-        const headMoved = now !== head;
+        // Unknown until vscode.git's first status: learning it is not a move.
+        const headMoved = head !== "" && now !== head;
         head = now;
         this.repoStateChanged.fire({ root, headMoved });
       });
