@@ -7,7 +7,7 @@ import type { Repo } from "./types";
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
-interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> } }
+interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> }; pull?(): Promise<void> }
 
 /** A repository's state change in vscode.git. */
 export interface RepoStateChange {
@@ -44,6 +44,15 @@ export class RepoDiscovery implements vscode.Disposable {
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
   private readonly disposables: vscode.Disposable[] = [this.emitter];
+
+  /**
+   * VS Code's Git pulling this repository, if it has it open: its own pull, with the user's
+   * settings (rebase, autostash), its credential prompts and its conflict handling.
+   */
+  pullWithVsCodeGit(root: string): (() => Promise<void>) | undefined {
+    const r = this.api?.repositories.find((x) => x.rootUri.fsPath === root);
+    return r && typeof r.pull === "function" ? () => r.pull!() : undefined;
+  }
 
   /** Roots vscode.git reports state changes for. */
   private readonly watched = new Set<string>();

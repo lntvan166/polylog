@@ -397,6 +397,45 @@ describe("Polylog panel", () => {
     await until("three repositories again", (x) => x.repos.length === 3 && x.rows.length === 6);
   });
 
+  it("right-click a repository behind its upstream: Pull, through VS Code's own Git", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    const fs = require("fs") as typeof import("fs");
+    const os = require("os") as typeof import("os");
+    const path = require("path") as typeof import("path");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
+    const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-pull-"));
+    const branch = git(web.root, "rev-parse", "--abbrev-ref", "HEAD");
+    const before = git(web.root, "rev-parse", "HEAD");
+    try {
+      git(remote, "clone", "-q", "--bare", web.root, "web.git");
+      const bare = path.join(remote, "web.git");
+      git(web.root, "remote", "add", "origin", bare);
+      git(web.root, "fetch", "-q", "origin");
+      git(web.root, "branch", `--set-upstream-to=origin/${branch}`, branch);
+      const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "chore: pulled from the remote");
+      git(bare, "update-ref", `refs/heads/${branch}`, theirs);
+      await vscode.commands.executeCommand("polylog.fetchAll");
+      await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
+
+      await vscode.commands.executeCommand("polylog.repoPull", { webviewSection: "repo", repoId: web.id });
+      assert.strictEqual(git(web.root, "rev-parse", "HEAD"), theirs, "the branch moved to the remote's commit");
+      const s = await until("the pulled commit in the Log, no badge", (x) => x.sync[web.id] === undefined && x.rows.some((r) => r.subject === "chore: pulled from the remote"));
+      assert.strictEqual(s.rows.length, 7);
+    } finally {
+      const quietly = (f: () => unknown) => { try { f(); } catch { /* not set up */ } };
+      quietly(() => git(web.root, "reset", "-q", "--keep", before));
+      quietly(() => git(web.root, "branch", "--unset-upstream", branch));
+      quietly(() => git(web.root, "remote", "remove", "origin"));
+      fs.rmSync(remote, { recursive: true, force: true });
+    }
+    await send({ type: "refresh" });
+    await until("six rows again", (x) => x.rows.length === 6 && x.sync[web.id] === undefined);
+  });
+
   it("right-click a commit: Copy Commit ID, Copy Message, Open on Remote", async () => {
     const cp = require("child_process") as typeof import("child_process");
     await send({ type: "filter", filter: ALL });

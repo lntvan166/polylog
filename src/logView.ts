@@ -665,6 +665,29 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     }
   }
 
+  /**
+   * Right-click a repository behind its upstream → Pull. Through VS Code's own Git when it has
+   * the repository open (its settings, prompts and conflict handling, exactly like its Pull);
+   * otherwise git pull --ff-only, which only moves the branch forward and stops if it diverged.
+   */
+  async repoPull(arg: unknown): Promise<void> {
+    const repo = this.contextRepo(arg);
+    if (!repo) return;
+    const viaVsCode = this.deps.discovery.pullWithVsCodeGit(repo.root);
+    try {
+      await vscode.window.withProgress({ location: { viewId: LogView.id }, title: `Pulling ${repo.name}` }, async () => {
+        if (viaVsCode) await viaVsCode();
+        else await this.run(repo.root, ["pull", "--ff-only", "--quiet"], this.fetchCtl.signal, { tree: true, env: FETCH_ENV });
+      });
+    } catch (e) {
+      if (!isAbortError(e)) void vscode.window.showErrorMessage(`Polylog could not pull ${repo.name}: ${messageOf(e)}`);
+    }
+    // The new commits, the branch's distance from its upstream, and its working tree.
+    this.forgetUncommittedRead();
+    await this.reload();
+    await this.readSync(new Set([repo.id]));
+  }
+
   /** Show Only Repositories Behind: tick the repositories with commits to pull (as of the last fetch). */
   async showBehind(): Promise<void> {
     const ids = behindRepos(this.repos.map((r) => r.id), Object.fromEntries(this.sync));

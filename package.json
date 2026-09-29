@@ -192,6 +192,11 @@
         "command": "polylog.commitOpenOnRemote",
         "title": "Open on Remote",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.repoPull",
+        "title": "Pull",
+        "category": "Polylog"
       }
     ],
     "menus": {
@@ -272,6 +277,10 @@
         },
         {
           "command": "polylog.commitOpenOnRemote",
+          "when": "false"
+        },
+        {
+          "command": "polylog.repoPull",
           "when": "false"
         }
       ],
@@ -360,6 +369,11 @@
           "command": "polylog.commitOpenOnRemote",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(commit|historyCommit)$/",
           "group": "0_commit@3"
+        },
+        {
+          "command": "polylog.repoPull",
+          "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && behind",
+          "group": "0_sync@1"
         },
         {
           "command": "polylog.repoShowOnly",

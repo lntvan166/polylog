@@ -91,6 +91,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     runs `git fetch` in every repository, a few at a time, and never prompts for
     credentials; Polylog fetches only when you ask. **Show Only Repositories Behind**
     (right-click, or the Log's `…` menu) then ticks just the ones with commits to pull.
+    Right-click a repository showing ↓ to **Pull** it: through VS Code's own Git (your
+    pull settings, its credential prompts, conflicts in Source Control), or
+    `git pull --ff-only` for a repository VS Code's Git does not have open.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
