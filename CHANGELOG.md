@@ -7,7 +7,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
-## [Unreleased]
+## [0.3.0] — 2026-09-29
 
 ### Added
 
@@ -17,8 +17,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
     uncommitted work above its commits: "Uncommitted changes · 3 files". Selecting it
     lists the files in the Changes tree.
   - **Review Uncommitted Changes**, the checklist, opens a mode like File History. The
-    Log lists the repositories with changes, and the Changes tree shows every uncommitted
-    file across them, grouped by repository.
+    Log lists the repositories with changes; click one and the Changes tree shows its
+    uncommitted files.
   - Staged and unstaged changes are both compared with the last commit. Fully staged
     files say "staged", and new files say "new".
   - A file opens with the last commit on the left and your real, editable file on the
@@ -31,6 +31,50 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   - The toggle acts at once and saves the setting in the background, and each repository
     appears as soon as it is read. On 68 repositories with 5 dirty, the rows appear in
     0.19 s rather than 1.1 s.
+
+- **Right-click a repository**, in the Repositories pane or on any of its commits in the
+  Log: Show Only This Repository, Hide from the Log, Show All Repositories, Open Folder in
+  New Window, Copy Path, or Exclude from Polylog. Exclude adds the repository's exact path
+  to `polylog.excludeRepos` (so a repository elsewhere with the same name stays), keeps
+  your own entries, and offers Undo.
+- **See which repositories are behind.** The Repositories pane shows ↓3 beside a
+  repository with commits on its upstream you have not pulled, and ↑2 for commits not
+  pushed. It is counted from local refs, as of your last fetch (Polylog never fetches),
+  after the first page, on Refresh, and when VS Code's Git reports that a repository's
+  branch or upstream moved.
+
+### Changed
+
+- **Changing `polylog.excludeRepos` or `polylog.scanDepth` in Settings applies at once**,
+  instead of on the next refresh.
+
+### Performance
+
+- **Saving a file no longer re-reads every repository.** With uncommitted changes shown,
+  a save (or VS Code Git reporting a change) reads only that repository again, and the
+  Log is told only when its files really changed, in a small message of the pinned rows
+  instead of the whole Log. On 68 repositories one save went from 138 git processes and
+  about 600 KB sent to the panel to 2 processes and nothing sent. A save outside every
+  repository reads nothing.
+- **Holding ↑/↓ reads only the commit you stop on.** The highlight moves at once; the
+  commit's files are read when the keys settle (20 rows held: 2 reads instead of 20).
+- **Commits no longer wait for the uncommitted read**, and a saved "Me" filter no longer
+  loads an empty page first and then everything again.
+- **Branch mode:** each repository goes straight from checking the branch to reading its
+  log, instead of every repository waiting for the slowest check.
+- **Less work in the panel:** the Repositories pane is not rebuilt on each Search
+  keystroke, scrolling paints once per frame, diffs of added or deleted files start no
+  git process for their empty side, and file colors in the Changes tree are refreshed
+  only for the files that changed.
+
+### Fixed
+
+- **Turning `polylog.showUncommitted` on in Settings** (rather than with the toolbar
+  button) now shows the rows at once, instead of on the next git event.
+- **Clicking "All repositories" when all were shown** left its box looking unticked.
+- **Load More, or leaving Review Uncommitted, could stop responding.** A git process
+  cancelled just as it finished was never reported as done, so whatever waited for it
+  waited forever.
 
 ---
 
