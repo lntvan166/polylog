@@ -1,9 +1,7 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
-import { debounce } from "./debounce";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
-import { UndoCollapse } from "./keepExpanded";
 import { HIDE_REPOS_KEY, LogView } from "./logView";
 import type { WebviewMessage } from "./protocol";
 import { RepoDiscovery } from "./repoDiscovery";
@@ -38,16 +36,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged() });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
-  // Clicking the Log or Changes header collapses that view; expand it again. Settle
-  // first: switching to another panel tab hides both, one event at a time.
-  // Hidden again within 10 s of an undo means the user hid it on purpose (keepExpanded.ts).
-  const undo = new UndoCollapse(10_000);
-  const undoCollapse = debounce(() => {
-    const enabled = vscode.workspace.getConfiguration("polylog").get<boolean>("keepViewsExpanded", true);
-    const which = undo.decide(log.visible, changes.visible, Date.now(), enabled, { log: log.canExpand, changes: changes.canExpand });
-    if (which === "log") log.expand();
-    else if (which === "changes") changes.expand();
-  }, 150);
+  // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
   context.subscriptions.push(
     // Switching git.path takes effect at once: forget the binary, stop git processes still
     // running on the old one, and read everything again.
@@ -64,11 +53,6 @@ export function activate(context: vscode.ExtensionContext): void {
         void log.gitChanged();
       }
     }),
-    log.onDidChangeVisibility(undoCollapse),
-    changes.onDidChangeVisibility(undoCollapse),
-    // Changes can only be revealed once it has a commit: check again when it gets one.
-    changes.onDidChangeTreeData(() => undoCollapse()),
-    { dispose: () => undoCollapse.cancel() },
     discovery,
     changes,
     vscode.window.registerFileDecorationProvider(changes),

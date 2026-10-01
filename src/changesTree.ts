@@ -107,24 +107,9 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return undefined;
   }
 
-  /** Expanded and on screen (keepExpanded.ts). */
+  /** Expanded and on screen (integration test seam). */
   get visible(): boolean {
     return this.view.visible;
-  }
-
-  get onDidChangeVisibility(): vscode.Event<vscode.TreeViewVisibilityChangeEvent> {
-    return this.view.onDidChangeVisibility;
-  }
-
-  /** Revealing needs a node: with no commit selected there is nothing to reveal quietly. */
-  get canExpand(): boolean {
-    return this.roots.length > 0;
-  }
-
-  /** Expand the view again without taking focus or changing the selection. */
-  expand(): void {
-    const root = this.roots[0];
-    if (root) void this.view.reveal(root, { select: false, focus: false }).then(undefined, () => undefined);
   }
 
   set(state: ChangesState | null): void {

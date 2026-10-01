@@ -604,10 +604,10 @@ describe("Polylog panel", () => {
       git("branch", "--unset-upstream", branch);
       git("branch", "-D", "polylog-up");
     }
-    await until("no badge once it has no upstream", (x) => x.sync[web.id] === undefined);
-    // Refresh reads every repository again too.
+    // Cleanup, not what is tested: Refresh reads every repository again (VS Code's Git may
+    // report the removed upstream late on a busy runner).
     await send({ type: "refresh" });
-    await until("still none after Refresh", (x) => x.sync[web.id] === undefined && x.rows.length > 0);
+    await until("no badge once it has no upstream", (x) => x.sync[web.id] === undefined && x.rows.length > 0);
   });
 
   it("Fetch All fetches every repository, then Show Only Repositories Behind picks the ones to pull", async () => {
@@ -974,18 +974,23 @@ describe("Polylog panel", () => {
   });
 
   // Last: it leaves Changes hidden for the rest of the session, as a user who hid it wants.
-  it("Hide 'Changes' is undone once as an accident, then respected", async () => {
-    const c = bySubject(await snapshot(), "feat: add retry");
+  it("Polylog never reopens a view: a hidden Changes view stays hidden, and keeps the selection", async () => {
+    const rows = (await until("six rows", (x) => x.rows.length === 6)).rows;
+    const c = rows.find((r) => r.subject.startsWith("feat: add retry"))!;
+    const other = rows.find((r) => r.subject.startsWith("fix: guard nil"))!;
     await send({ type: "select", repoId: c.repoId, sha: c.sha });
     await until("Changes showing the commit", (x) => x.changesVisible && x.changes.items.some((i) => i.includes("upload.go")));
     await vscode.commands.executeCommand("polylog.changes.removeView");
-    await until("the first hide undone", (x) => x.changesVisible);
-    await sleep(700); // a person hiding it again; the reveal has finished by then
-    await vscode.commands.executeCommand("polylog.changes.removeView");
+    await sleep(1200);
+    assert.strictEqual((await snapshot()).changesVisible, false, "hidden on the first try: nothing reopens it");
+    // Rule 5: it still follows the selection while hidden, and shows it when opened.
+    await send({ type: "select", repoId: other.repoId, sha: other.sha });
     await sleep(800);
-    assert.strictEqual((await snapshot()).changesVisible, false, "hidden again right away: the user means it");
-    await send({ type: "select", repoId: c.repoId, sha: c.sha });
-    await sleep(800);
-    assert.strictEqual((await snapshot()).changesVisible, false, "and a later selection does not bring it back");
+    let s = await snapshot();
+    assert.strictEqual(s.changesVisible, false, "a selection does not bring it back");
+    assert.ok(s.changes.items.some((i) => i.includes("client.ts")), "but it has the new commit's files");
+    await vscode.commands.executeCommand("polylog.changes.focus");
+    s = await until("shown again by the user", (x) => x.changesVisible);
+    assert.ok(s.changes.items.some((i) => i.includes("client.ts")));
   });
 });

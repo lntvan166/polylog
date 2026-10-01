@@ -68,7 +68,7 @@ export interface LogSnapshot {
   authors: AuthorName[];
   branchUse: BranchUse | undefined;
   changes: ChangesSnapshot;
-  /** The native Changes view is expanded and on screen (keepExpanded test seam). */
+  /** The native Changes view is expanded and on screen (test seam). */
   changesVisible: boolean;
   layout: Layout;
   stats: { msToFirstRows: number | null; reloads: number; discoveries: number; spawns: number; discoveryMs: number; fetchMs: number; msToResolve: number; msToReady: number };
@@ -126,8 +126,6 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Enter arrived before the selected commit's files: open the first one when they land. */
   private openWhenLoaded: string | null = null;
   private readonly disposables: vscode.Disposable[] = [];
-  private readonly visibilityChanged = new vscode.EventEmitter<void>();
-  readonly onDidChangeVisibility = this.visibilityChanged.event;
   private readonly reloadSoon = debounce(() => void this.reload(), SEARCH_DEBOUNCE_MS);
   // The git extension opens repositories in bursts at startup; coalesce them.
   private readonly reposChangedSoon = debounce(() => void this.refreshRepos(), SEARCH_DEBOUNCE_MS);
@@ -174,31 +172,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       scriptUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.js")).toString(),
       styleUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.css")).toString(),
     });
-    // Also a check on load: a view collapsed in an earlier session raises no event of its own.
-    this.visibilityChanged.fire();
     this.disposables.push(
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
-      view.onDidChangeVisibility(() => this.visibilityChanged.fire()),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
       }),
     );
   }
 
-  /** Expanded and on screen; undefined if the Log never loaded (collapsed at startup). */
-  get visible(): boolean | undefined {
-    return this.webviewView?.visible;
-  }
-
-  /** Expand the Log again (keepExpanded.ts); show(true) keeps focus where it is. */
-  expand(): void {
-    this.webviewView?.show(true);
-  }
-
-  /** show(true) needs the resolved view; a Log never loaded cannot be expanded quietly. */
-  get canExpand(): boolean {
-    return this.webviewView !== undefined;
-  }
 
   async onMessage(m: WebviewMessage): Promise<void> {
     switch (m.type) {
@@ -1186,6 +1167,5 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
     for (const d of this.disposables) d.dispose();
-    this.visibilityChanged.dispose();
   }
 }
