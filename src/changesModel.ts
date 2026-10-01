@@ -15,15 +15,6 @@ export interface ChangesState {
   error?: string;
   /** File history: the file to highlight in the tree. */
   focusPath?: string;
-  /** Review Uncommitted: every repository's uncommitted files, one group each (commit/files unused). */
-  groups?: ChangesGroup[];
-}
-
-export interface ChangesGroup {
-  commit: Commit;
-  repoRoot: string;
-  repoName: string;
-  files: FileChange[];
 }
 
 /** Which repository and revision a file node belongs to, for opening its diff. */
@@ -69,7 +60,6 @@ export function decorationFor(status: ChangeStatus | undefined): Decoration | un
 export const NO_SELECTION = "Select a commit in the Log to see its changed files.";
 export const LOADING = "Loading changed files…";
 export const NO_FILES = "This commit changes no files.";
-export const NO_UNCOMMITTED = "No uncommitted changes.";
 
 export function firstOpenable(files: readonly FileChange[]): FileChange | undefined {
   return files.find((f) => f.added !== null);
@@ -103,24 +93,16 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
   const c = s.commit;
   const base = commitKey(c);
   const tooltip = `${s.message || c.subject}\n\n${c.author} <${c.email}> · ${absoluteTime(c.time)} · ${s.repoName}\n${c.sha}`;
-  if (s.groups) {
-    const roots = s.groups.filter((g) => g.files.length > 0).map((g): CommitDesc => {
-      const key = commitKey(g.commit);
-      const n = g.files.length;
-      const owner = { repoId: g.commit.repoId, sha: g.commit.sha, parent: g.commit.parents[0] ?? null };
-      return {
-        kind: "commit", id: key, label: g.repoName, description: `${n} ${n === 1 ? "file" : "files"} · not committed`,
-        tooltip: `${g.repoName}: changes since the last commit, staged or not`, children: describeNodes(fileTree(g.files), "", key, owner),
-      };
-    });
-    return { message: roots.length === 0 ? NO_UNCOMMITTED : undefined, roots };
-  }
   const owner = { repoId: c.repoId, sha: c.sha, parent: c.parents[0] ?? null };
   const children = s.status === "ready" ? describeNodes(fileTree(s.files), "", base, owner) : [];
   const pending = c.sha === UNCOMMITTED;
   const n = s.files.length;
   const description = pending ? `${n} ${n === 1 ? "file" : "files"} · not committed` : `${c.sha.slice(0, 7)} · ${c.author} · ${relativeTime(now, c.time)}`;
-  const root: CommitDesc = { kind: "commit", id: base, label: c.subject, description, tooltip: pending ? `${s.repoName}: changes since the last commit, staged or not` : tooltip, children };
+  // Uncommitted work (the Log's Uncommitted side): one repository, review only.
+  const root: CommitDesc = {
+    kind: "commit", id: base, label: pending ? s.repoName : c.subject, description,
+    tooltip: pending ? `${s.repoName}: changes since the last commit, staged or not. Stage, unstage and commit in the Uncommitted view.` : tooltip, children,
+  };
   const message =
     s.status === "loading" ? LOADING
     : s.status === "error" ? `Could not read this commit: ${s.error ?? "unknown error"}`

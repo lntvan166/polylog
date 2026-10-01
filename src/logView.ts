@@ -8,13 +8,14 @@ import { debounce } from "./debounce";
 import { DEFAULT_FILTER, normalizePath, pathspecOf, sameExceptText, sanitizeFilter, selectRepos, type FilterState } from "./filterModel";
 import { fetchPage, type BranchUse, type QueryState, type RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
-import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage } from "./protocol";
+import type { AuthorName, BranchName, HostMessage, Layout, WebviewMessage, WorkRow } from "./protocol";
+import { distinctPaths, editedLabel, meter, previewLabel, tags, totals } from "./uncommittedModel";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 import { commitWebUrl } from "./remoteUrl";
 import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
-import { commitKey, isSha, UNCOMMITTED, type Commit, type Repo, type RepoFailure } from "./types";
+import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
 import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff } from "./uncommittedView";
@@ -55,6 +56,12 @@ export interface LogSnapshot {
   uncommitted: { repoId: string; staged: string[]; changes: string[] }[];
   /** How many times the store reported a change (test seam). */
   uncommittedChanges: number;
+  /** The Log's switch. */
+  logMode: "commits" | "uncommitted";
+  /** The Uncommitted side's rows as "name | preview | tags" (test seam). */
+  workRows: string[];
+  workTotals: { files: number; repos: number; added: number; deleted: number };
+  workKnown: boolean;
   /** What a window reload would restore. */
   persistedFilter: FilterState | undefined;
   branches: BranchName[];
@@ -141,7 +148,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     };
     this.filter = sanitizeFilter(context.workspaceState.get(FILTER_KEY) ?? DEFAULT_FILTER);
     this.syncRepoFiltered();
-    this.disposables.push(deps.discovery.onDidChange(() => this.reposChangedSoon()));
+    this.disposables.push(
+      deps.discovery.onDidChange(() => this.reposChangedSoon()),
+      // The switch's badge and rows, and the Changes view while on the Uncommitted side.
+      deps.uncommitted.onDidChange(() => {
+        this.postUncommitted();
+        this.showWorkTree();
+      }),
+    );
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -199,6 +213,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         // A re-created webview lost the suggestions it had: send them again (only then).
         if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
         if (this.sync.size > 0) this.postSync();
+        this.postUncommitted();
         if (this.queryState === null) await this.reload();
         else this.post({ type: "page", rows: this.rows, append: false, failures: this.failures, done: this.done, now: nowSec(), branchUse: this.branchUse });
         return;
@@ -228,6 +243,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         return;
       case "openFirst":
         await this.openFirst(m.repoId, m.sha);
+        return;
+      case "logMode":
+        if (m.mode === "commits" || m.mode === "uncommitted") this.setLogMode(m.mode);
+        return;
+      case "selectWork":
+        if (typeof m.repoId === "string" && this.deps.uncommitted.get(m.repoId)) {
+          this.workRepo = m.repoId;
+          this.showWorkTree();
+        }
         return;
       case "exitHistory":
         await this.setHistory(null);
@@ -349,9 +373,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const current = this.deps.changes.current();
     if (!node || typeof node !== "object" || node.kind !== "file" || typeof node.path !== "string" || !current) return undefined;
     const repoId = typeof node.owner?.repoId === "string" ? node.owner.repoId : current.commit.repoId;
-    const files = current.groups ? current.groups.find((g) => g.commit.repoId === repoId)?.files ?? [] : current.files;
     const repo = this.repos.find((r) => r.id === repoId);
-    return repo && files.some((f) => f.path === node.path) ? { repo, path: node.path } : undefined;
+    return repo && repoId === current.commit.repoId && current.files.some((f) => f.path === node.path) ? { repo, path: node.path } : undefined;
   }
 
   /** The workspace repository containing a file (innermost first), and its repo-relative path. */
@@ -951,6 +974,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       spawnLog: [...this.spawnLog],
       uncommitted: this.deps.uncommitted.works().map((w) => ({ repoId: w.repoId, staged: w.staged.map((f) => f.path), changes: w.changes.map((f) => f.path) })),
       uncommittedChanges: this.deps.uncommitted.changes,
+      logMode: this.logMode,
+      workRows: this.workRows().map((r) => [this.repos.find((x) => x.id === r.repoId)?.name ?? r.repoId, r.preview, r.tags.join(", ")].join(" | ")),
+      workTotals: totals(this.deps.uncommitted.works()),
+      workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.sync),
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
@@ -1067,6 +1094,59 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!work || !file) return undefined;
     await openWorkDiff(work, inChanges ? "changes" : "staged", file, preserveFocus);
     return undefined;
+  }
+
+  /** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
+  private logMode: "commits" | "uncommitted" = "commits";
+  /** The repository whose files the Changes view shows on the Uncommitted side. */
+  private workRepo: string | undefined;
+  /** What the Changes view showed before the switch went to Uncommitted (it comes back). */
+  private commitsTree: ReturnType<ChangesTree["current"]> = null;
+
+  private setLogMode(mode: "commits" | "uncommitted"): void {
+    if (mode === this.logMode) return;
+    this.logMode = mode;
+    if (mode === "uncommitted") {
+      this.commitsTree = this.deps.changes.current();
+      this.showWorkTree();
+    } else {
+      this.deps.changes.set(this.commitsTree);
+      this.commitsTree = null;
+    }
+  }
+
+  /** Repositories with uncommitted work, most recently edited first (unknown edit times last). */
+  private workRows(): WorkRow[] {
+    const now = Date.now();
+    return this.deps.uncommitted.works()
+      .filter((w) => distinctPaths(w).length > 0)
+      .sort((a, b) => (b.editedAt ?? -Infinity) - (a.editedAt ?? -Infinity))
+      .map((w) => ({ repoId: w.repoId, preview: previewLabel(w), meter: meter(w), tags: tags(w), edited: editedLabel(now, w.editedAt) }));
+  }
+
+  private postUncommitted(): void {
+    this.post({ type: "uncommitted", known: this.deps.uncommitted.known, totals: totals(this.deps.uncommitted.works()), rows: this.workRows() });
+  }
+
+  /** The Changes view on the Uncommitted side: the selected repository's files, review only. */
+  private showWorkTree(): void {
+    if (this.logMode !== "uncommitted") return;
+    const rows = this.workRows();
+    const id = rows.some((r) => r.repoId === this.workRepo) ? this.workRepo : rows[0]?.repoId;
+    const work = id ? this.deps.uncommitted.get(id) : undefined;
+    const repo = id ? this.repos.find((r) => r.id === id) : undefined;
+    if (!work || !repo) {
+      this.deps.changes.set(null);
+      return;
+    }
+    const staged = new Set(work.staged.map((f) => f.path));
+    const byPath = new Map<string, FileChange>();
+    for (const f of work.staged) byPath.set(f.path, { ...f, staged: true });
+    // A file changed again after staging shows its working-tree side, marked staged only if nothing is left.
+    for (const f of work.changes) byPath.set(f.path, { ...f, staged: false });
+    const files = [...byPath.values()].sort((a, b) => a.path.localeCompare(b.path)).map((f) => ({ ...f, staged: staged.has(f.path) && !work.changes.some((c) => c.path === f.path) }));
+    const commit: Commit = { repoId: repo.id, sha: UNCOMMITTED, time: Math.floor(Date.now() / 1000), author: "", email: "", subject: "Uncommitted changes", parents: work.head ? [work.head] : [] };
+    this.deps.changes.set({ commit, repoRoot: repo.root, repoName: repo.name, status: "ready", message: "", files });
   }
 
   /** Every repository of the workspace, in Repo List order (accents, the Uncommitted view). */

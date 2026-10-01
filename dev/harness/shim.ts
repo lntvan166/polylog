@@ -61,9 +61,20 @@ function reload(): void {
   page(false);
 }
 
+/** The Log's Uncommitted side: sample work in three repositories. */
+const WORK = {
+  type: "uncommitted" as const, known: true, totals: { files: 5, repos: 3, added: 24, deleted: 5 },
+  rows: [
+    { repoId: "/work/acme-web", preview: "3 files · notes.md, src/app.ts, src/new.ts", meter: { added: 1, modified: 2, deleted: 0 }, tags: ["1 staged", "1 new"], edited: "edited 2m ago" },
+    { repoId: "/work/acme-api", preview: "1 file · upload/upload.go", meter: { added: 0, modified: 1, deleted: 0 }, tags: [], edited: "edited 1h ago" },
+    { repoId: "/work/acme-libs", preview: "1 file · ui/Button.tsx", meter: { added: 0, modified: 0, deleted: 1 }, tags: ["all staged"], edited: "edited 3h ago" },
+  ],
+};
+
 function handle(m: WebviewMessage): void {
   switch (m.type) {
-    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); reload(); return;
+    case "ready": send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: params.get("repos") !== "off" }, history }, 0); send({ type: "suggestions", branches: [{ name: "main", count: 3 }, { name: "origin/main", count: 3 }, { name: "origin/prod", count: 2 }], authors: [{ name: "dana", email: "dana@example.com", count: 41 }, { name: "rin", email: "rin@example.com", count: 37 }, { name: "noor", email: "noor@example.com", count: 12 }, { name: "sam", email: "sam@example.com", count: 9 }] }, 0); send({ type: "sync", byRepo: { "/work/acme-api": { ahead: 0, behind: 3 }, "/work/acme-libs": { ahead: 2, behind: 1 } } }, 0); send(WORK, 0); reload(); return;
+    case "logMode": case "selectWork": console.info(`[harness] ${m.type}`, m); return;
     case "exitHistory": history = null; send({ type: "init", repos, filter, hasMe: true, layout: { repoPaneWidth: 190, groupByRepo: true }, history }, 0); reload(); return;
     case "layout": console.info("[harness] layout", m); return;
     case "filter": filter = m.filter; reload(); return;

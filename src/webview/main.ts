@@ -2,7 +2,7 @@ import "./styles.css";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
-import type { HostMessage, WebviewMessage } from "../protocol";
+import type { HostMessage, WebviewMessage, WorkRow } from "../protocol";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
@@ -12,7 +12,8 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
+import { WorkList } from "./workList";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -48,6 +49,40 @@ const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
 const appEl = byId("app");
+/** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
+let mode: "commits" | "uncommitted" = "commits";
+let work = { known: false, totals: { files: 0, repos: 0, added: 0, deleted: 0 }, rows: [] as WorkRow[] };
+const tabs = { commits: byId<HTMLButtonElement>("mode-commits"), uncommitted: byId<HTMLButtonElement>("mode-work") };
+const workCount = byId("work-count");
+const workTotals = byId("work-totals");
+const workEl = byId("worklist");
+const workList = new WorkList(workEl, (repoId) => post({ type: "selectWork", repoId }));
+
+function setMode(next: "commits" | "uncommitted", focus = false): void {
+  if (next !== mode) {
+    mode = next;
+    post({ type: "logMode", mode: next });
+  }
+  for (const [k, el] of Object.entries(tabs)) {
+    const on = k === mode;
+    el.setAttribute("aria-selected", String(on));
+    el.tabIndex = on ? 0 : -1;
+  }
+  if (focus) tabs[mode].focus();
+  appEl.classList.toggle("work", mode === "uncommitted");
+  workEl.hidden = mode !== "uncommitted";
+  render();
+}
+tabs.commits.addEventListener("click", () => setMode("commits"));
+tabs.uncommitted.addEventListener("click", () => setMode("uncommitted"));
+// A tablist: ←/→ move between the two tabs.
+for (const el of Object.values(tabs)) {
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setMode(mode === "commits" ? "uncommitted" : "commits", true);
+  });
+}
 const modebar = byId("modebar");
 const historyPath = byId("history-path");
 const modeHistory = byId("mode-history");
@@ -99,6 +134,9 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       appEl.classList.toggle("history", !!m.history);
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
+      break;
+    case "uncommitted":
+      work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
     case "sync":
       repoPane.setSync(m.byRepo);
@@ -210,6 +248,16 @@ function runEmptyAction(action: EmptyAction): void {
 
 function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
+  const count = switchCount(work.known, work.totals.files);
+  workCount.textContent = count;
+  workCount.hidden = count === "";
+  tabs.uncommitted.setAttribute("aria-label", count ? `Uncommitted, ${count} ${count === "1" ? "file" : "files"}` : "Uncommitted");
+  workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
+  if (mode === "uncommitted") {
+    workList.update(work.rows, names, accents);
+    empty.render(work.rows.length === 0 ? { title: "Nothing uncommitted", body: "Nothing uncommitted in the ticked repositories." } : null);
+    return;
+  }
   list.update({
     rows: state.rows, repoNames: names, accents, behind,
     historyPath: state.history?.path,

@@ -340,6 +340,55 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("the Log's Commits | Uncommitted switch: a badge, review rows, the Changes view, then back", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const api = s0.repos.find((r) => r.name === "acme-api")!;
+    const git = (root: string, ...args: string[]) => cp.execFileSync("git", args, { cwd: root }).toString().trim();
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 1;\n");
+    fs.writeFileSync(path.join(api.root, "upload.go"), "package upload\n\nfunc Retry() { retry() }\n");
+    fs.writeFileSync(path.join(api.root, "notes.md"), "n\n");
+    try {
+      await send({ type: "refresh" });
+      let s = await until("both repositories behind the switch", (x) => x.workRows.length === 2 && x.workTotals.files === 3);
+      assert.ok(s.workKnown, "the badge has a number once every repository was read");
+      assert.deepStrictEqual(s.workRows.map((r) => r.split(" | ")[0]).sort(), ["acme-api", "acme-web"]);
+      assert.ok(s.workRows.some((r) => r.startsWith("acme-api | 2 files · notes.md, upload.go | 1 new")), `the row: preview and tags (${s.workRows.join(" / ")})`);
+      assert.ok((s.posts.uncommitted?.count ?? 0) > 0, "the webview was told");
+      const before = { rows: s.rows.map((r) => r.subject), filter: s.filter };
+
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("the Uncommitted side", (x) => x.logMode === "uncommitted");
+      await send({ type: "selectWork", repoId: api.id });
+      s = await until("acme-api's files in the Changes view", (x) => x.changes.items[0]?.startsWith("acme-api | 2 files · not committed") === true);
+      assert.deepStrictEqual(s.changes.items.slice(1).sort(), ["  notes.md | new", "  upload.go | +1 −1"]);
+      // Its files open the same diffs as the Uncommitted view.
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
+      await waitFor("a working-tree diff", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+        return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" && t.modified.fsPath.endsWith(path.join("acme-api", "upload.go")) ? true : undefined;
+      });
+
+      await send({ type: "logMode", mode: "commits" });
+      s = await until("the Commit list again", (x) => x.logMode === "commits");
+      assert.deepStrictEqual({ rows: s.rows.map((r) => r.subject), filter: s.filter }, before, "filters and rows exactly as they were");
+      assert.ok(!s.changes.items[0]?.includes("not committed"), "the Changes view shows a commit again, not uncommitted work");
+    } finally {
+      await closeEditors();
+      for (const root of [web.root, api.root]) {
+        git(root, "checkout", "--", ".");
+        git(root, "clean", "-fdq");
+      }
+    }
+    await send({ type: "refresh" });
+    await until("nothing uncommitted", (x) => x.workRows.length === 0);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });

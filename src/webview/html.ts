@@ -36,6 +36,13 @@ export function renderHtml(o: HtmlOptions): string {
         <button id="history-close" class="icon-button mode-close" type="button" aria-label="Close file history" title="Back to all commits">×</button>
       </span>
     </div>
+    <div id="logswitch" class="logswitch">
+      <div class="switch" role="tablist" aria-label="The Log shows">
+        <button id="mode-commits" class="switch-tab" role="tab" type="button" aria-selected="true" tabindex="0">Commits</button>
+        <button id="mode-work" class="switch-tab" role="tab" type="button" aria-selected="false" tabindex="-1">Uncommitted<span id="work-count" class="work-count" hidden></span></button>
+      </div>
+      <span id="work-totals" class="work-totals"></span>
+    </div>
     <form id="filters" class="filters" role="search" aria-label="Filter commits">
       <input id="search" class="search" type="search" placeholder="Search messages" aria-label="Search commit messages" autocomplete="off" spellcheck="false">
       <span id="author-field" class="author-field">
@@ -65,6 +72,7 @@ export function renderHtml(o: HtmlOptions): string {
         <div id="list" class="list" role="grid" aria-label="Commits" aria-rowcount="0" tabindex="0">
           <div id="rows" class="rows" role="rowgroup"></div>
         </div>
+        <div id="worklist" class="worklist" role="listbox" aria-label="Repositories with uncommitted changes" tabindex="0" hidden></div>
         <div id="empty" class="empty" hidden></div>
       </section>
     </main>

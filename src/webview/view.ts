@@ -253,3 +253,21 @@ export function reselect(prevKey: string | null, rows: readonly { repoId: string
   return i < 0 ? 0 : i;
 }
 
+
+/** The number on the Log's Uncommitted switch: only once known, and never "0". */
+export function switchCount(known: boolean, files: number): string {
+  return known && files > 0 ? String(files) : "";
+}
+
+/** "3 repositories · +24 −5", beside the switch on its Uncommitted side. */
+export function totalsLabel(t: { files: number; repos: number; added: number; deleted: number }): string {
+  if (t.files === 0) return "";
+  return `${t.repos} ${t.repos === 1 ? "repository" : "repositories"} · +${t.added} −${t.deleted}`;
+}
+
+/** An Uncommitted row's change meter: each kind's share of the files, empty kinds left out. */
+export function meterParts(m: { added: number; modified: number; deleted: number }): { kind: "added" | "modified" | "deleted"; share: number }[] {
+  const total = m.added + m.modified + m.deleted;
+  if (total === 0) return [];
+  return (["added", "modified", "deleted"] as const).filter((k) => m[k] > 0).map((kind) => ({ kind, share: m[kind] / total }));
+}
