@@ -160,8 +160,8 @@ becomes up to two files, a Staged one (X ≠ ".") and a Changes one (Y ≠ "." o
 ### 5.2 Counts
 
 Only for repositories with entries: `git diff --cached --numstat -z -M <HEAD|empty tree>` (Staged)
-and `git diff --numstat -z` (Changes, index ↔ worktree). Untracked files: line count from the
-file (as today), capped at 2 MB read per file; larger or binary shows no count.
+and `git diff --numstat -z` (Changes, index ↔ worktree). Untracked files have no count from git:
+they show "new" and count as 0/0 (not binary), as today.
 
 ### 5.3 Concurrency and order
 
