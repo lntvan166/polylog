@@ -7,9 +7,9 @@ export interface CFile { path: string; oldPath?: string; status?: ChangeStatus; 
 export interface CCommit { sha: string; parent: string | null; subject: string; author: string; time: number; files: number | null }
 export type CompareHost =
   | { type: "state"; pair: Pair | null; mode: CompareMode; recent: Pair[]; favorites: string[]; message?: string }
-  | { type: "repos"; reading: boolean; summary: string; rows: CRepoRow[]; identical: number; missing: string[] }
+  | { type: "repos"; reading: boolean; summary: string; rows: CRepoRow[]; identical: number; missing: string[]; selected?: string }
   | { type: "detail"; repoId: string; mode: CompareMode; left: CFile[] | CCommit[]; right: CFile[] | CCommit[]; more: { left: boolean; right: boolean }; duplicates: Duplicate[]; error?: string }
-  | { type: "commitFiles"; repoId: string; sha: string; files: CFile[] }
+  | { type: "commitFiles"; repoId: string; sha: string; files: CFile[]; error?: string }
   | { type: "branches"; names: { name: string; count: number }[] };
 export type CompareWebview =
   | { type: "ready" }

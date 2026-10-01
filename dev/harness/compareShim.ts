@@ -36,7 +36,7 @@ function handle(m: CompareWebview): void {
     case "ready":
       state();
       send({ type: "branches", names: [{ name: "origin/main", count: 68 }, { name: "main", count: 68 }, { name: "origin/release-1.4", count: 56 }, { name: "origin/release-1.3", count: 56 }, { name: "origin/prod", count: 44 }, { name: "feat/billing", count: 3 }] });
-      send({ type: "repos", reading: false, summary: "4 repositories differ · ◀7 ▶1 =1 · 51 identical · 12 missing a branch · in 68 repositories", rows, identical: 51, missing: ["acme-docs", "acme-infra", "acme-ops"] });
+      send({ type: "repos", reading: false, summary: "4 repositories differ · ◀7 ▶1 =1 · 51 identical · 12 missing a branch · in 68 repositories", rows, identical: 51, missing: ["acme-docs", "acme-infra", "acme-ops"], selected: "/work/acme-api" });
       detail("/work/acme-api");
       return;
     case "pick": pair = m.pair; state(); detail("/work/acme-api"); return;

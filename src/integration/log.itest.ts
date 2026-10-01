@@ -1325,5 +1325,43 @@ describe("Polylog panel", () => {
       git(web, ["update-ref", "refs/heads/release-1.4", tip]);
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
+
+    it("a swap while the list is still being read reads what it lacks", async () => {
+      const p = pick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog._itest.compareSwap");
+      await p;
+      const s = await waitFor("all rows after the swap", async () => {
+        const x = await store();
+        return !x.reading && x.rows.length === 3 ? x : undefined;
+      });
+      assert.ok(s.rows.includes("acme-web ◀0 ▶1 =0"), s.rows.join(" | "));
+    });
+
+    it("the shown repository's files: read again when its branches move, opened only from it", async () => {
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      await csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      await settled("listed", (x) => x.rows.includes("acme-web ◀1 ▶0 =0"));
+      await csend({ type: "select", repoId: roots["acme-web"] });
+      await settled("acme-web files", (x) => x.selected === roots["acme-web"] && x.left.join() === "billing.ts +1 −0");
+      // A file of another repository's detail is not opened from this one.
+      const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
+      const before = tabs();
+      await csend({ type: "openFile", repoId: roots["acme-api"], side: "left", path: "billing.ts" });
+      await sleep(400);
+      assert.strictEqual(tabs(), before, "no diff from a repository whose files are not shown");
+      // Its branch moves: the counts and the files are read again.
+      const web = roots["acme-web"];
+      const tip = git(web, ["rev-parse", "refs/heads/release-1.4"]);
+      git(web, ["update-ref", "refs/heads/release-1.4", commitOn(web, tip, { "export.ts": "export {};\n" }, "feat: export CSV", T + 70)]);
+      try {
+        await vscode.commands.executeCommand("polylog.fetchAll");
+        await settled("files read again", (x) => x.left.includes("export.ts +1 −0"));
+      } finally {
+        git(web, ["update-ref", "refs/heads/release-1.4", tip]);
+      }
+      // A commit git cannot read answers, it does not reject.
+      await csend({ type: "expand", repoId: web, sha: "e".repeat(40) });
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    });
   });
 });

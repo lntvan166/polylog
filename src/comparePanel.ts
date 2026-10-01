@@ -42,7 +42,8 @@ export class ComparePanel implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private created = 0;
   private selected: string | undefined;
-  private detail: { left: CFile[] | CCommit[]; right: CFile[] | CCommit[]; duplicates: string[] } = { left: [], right: [], duplicates: [] };
+  /** What the columns show, and for which repository: a file opens only from the repository it was read for. */
+  private detail: { repoId?: string; left: CFile[] | CCommit[]; right: CFile[] | CCommit[]; duplicates: string[] } = { left: [], right: [], duplicates: [] };
   private limits = { left: COMMIT_PAGE, right: COMMIT_PAGE };
   private detailSeq = 0;
   private readonly disposables: vscode.Disposable[] = [];
@@ -145,9 +146,11 @@ export class ComparePanel implements vscode.Disposable {
     const ticked = this.deps.log.tickedRepos().length;
     const summary = ticked === 0 ? "No repositories are ticked in the Repo List."
       : this.deps.store.reading && rows.length === 0 ? `Reading ${ticked} repositories…` : summaryLabel(this.deps.store.results().map((x) => x.result), this.deps.log.tickedRepos().length);
-    this.post({ type: "repos", reading: this.deps.store.reading, summary, rows, identical, missing });
-    // The selection stays on its repository while it is listed, else the first row.
+    // The selection stays on its repository while it is listed, else the first row; the page follows the host's.
     if (!rows.some((r) => r.repoId === this.selected) && rows.length > 0) void this.select(rows[0].repoId);
+    // Its branches moved (Fetch All, a pull, a ref change): the columns are read again.
+    else if (this.selected && this.detailFor !== undefined && this.detailFor !== this.resultKey(this.selected)) void this.readDetail();
+    this.post({ type: "repos", reading: this.deps.store.reading, summary, rows, identical, missing, selected: this.selected });
   }
 
   private async setPair(p: Pair, remember = true): Promise<void> {
@@ -166,9 +169,18 @@ export class ComparePanel implements vscode.Disposable {
     await this.readDetail();
   }
 
+  /** The result the shown detail was read for: its two tips and their merge base. */
+  private detailFor: string | undefined;
+
+  private resultKey(repoId: string): string {
+    const c = this.deps.store.results().find((x) => x.repo.id === repoId)?.result;
+    return c?.kind === "differs" ? `${c.leftSha} ${c.rightSha} ${c.base}` : c?.kind ?? "";
+  }
+
   private async readDetail(): Promise<void> {
     const repoId = this.selected;
     if (!repoId) return;
+    this.detailFor = this.resultKey(repoId);
     const seq = ++this.detailSeq;
     const mode = this.mode;
     try {
@@ -180,7 +192,7 @@ export class ComparePanel implements vscode.Disposable {
         const [dl, dr] = await Promise.all([this.deps.store.readCommits(repoId, "left", COMMIT_PAGE), this.deps.store.readCommits(repoId, "right", COMMIT_PAGE)]);
         if (seq !== this.detailSeq) return;
         const duplicates = pairDuplicates(dl.filter((c) => c.mark === "="), dr.filter((c) => c.mark === "="));
-        this.detail = { left, right, duplicates: duplicates.map((d) => `${d.subject}${d.left ? " ◀" : ""}${d.right ? " ▶" : ""}`) };
+        this.detail = { repoId, left, right, duplicates: duplicates.map((d) => `${d.subject}${d.left ? " ◀" : ""}${d.right ? " ▶" : ""}`) };
         this.post({ type: "detail", repoId, mode, left, right, more: { left: false, right: false }, duplicates });
       } else {
         const [l, r] = await Promise.all([this.deps.store.readCommits(repoId, "left", this.limits.left + 1), this.deps.store.readCommits(repoId, "right", this.limits.right + 1)]);
@@ -189,7 +201,7 @@ export class ComparePanel implements vscode.Disposable {
         const left = only(l, this.limits.left);
         const right = only(r, this.limits.right);
         const duplicates = pairDuplicates(l.filter((c) => c.mark === "="), r.filter((c) => c.mark === "="));
-        this.detail = { left, right, duplicates: duplicates.map((d) => `${d.subject}${d.left ? " ◀" : ""}${d.right ? " ▶" : ""}`) };
+        this.detail = { repoId, left, right, duplicates: duplicates.map((d) => `${d.subject}${d.left ? " ◀" : ""}${d.right ? " ▶" : ""}`) };
         this.post({ type: "detail", repoId, mode, left, right, more: { left: l.length > this.limits.left, right: r.length > this.limits.right }, duplicates });
       }
     } catch (e) {
@@ -198,7 +210,18 @@ export class ComparePanel implements vscode.Disposable {
     }
   }
 
+  /** Every webview message: a failed git read is answered or dropped, never an unhandled rejection. */
   async onMessage(m: CompareWebview): Promise<void> {
+    try {
+      await this.handle(m);
+    } catch (e) {
+      if (isAbortError(e)) return;
+      if (m?.type === "expand") this.post({ type: "commitFiles", repoId: m.repoId, sha: m.sha, files: [], error: e instanceof Error ? e.message : String(e) });
+      else console.error("Polylog: Compare", e);
+    }
+  }
+
+  private async handle(m: CompareWebview): Promise<void> {
     switch (m?.type) {
       case "ready":
         this.postState();
@@ -245,7 +268,7 @@ export class ComparePanel implements vscode.Disposable {
         return;
       case "openFile": {
         const hit = this.deps.store.results().find((x) => x.repo.id === m.repoId);
-        if (!hit || hit.result.kind !== "differs" || (m.side !== "left" && m.side !== "right")) return;
+        if (!hit || hit.result.kind !== "differs" || (m.side !== "left" && m.side !== "right") || m.repoId !== this.detail.repoId) return;
         const files = this.detail[m.side] as CFile[];
         const f = files.find((x) => "both" in x && x.path === m.path);
         if (!f) return;
@@ -261,7 +284,7 @@ export class ComparePanel implements vscode.Disposable {
         return;
       }
       case "openCommitFile": {
-        if (!isSha(m.sha) || typeof m.path !== "string") return;
+        if (!isSha(m.sha) || typeof m.path !== "string" || m.repoId !== this.detail.repoId) return;
         const c = [...(this.detail.left as CCommit[]), ...(this.detail.right as CCommit[])].find((x) => "sha" in x && x.sha === m.sha);
         if (!c) return;
         const files = await this.deps.store.readCommitFiles(m.repoId, m.sha);
@@ -270,7 +293,7 @@ export class ComparePanel implements vscode.Disposable {
         return;
       }
       case "more":
-        if (m.side !== "left" && m.side !== "right") return;
+        if ((m.side !== "left" && m.side !== "right") || m.repoId !== this.selected) return;
         this.limits[m.side] += COMMIT_PAGE;
         await this.readDetail();
         return;

@@ -137,6 +137,7 @@ export function activate(context: vscode.ExtensionContext): void {
       })),
       vscode.commands.registerCommand("polylog._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
       vscode.commands.registerCommand("polylog._itest.compareRefresh", () => compare.refresh()),
+      vscode.commands.registerCommand("polylog._itest.compareSwap", () => compare.swap()),
       vscode.commands.registerCommand("polylog._itest.compare", () => comparePanel.snapshot()),
       vscode.commands.registerCommand("polylog._itest.compareSend", (m: CompareWebview) => comparePanel.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),

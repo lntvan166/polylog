@@ -67,12 +67,15 @@ export class CompareStore implements vscode.Disposable {
   /** Left and right trade places: the results are mirrored, nothing is read. */
   swap(): void {
     if (!this.current) return;
+    // A read still running is stopped here: what it had not answered yet is read again below.
+    const wasReading = this.inFlight > 0;
     this.ctl.abort();
     this.ctl = new AbortController();
     this.gen++;
     this.current = { left: this.current.right, right: this.current.left };
     for (const [id, c] of this.map) this.map.set(id, mirror(c));
     this.changed();
+    if (wasReading) void this.read(this.deps.repos().filter((r) => !this.map.has(r.id)));
   }
 
   /** The ticks changed: unticked repositories leave at once, newly ticked ones are read. */

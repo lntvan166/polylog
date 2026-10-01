@@ -19,7 +19,7 @@ let names: { name: string; count: number }[] = [];
 let rows: CRepoRow[] = [];
 let selected: string | undefined;
 let detail: Extract<CompareHost, { type: "detail" }> | undefined;
-let expanded: { side: Side; sha: string; files?: CFile[] } | undefined;
+let expanded: { side: Side; sha: string; files?: CFile[]; error?: string } | undefined;
 let pickingSide: Side = "left";
 
 const repoList = byId("repo-list");
@@ -111,6 +111,11 @@ window.addEventListener("message", (e: MessageEvent<CompareHost>) => {
   const m = e.data;
   switch (m.type) {
     case "state":
+      // A new pair: the columns held the old one's files.
+      if (m.pair?.left !== pair?.left || m.pair?.right !== pair?.right) {
+        detail = undefined;
+        expanded = undefined;
+      }
       pair = m.pair;
       mode = m.mode;
       recent = m.recent;
@@ -126,9 +131,11 @@ window.addEventListener("message", (e: MessageEvent<CompareHost>) => {
       return;
     case "repos":
       rows = m.rows;
-      if (!rows.some((r) => r.repoId === selected)) {
-        selected = rows[0]?.repoId;
+      // The host decides the selection (it reads that repository's detail): follow it.
+      if (m.selected !== selected) {
+        selected = m.selected;
         detail = undefined;
+        expanded = undefined;
       }
       byId("summary").textContent = m.summary;
       renderMissing(m.missing);
@@ -143,6 +150,7 @@ window.addEventListener("message", (e: MessageEvent<CompareHost>) => {
     case "commitFiles":
       if (m.repoId === selected && expanded?.sha === m.sha) {
         expanded.files = m.files;
+        expanded.error = m.error;
         renderColumns();
       }
       return;
@@ -271,7 +279,9 @@ function commitRow(c: CCommit, side: Side): HTMLElement {
   return h("div", { class: open ? "ccommit open" : "ccommit", tabindex: "0", role: "button", "aria-expanded": String(open), "data-commit": c.sha }, [
     h("div", { class: "csubject" }, [h("span", { class: "twisty", "aria-hidden": "true" }, [open ? "▾" : "▸"]), h("span", {}, [c.subject])]),
     h("div", { class: "cmeta" }, [h("span", {}, [c.author]), h("span", {}, [relativeTime(now, c.time)])]),
-    open ? h("div", { class: "cfiles" }, expanded!.files
+    open ? h("div", { class: "cfiles" }, expanded!.error
+      ? [h("div", { class: "cempty error" }, [`git could not read this commit: ${expanded!.error}`])]
+      : expanded!.files
       ? expanded!.files.map((f) => h("div", { class: "trow file", tabindex: "0", role: "button", "data-file": f.path, "data-sha": c.sha }, [h("span", { class: "tname mono" }, [f.path]), stat(f)]))
       : [h("div", { class: "cempty" }, ["Reading…"])]) : null,
   ]);
