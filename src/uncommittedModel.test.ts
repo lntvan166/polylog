@@ -1,0 +1,65 @@
+import * as assert from "assert";
+import type { FileChange } from "./types";
+import { commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+
+const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
+const web: RepoWork = {
+  repoId: "/ws/acme-web", root: "/ws/acme-web", name: "acme-web", head: "a".repeat(40), editedAt: 1_000_000, canStage: true,
+  staged: [f("notes.md", "M", 1, 0)],
+  changes: [f("src/app.ts", "M", 3, 1), f("src/new.ts", "A", 0, 0, { untracked: true }), f("notes.md", "M", 2, 0)],
+};
+const api: RepoWork = { repoId: "/ws/acme-api", root: "/ws/acme-api", name: "acme-api", head: "b".repeat(40), editedAt: null, canStage: false, staged: [], changes: [f("upload/upload.go", "M", 2, 0)] };
+const clean: RepoWork = { ...api, repoId: "/ws/acme-libs", root: "/ws/acme-libs", name: "acme-libs", changes: [] };
+const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatMap(files));
+
+{
+  assert.deepStrictEqual(distinctPaths(web), ["notes.md", "src/app.ts", "src/new.ts"], "a file in both halves counts once");
+  assert.deepStrictEqual(totals([web, api, clean]), { files: 4, repos: 2, added: 8, deleted: 1 }, "clean repositories do not count");
+  assert.deepStrictEqual(meter(web), { added: 1, modified: 2, deleted: 0 });
+  assert.deepStrictEqual(tags(web), ["1 staged", "1 new"]);
+  assert.deepStrictEqual(tags({ ...web, changes: [] }), ["all staged"]);
+  assert.deepStrictEqual(tags(api), []);
+  assert.strictEqual(previewLabel(web), "3 files · notes.md, src/app.ts, src/new.ts");
+  assert.strictEqual(previewLabel(api), "1 file · upload/upload.go");
+  assert.strictEqual(editedLabel(1_000_000 + 125_000, 1_000_000), "edited 2m ago");
+  assert.strictEqual(editedLabel(1_000_000 + 20_000, 1_000_000), "edited just now");
+  assert.strictEqual(editedLabel(1_000_000 + 3 * 3_600_000, 1_000_000), "edited 3h ago");
+  assert.strictEqual(editedLabel(5, null), "");
+  console.log("ok - the Log's Uncommitted rows: distinct files, totals, meter, tags, preview, edited time");
+}
+{
+  const staged = f("a.ts", "M"), added = f("n.ts", "A"), untracked = f("u.ts", "A", 0, 0, { untracked: true }), gone = f("g.ts", "D");
+  assert.deepStrictEqual(diffFor("staged", staged, true), { left: "head", right: "index" });
+  assert.deepStrictEqual(diffFor("staged", added, true), { left: "empty", right: "index" });
+  assert.deepStrictEqual(diffFor("changes", staged, true), { left: "index", right: "worktree" }, "staged and changed again: index ↔ file");
+  assert.deepStrictEqual(diffFor("changes", staged, false), { left: "head", right: "worktree" });
+  assert.deepStrictEqual(diffFor("changes", untracked, false), { left: "empty", right: "worktree" });
+  assert.deepStrictEqual(diffFor("changes", gone, false), { left: "head", right: "empty" });
+  assert.deepStrictEqual(diffFor("staged", gone, true), { left: "head", right: "empty" });
+  console.log("ok - each row opens the diff Source Control would");
+}
+{
+  assert.deepStrictEqual(discardPrompt("acme-web", [f("src/app.ts", "M")], true), { message: 'Discard changes in "src/app.ts"?', detail: "This can't be undone.", button: "Discard File" });
+  assert.strictEqual(discardPrompt("acme-web", [f("src/new.ts", "A", 0, 0, { untracked: true })], true).detail, "This can't be undone. This deletes the new file.");
+  assert.deepStrictEqual(discardPrompt("acme-web", web.changes, false), { message: "Discard changes in 3 files in acme-web?", detail: "This can't be undone. 1 new file will be deleted.", button: "Discard All" });
+  assert.strictEqual(commitStep(1, 3, false), "message");
+  assert.strictEqual(commitStep(0, 3, true), "commitAll", "git.enableSmartCommit: commit everything without asking");
+  assert.strictEqual(commitStep(0, 3, false), "askStageAll");
+  assert.strictEqual(commitStep(0, 0, false), "nothing");
+  console.log("ok - Discard's confirmation and Commit's steps");
+}
+{
+  const d = describeUncommitted([web, api, clean]);
+  assert.strictEqual(d.message, undefined);
+  assert.deepStrictEqual(d.roots.map((r) => [r.label, r.description, r.contextValue]), [["acme-web", "3 files", "repo.stageable"], ["acme-api", "1 file", "repo.readonly"]], "clean repositories are not listed; review only without vscode.git");
+  const groups = d.roots[0].children;
+  assert.deepStrictEqual(groups.map((g) => [g.label, g.description, g.contextValue]), [["Staged", "1", "group.staged"], ["Changes", "3", "group.changes"]]);
+  const src = groups[1].children.find((n) => n.label === "src")!;
+  assert.deepStrictEqual(src.children.map((n) => [n.label, n.description, n.contextValue]), [["app.ts", "+3 −1", "file.changes"], ["new.ts", "new", "file.changes.untracked"]]);
+  assert.ok(files(d.roots[1]).every((n) => n.contextValue.endsWith(".readonly")), "no Stage/Discard on a repository vscode.git has not opened");
+  assert.ok(d.roots[1].children.every((g) => g.contextValue.endsWith(".readonly")));
+  assert.strictEqual(describeUncommitted([clean]).message, NO_UNCOMMITTED_VIEW);
+  const ids = JSON.stringify(d.roots).match(/"id":"[^"]+"/g)!;
+  assert.strictEqual(new Set(ids).size, ids.length, "ids are unique (the same path in both groups)");
+  console.log("ok - the Uncommitted view: repositories, Staged/Changes groups, folders, files, read-only rows");
+}

@@ -1,0 +1,162 @@
+// Uncommitted work as the Log's switch and the Uncommitted view show it. Pure: no vscode import.
+import { fileTree, type TreeNode } from "./fileTree";
+import type { FileChange } from "./types";
+
+export interface RepoWork {
+  repoId: string;
+  root: string;
+  name: string;
+  head: string | null;
+  /** What a commit now would contain: the index against the last commit. */
+  staged: FileChange[];
+  /** What is not staged yet: the working tree against the index, untracked files included. */
+  changes: FileChange[];
+  /** Newest modification time (ms) of a changed file; null when unknown. */
+  editedAt: number | null;
+  /** VS Code's Git has the repository open: it can stage, discard and commit there. */
+  canStage: boolean;
+}
+export type Group = "staged" | "changes";
+export type DiffSide = "head" | "index" | "worktree" | "empty";
+export const NO_UNCOMMITTED_VIEW = "No uncommitted changes in the ticked repositories.";
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** Each changed path once, though a file staged and changed again is in both halves. */
+export function distinctPaths(w: RepoWork): string[] {
+  return [...new Set([...w.staged, ...w.changes].map((f) => f.path))].sort();
+}
+
+export function totals(works: readonly RepoWork[]): { files: number; repos: number; added: number; deleted: number } {
+  let files = 0;
+  let repos = 0;
+  let added = 0;
+  let deleted = 0;
+  for (const w of works) {
+    const n = distinctPaths(w).length;
+    if (n === 0) continue;
+    repos++;
+    files += n;
+    for (const f of [...w.staged, ...w.changes]) {
+      added += f.added ?? 0;
+      deleted += f.deleted ?? 0;
+    }
+  }
+  return { files, repos, added, deleted };
+}
+
+/** Distinct files by kind: new (added or untracked), deleted, modified (the rest). */
+export function meter(w: RepoWork): { added: number; modified: number; deleted: number } {
+  const kind = new Map<string, "added" | "modified" | "deleted">();
+  for (const f of [...w.staged, ...w.changes]) {
+    const k = f.status === "A" || f.untracked ? "added" : f.status === "D" ? "deleted" : "modified";
+    if (!kind.has(f.path) || k !== "modified") kind.set(f.path, k);
+  }
+  const out = { added: 0, modified: 0, deleted: 0 };
+  for (const k of kind.values()) out[k]++;
+  return out;
+}
+
+export function tags(w: RepoWork): string[] {
+  const out: string[] = [];
+  if (w.staged.length > 0) out.push(w.changes.length === 0 ? "all staged" : `${w.staged.length} staged`);
+  const news = w.changes.filter((f) => f.untracked).length;
+  if (news > 0) out.push(`${news} new`);
+  return out;
+}
+
+export function previewLabel(w: RepoWork): string {
+  const paths = distinctPaths(w);
+  return `${plural(paths.length, "file")} · ${paths.join(", ")}`;
+}
+
+export function editedLabel(nowMs: number, editedAt: number | null): string {
+  if (editedAt === null) return "";
+  const m = Math.floor((nowMs - editedAt) / 60_000);
+  if (m < 1) return "edited just now";
+  if (m < 60) return `edited ${m}m ago`;
+  if (m < 48 * 60) return `edited ${Math.floor(m / 60)}h ago`;
+  return `edited ${Math.floor(m / 1440)}d ago`;
+}
+
+/** The diff a row opens, as Source Control: Staged is HEAD ↔ index; Changes is index (or HEAD) ↔ file. */
+export function diffFor(group: Group, f: FileChange, alsoStaged: boolean): { left: DiffSide; right: DiffSide } {
+  const isNew = f.status === "A" || f.untracked === true;
+  if (group === "staged") return { left: isNew ? "empty" : "head", right: f.status === "D" ? "empty" : "index" };
+  if (f.untracked) return { left: "empty", right: "worktree" };
+  return { left: alsoStaged ? "index" : "head", right: f.status === "D" ? "empty" : "worktree" };
+}
+
+export function discardPrompt(repoName: string, files: readonly FileChange[], one: boolean): { message: string; detail: string; button: string } {
+  const news = files.filter((f) => f.untracked).length;
+  const message = one ? `Discard changes in "${files[0].path}"?` : `Discard changes in ${plural(files.length, "file")} in ${repoName}?`;
+  let extra = "";
+  if (news > 0) extra = one || news === files.length ? (news === 1 ? " This deletes the new file." : " This deletes the new files.") : ` ${plural(news, "new file")} will be deleted.`;
+  return { message, detail: `This can't be undone.${extra}`, button: one ? "Discard File" : "Discard All" };
+}
+
+export type CommitStep = "message" | "commitAll" | "askStageAll" | "nothing";
+
+/** What Commit… does first, as VS Code's own commit: staged files, else git.enableSmartCommit or ask. */
+export function commitStep(staged: number, changes: number, smartCommit: boolean): CommitStep {
+  if (staged > 0) return "message";
+  if (changes === 0) return "nothing";
+  return smartCommit ? "commitAll" : "askStageAll";
+}
+
+export interface UNode {
+  kind: "repo" | "group" | "folder" | "file";
+  /** Stable across re-renders so VS Code keeps expand state. */
+  id: string;
+  label: string;
+  description: string;
+  tooltip: string;
+  /** Menus key off it: repo.stageable|readonly, group.staged|changes[.readonly], file.staged|changes[.untracked][.readonly]. */
+  contextValue: string;
+  repoId: string;
+  group?: Group;
+  path?: string;
+  file?: FileChange;
+  children: UNode[];
+}
+
+function fileStat(f: FileChange): string {
+  if (f.untracked) return "new";
+  if (f.added === null) return "binary";
+  const counts = `+${f.added} −${f.deleted}`;
+  return f.oldPath ? `← ${f.oldPath}  ${counts}` : counts;
+}
+
+function describeTree(nodes: readonly TreeNode[], parent: string, base: string, w: RepoWork, group: Group): UNode[] {
+  const ro = w.canStage ? "" : ".readonly";
+  return nodes.map((n): UNode => {
+    if (n.kind === "folder") {
+      const path = parent ? `${parent}/${n.name}` : n.name;
+      return { kind: "folder", id: `${base}/d:${path}`, label: n.name, description: String(n.count), tooltip: path, contextValue: "folder", repoId: w.repoId, group, path, children: describeTree(n.children, path, base, w, group) };
+    }
+    const f = n.file;
+    return {
+      kind: "file", id: `${base}/f:${f.path}`, label: n.name, description: fileStat(f), tooltip: f.oldPath ? `${f.oldPath} → ${f.path}` : f.path,
+      contextValue: `file.${group}${f.untracked ? ".untracked" : ""}${ro}`, repoId: w.repoId, group, path: f.path, file: f, children: [],
+    };
+  });
+}
+
+/** Everything the Uncommitted view shows, as plain data. The VS Code adapter only maps it to TreeItems. */
+export function describeUncommitted(works: readonly RepoWork[]): { message: string | undefined; roots: UNode[] } {
+  const roots = works.filter((w) => distinctPaths(w).length > 0).map((w): UNode => {
+    const ro = w.canStage ? "" : ".readonly";
+    const groups: UNode[] = [];
+    for (const [group, list, label] of [["staged", w.staged, "Staged"], ["changes", w.changes, "Changes"]] as const) {
+      if (list.length === 0) continue;
+      const id = `${w.repoId}/${group}`;
+      groups.push({ kind: "group", id, label, description: String(list.length), tooltip: `${label} in ${w.name}`, contextValue: `group.${group}${ro}`, repoId: w.repoId, group, children: describeTree(fileTree(list), "", id, w, group) });
+    }
+    return {
+      kind: "repo", id: w.repoId, label: w.name, description: plural(distinctPaths(w).length, "file"),
+      tooltip: w.canStage ? `${w.name}: uncommitted changes` : `${w.name}: staging needs VS Code's Git to have this repository open.`,
+      contextValue: w.canStage ? "repo.stageable" : "repo.readonly", repoId: w.repoId, children: groups,
+    };
+  });
+  return { message: roots.length === 0 ? NO_UNCOMMITTED_VIEW : undefined, roots };
+}
