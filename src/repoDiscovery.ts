@@ -8,7 +8,16 @@ import type { Repo } from "./types";
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
-interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> }; status?(): Promise<void> }
+interface GitRepository {
+  rootUri: vscode.Uri;
+  state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> };
+  status?(): Promise<void>;
+  // Absolute file paths; in vscode.git's API v1 since before 1.85.
+  add?(paths: string[]): Promise<void>;
+  revert?(paths: string[]): Promise<void>;
+  clean?(paths: string[]): Promise<void>;
+  commit?(message: string, opts?: { all?: boolean }): Promise<void>;
+}
 
 /** A repository's state change in vscode.git. */
 export interface RepoStateChange {
@@ -76,6 +85,45 @@ export class RepoDiscovery implements vscode.Disposable {
    * Its view of the repository can lag a change made in a terminal (a remote just added, an
    * upstream just set): it reads the repository again first.
    */
+  /**
+   * The repository as VS Code's Git has it, read again first (its view can lag a change made in
+   * a terminal). Stage, Unstage, Discard and Commit go through it, so Source Control stays in step.
+   */
+  private async gitRepoFor(root: string): Promise<GitRepository> {
+    const repo = this.vsCodeGitRepo(root);
+    if (!repo) throw new Error("VS Code's Git does not have this repository open");
+    await repo.status?.();
+    return repo;
+  }
+
+  private abs(root: string, paths: readonly string[]): string[] {
+    return paths.map((p) => path.join(root, ...p.split("/")));
+  }
+
+  /** git add, through VS Code's Git. Paths are repository-relative, as git prints them. */
+  async stage(root: string, paths: string[]): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.add!(this.abs(root, paths));
+  }
+
+  /** Unstage (git restore --staged), through VS Code's Git. */
+  async unstage(root: string, paths: string[]): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.revert!(this.abs(root, paths));
+  }
+
+  /** Discard working-tree changes (untracked files are deleted), through VS Code's Git. */
+  async discard(root: string, paths: string[]): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.clean!(this.abs(root, paths));
+  }
+
+  /** Commit the staged files (or, with `all`, every change), through VS Code's Git. */
+  async commit(root: string, message: string, all: boolean): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.commit!(message, all ? { all: true } : undefined);
+  }
+
   async pullWithVsCodeGit(root: string): Promise<void> {
     const repo = this.vsCodeGitRepo(root);
     if (!repo) throw new Error("VS Code's Git does not have this repository open");
