@@ -571,6 +571,23 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   /** Each repository's distance from its upstream, for the Repositories pane's ↓/↑ badge. */
   private sync = new Map<string, AheadBehind>();
 
+  private readonly scopeChanged = new vscode.EventEmitter<void>();
+  /** The ticked repositories changed (the Compare tab reads what it lacks). */
+  readonly onDidChangeScope = this.scopeChanged.event;
+  private readonly refsChanged = new vscode.EventEmitter<string | undefined>();
+  /** Branches moved: in one repository (its id), or in every one (undefined, after Fetch All). */
+  readonly onDidChangeRefs = this.refsChanged.event;
+
+  /** The repositories ticked in the Repo List, in its order. */
+  tickedRepos(): Repo[] {
+    return selectRepos(this.filter, this.repos);
+  }
+
+  /** The Branch box's name ("" when empty): Compare with… starts from it. */
+  get branchBox(): string {
+    return this.filter.branch;
+  }
+
   /**
    * Reads ahead/behind for these repositories (every one by default): one git rev-list each,
    * from local refs. Posted only when a count changed.
@@ -600,7 +617,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * when asked. Never prompts (GIT_TERMINAL_PROMPT=0); a fetch that hangs stops after a minute.
    */
   fetchAll(): Promise<{ fetched: number; failed: string[] }> {
-    this.fetching ??= this.runFetchAll().finally(() => (this.fetching = undefined));
+    this.fetching ??= this.runFetchAll().finally(() => {
+      this.fetching = undefined;
+      this.refsChanged.fire(undefined);
+    });
     return this.fetching;
   }
 
@@ -680,6 +700,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     void this.deps.uncommitted.readRepo(repo.id);
     await this.reload();
     await this.readSync(new Set([repo.id]));
+    this.refsChanged.fire(repo.id);
   }
 
   /** Repositories being pulled: a second click on one waits for nothing and does nothing. */
@@ -741,6 +762,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (!headMoved) return;
     const repo = this.innermost(root)?.r;
     if (!repo) return;
+    this.refsChanged.fire(repo.id);
     this.syncTouched.add(repo.id);
     this.syncSoon();
   }
@@ -888,6 +910,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private syncScope(): void {
     const p = this.filter.path === undefined ? undefined : normalizePath(this.filter.path);
     this.deps.uncommitted.setScope({ repos: selectRepos(this.filter, this.repos), pathspecs: p ? [pathspecOf(p)] : [] });
+    this.scopeChanged.fire();
   }
 
   /** git, counted in the spawn log (the uncommitted store runs through it too). */
@@ -1068,17 +1091,17 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** Opens the diff; returns its modified-side URI (as a string), or undefined when refused. */
-  async openDiff(a: OpenDiffArgs, preserveFocus = false): Promise<string | undefined> {
+  async openDiff(a: OpenDiffArgs, preserveFocus = false, title?: string): Promise<string | undefined> {
     const repo = this.repos.find((r) => r.id === a?.repoId);
     // Refs come from the webview or a command argument: validate before they reach git.
     if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
     if (a.sha === UNCOMMITTED) return this.openWorkingDiff(repo, a, preserveFocus);
     const status = typeof a.status === "string" ? a.status : undefined;
     const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, { path: a.path, oldPath: a.oldPath, status });
-    const title = `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
+    const label = title ?? `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)}) — ${repo.name}`;
     // A panel view is not an editor group, so this always opens in the editor area above.
     const modified = toUri(after);
-    await vscode.commands.executeCommand("vscode.diff", toUri(before), modified, title, { preview: true, preserveFocus });
+    await vscode.commands.executeCommand("vscode.diff", toUri(before), modified, label, { preview: true, preserveFocus });
     return modified.toString();
   }
 
@@ -1181,6 +1204,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.syncSoon.cancel();
     this.reloadSoon.cancel();
     this.reposChangedSoon.cancel();
+    this.scopeChanged.dispose();
+    this.refsChanged.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

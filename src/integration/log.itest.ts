@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import type { OpenDiffArgs } from "../changesTree";
 import type { LogSnapshot } from "../logView";
 import type { WebviewMessage } from "../protocol";
+import type { Pair } from "../compareModel";
 import { UNCOMMITTED, type Commit } from "../types";
 import { EXPECTED_ORDER } from "./fixture";
 
@@ -1146,5 +1147,110 @@ describe("Polylog panel", () => {
     await vscode.commands.executeCommand("polylog.changes.focus");
     s = await until("shown again by the user", (x) => x.changesVisible);
     assert.ok(s.changes.items.some((i) => i.includes("client.ts")));
+  });
+
+  describe("Compare Branches", () => {
+    const os = require("os") as typeof import("os");
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const store = () => vscode.commands.executeCommand<{ pair: Pair | null; reading: boolean; rows: string[] }>("polylog._itest.compareStore");
+    const pick = (p: Pair | null) => vscode.commands.executeCommand("polylog._itest.comparePick", p);
+    const git = (root: string, args: string[], input?: string) => cp.execFileSync("git", args, { cwd: root, input, env: { ...process.env, ...ID } }).toString().trim();
+    const ID = { GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    let n = 0;
+    /** A commit on top of `parent` with these files, made without touching the working tree or the checked-out branch. */
+    function commitOn(root: string, parent: string | null, files: Record<string, string>, message: string, time: number): string {
+      const idx = path.join(os.tmpdir(), `polylog-itest-index-${process.pid}-${n++}`);
+      const env = { ...process.env, ...ID, GIT_INDEX_FILE: idx, GIT_AUTHOR_DATE: `${time} +0000`, GIT_COMMITTER_DATE: `${time} +0000` };
+      const run = (args: string[], input?: string) => cp.execFileSync("git", args, { cwd: root, input, env }).toString().trim();
+      try {
+        run(parent ? ["read-tree", parent] : ["read-tree", "--empty"]);
+        for (const [name, content] of Object.entries(files)) run(["update-index", "--add", "--cacheinfo", `100644,${run(["hash-object", "-w", "--stdin"], content)},${name}`]);
+        return run(["commit-tree", run(["write-tree"]), ...(parent ? ["-p", parent] : []), "-m", message]);
+      } finally {
+        fs.rmSync(idx, { force: true });
+      }
+    }
+    const T = 1758001000;
+    let roots: Record<string, string>;
+
+    before(async () => {
+      const s = await until("six rows", (x) => x.rows.length === 6);
+      roots = Object.fromEntries(s.repos.map((r) => [r.name, r.root]));
+      // acme-api: ◀ two (one a cherry-pick), ▶ two (its twin and a hotfix). acme-web: ◀ one. acme-libs: the same commit on both.
+      const api = roots["acme-api"];
+      const apiBase = git(api, ["rev-parse", "HEAD"]);
+      const rel1 = commitOn(api, apiBase, { "limit.go": "package limit\n" }, "feat: rate limit per client", T);
+      const rel2 = commitOn(api, rel1, { "retry.go": "package retry\n" }, "fix: retry on 503", T + 10);
+      const prod1 = commitOn(api, apiBase, { "retry.go": "package retry\n" }, "fix: retry on 503", T + 20);
+      const prod2 = commitOn(api, prod1, { "timeout.go": "package timeout\n", "limit.go": "package limit // prod\n" }, "hotfix: raise upstream timeout", T + 30);
+      git(api, ["update-ref", "refs/heads/release-1.4", rel2]);
+      git(api, ["update-ref", "refs/heads/prod", prod2]);
+      const web = roots["acme-web"];
+      const webBase = git(web, ["rev-parse", "HEAD"]);
+      git(web, ["update-ref", "refs/heads/release-1.4", commitOn(web, webBase, { "billing.ts": "export {};\n" }, "feat: billing page", T + 40)]);
+      git(web, ["update-ref", "refs/heads/prod", webBase]);
+      git(web, ["update-ref", "refs/heads/lone", commitOn(web, null, { "README.md": "lone\n" }, "chore: unrelated history", T + 50)]);
+      const libs = roots["acme-libs"];
+      git(libs, ["update-ref", "refs/heads/release-1.4", "HEAD"]);
+      git(libs, ["update-ref", "refs/heads/prod", "HEAD"]);
+    });
+
+    after(async () => {
+      await pick(null);
+      for (const root of Object.values(roots)) for (const b of ["release-1.4", "prod", "lone"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
+      await send({ type: "filter", filter: ALL });
+    });
+
+    it("counts each side in every ticked repository; identical and missing ones are not listed", async () => {
+      await pick({ left: "release-1.4", right: "prod" });
+      const s = await waitFor("all read", async () => {
+        const x = await store();
+        return !x.reading && x.rows.length === 3 ? x : undefined;
+      });
+      assert.ok(s.rows.includes("acme-api ◀1 ▶1 =1"), s.rows.join(" | "));
+      assert.ok(s.rows.includes("acme-web ◀1 ▶0 =0"));
+      assert.ok(s.rows.includes("acme-libs identical"));
+      // A branch one repository lacks.
+      cp.spawnSync("git", ["update-ref", "-d", "refs/heads/prod"], { cwd: roots["acme-libs"] });
+      await vscode.commands.executeCommand("polylog._itest.compareRefresh");
+      await waitFor("acme-libs missing", async () => ((await store()).rows.includes("acme-libs missing") ? true : undefined));
+      git(roots["acme-libs"], ["update-ref", "refs/heads/prod", "HEAD"]);
+    });
+
+    it("two branches with no shared history say so", async () => {
+      await pick({ left: "lone", right: "prod" });
+      const s = await waitFor("read", async () => {
+        const x = await store();
+        return !x.reading && x.rows.some((r) => r.startsWith("acme-web")) ? x : undefined;
+      });
+      assert.ok(s.rows.includes("acme-web no common history"), s.rows.join(" | "));
+      assert.ok(s.rows.includes("acme-api missing"));
+    });
+
+    it("unticking a repository drops it at once, even while its read is in flight", async () => {
+      const s0 = await snapshot();
+      const api = s0.repos.find((r) => r.name === "acme-api")!;
+      const others = s0.repos.filter((r) => r.id !== api.id).map((r) => r.id);
+      const pending = pick({ left: "release-1.4", right: "prod" });
+      await send({ type: "filter", filter: { ...ALL, repoIds: others } });
+      await pending;
+      const s = await waitFor("read", async () => {
+        const x = await store();
+        return !x.reading ? x : undefined;
+      });
+      assert.ok(!s.rows.some((r) => r.startsWith("acme-api")), s.rows.join(" | "));
+      await send({ type: "filter", filter: ALL });
+      await waitFor("acme-api back", async () => ((await store()).rows.includes("acme-api ◀1 ▶1 =1") ? true : undefined));
+    });
+
+    it("a name that is not a branch never reaches git", async () => {
+      const before = (await snapshot()).spawnLog.length;
+      await pick({ left: "-x", right: "prod" });
+      await pick({ left: "a..b", right: "prod" });
+      const after = await snapshot();
+      assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
+    });
   });
 });

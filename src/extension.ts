@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
+import { validPair } from "./compareModel";
+import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
 import { HIDE_REPOS_KEY, LogView } from "./logView";
@@ -34,6 +36,11 @@ export function activate(context: vscode.ExtensionContext): void {
   });
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted });
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id) });
+  const compare = new CompareStore({
+    run: (root, args, signal) => log.countedRun(root, args, signal),
+    concurrency: () => vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16),
+    repos: () => log.tickedRepos(),
+  });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
@@ -67,6 +74,8 @@ export function activate(context: vscode.ExtensionContext): void {
     discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.headMoved, e.initial)),
     discovery.onDidChangeWatched(() => uncommittedView.refresh()),
     log.onDidChangeSync(() => uncommittedView.refresh()),
+    log.onDidChangeScope(() => void compare.scopeChanged()),
+    compare,
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
     uncommittedView,
@@ -117,6 +126,11 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.compareStore", () => ({
+        pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
+      })),
+      vscode.commands.registerCommand("polylog._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
+      vscode.commands.registerCommand("polylog._itest.compareRefresh", () => compare.refresh()),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
     );
