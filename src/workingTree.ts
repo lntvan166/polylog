@@ -45,7 +45,12 @@ export interface WorkEntry {
   status: ChangeStatus;
   untracked?: boolean;
   conflicted?: boolean;
+  /** Staged side only: the index's blob id (porcelain v2's hI). */
+  blob?: string;
 }
+
+/** An index blob id, unless it is the null id (a deletion staged). */
+const blobOf = (oid: string | undefined): { blob?: string } => (oid && /^[0-9a-f]{40,64}$/.test(oid) && !/^0+$/.test(oid) ? { blob: oid } : {});
 
 const letter = (c: string): ChangeStatus => (c === "A" ? "A" : c === "D" ? "D" : c === "T" ? "T" : "M");
 
@@ -67,13 +72,13 @@ export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: Wor
     } else if (kind === "1") {
       const [x, y] = parts[1];
       const path = parts.slice(8).join(" ");
-      if (x !== ".") staged.push({ path, status: letter(x) });
+      if (x !== ".") staged.push({ path, status: letter(x), ...blobOf(parts[7]) });
       if (y !== ".") changes.push({ path, status: letter(y) });
     } else if (kind === "2") {
       const [x, y] = parts[1];
       const path = parts.slice(9).join(" ");
       const oldPath = tokens[++i]; // the original name is the next NUL field
-      if (x !== ".") staged.push({ path, oldPath, status: x === "C" ? "C" : "R" });
+      if (x !== ".") staged.push({ path, oldPath, status: x === "C" ? "C" : "R", ...blobOf(parts[7]) });
       if (y !== ".") changes.push({ path, status: letter(y) });
     } else if (kind === "u") {
       changes.push({ path: parts.slice(10).join(" "), status: "M", conflicted: true });
@@ -96,6 +101,6 @@ export function unstagedNumstatArgs(pathspecs: readonly string[]): string[] {
 export function workFiles(entries: readonly WorkEntry[], counts: ReadonlyMap<string, { added: number | null; deleted: number | null }>): FileChange[] {
   return entries.map((e) => {
     const c = counts.get(e.path) ?? { added: 0, deleted: 0 };
-    return { path: e.path, ...(e.oldPath ? { oldPath: e.oldPath } : {}), added: c.added, deleted: c.deleted, status: e.status, ...(e.untracked ? { untracked: true } : {}) };
+    return { path: e.path, ...(e.oldPath ? { oldPath: e.oldPath } : {}), added: c.added, deleted: c.deleted, status: e.status, ...(e.untracked ? { untracked: true } : {}), ...(e.blob ? { blob: e.blob } : {}) };
   });
 }

@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
+import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
 import type { FileChange } from "./types";
 
 const H = "e".repeat(40);
@@ -28,4 +28,22 @@ const H = "e".repeat(40);
   const gone = mergeLevel("", [{ path: "README.md", kind: "file" }], [{ path: "old/a.ts", status: "D", added: 0, deleted: 3 }]);
   assert.deepStrictEqual(gone.folders.map((f) => [f.name, f.changedCount]), [["old", 1]]);
   console.log("ok - All Files: one folder's listing merged with the commit's changes");
+}
+{
+  // All Files: folder reads run a few at a time, and one folder is read once even when asked twice.
+  (async () => {
+    const lim = new Limiter(2);
+    let running = 0, most = 0, calls = 0;
+    const job = (k: string) => lim.run(k, async () => {
+      calls++; running++; most = Math.max(most, running);
+      await new Promise((r) => setTimeout(r, 10));
+      running--;
+      return k;
+    });
+    const out = await Promise.all(["a", "b", "c", "d", "a", "b"].map(job));
+    assert.deepStrictEqual(out, ["a", "b", "c", "d", "a", "b"]);
+    assert.strictEqual(most, 2, "never more than the limit at once");
+    assert.strictEqual(calls, 4, "a folder asked for twice while its read runs is read once");
+    console.log("ok - All Files reads folders a few at a time, each once");
+  })().catch((e) => { console.error(e); process.exit(1); });
 }

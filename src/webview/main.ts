@@ -12,7 +12,7 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
 import { WorkList } from "./workList";
 
 const vscode = acquireVsCodeApi();
@@ -128,6 +128,7 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
+      if (m.logMode !== mode) setMode(m.logMode);
       state.history = m.history;
       modebar.hidden = !m.history;
       modeHistory.hidden = !m.history;
@@ -254,7 +255,7 @@ function render(): void {
   tabs.uncommitted.setAttribute("aria-label", count ? `Uncommitted, ${count} ${count === "1" ? "file" : "files"}` : "Uncommitted");
   workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
   if (mode === "uncommitted") {
-    workList.update(work.rows, names, accents);
+    workList.update(work.rows, names, accents, behind);
     empty.render(work.rows.length === 0 ? { title: "Nothing uncommitted", body: "Nothing uncommitted in the ticked repositories." } : null);
     return;
   }
@@ -277,8 +278,10 @@ document.addEventListener("keydown", (e) => {
   const find = e.key.toLowerCase() === "f" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === "/" && !typing)) {
     e.preventDefault();
-    searchEl.focus();
-    searchEl.select();
+    // The search box is hidden on the Uncommitted side; the Path box filters both.
+    const box = mode === "uncommitted" ? byId<HTMLInputElement>("path") : searchEl;
+    box.focus();
+    box.select();
     return;
   }
   if (e.key !== "Escape") return;
@@ -305,7 +308,7 @@ document.addEventListener("keydown", (e) => {
     setFilter({ ...state.filter, branch: "" });
     return;
   }
-  listEl.focus();
+  byId(escapeTarget(mode)).focus();
 });
 
 render();

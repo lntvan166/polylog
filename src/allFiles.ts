@@ -54,3 +54,34 @@ export function mergeLevel(dir: string, listed: readonly { path: string; kind: "
   }
   return { folders: [...folders.values()].sort(byName), files: [...files.values()].sort(byName) };
 }
+
+/**
+ * All Files' folder reads: at most `limit` git processes at once (a commit can touch hundreds
+ * of folders, all of them open), and one read per folder even when asked for twice meanwhile.
+ */
+export class Limiter {
+  private running = 0;
+  private readonly queue: (() => void)[] = [];
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+
+  constructor(private readonly limit: number) {}
+
+  run<T>(key: string, job: () => Promise<T>): Promise<T> {
+    const same = this.inFlight.get(key) as Promise<T> | undefined;
+    if (same) return same;
+    const p = new Promise<T>((resolve, reject) => {
+      const start = () => {
+        this.running++;
+        job().then(resolve, reject).finally(() => {
+          this.running--;
+          this.inFlight.delete(key);
+          this.queue.shift()?.();
+        });
+      };
+      if (this.running < Math.max(1, this.limit)) start();
+      else this.queue.push(start);
+    });
+    this.inFlight.set(key, p);
+    return p;
+  }
+}

@@ -1,10 +1,11 @@
 import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor } from "./changesModel";
+import { errorLine } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { commitStep, describeUncommitted, diffFor, discardPrompt, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -13,7 +14,12 @@ interface Target { repoId: string; group?: Group; path?: string }
 /** The accent each repository's chip has in the Log, as a theme color id (webview/styles.css). */
 const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
 const TREE_SCHEME = "polylog-tree";
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
+function gitMessage(e: unknown): string {
+  const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
+  if (typeof stderr === "string" && stderr.trim() !== "") return errorLine(stderr);
+  return e instanceof Error ? e.message : String(e);
+}
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /**
@@ -50,6 +56,8 @@ export interface UncommittedViewDeps {
   accents(): ReadonlyMap<string, number>;
   /** A commit landed: the Log reads its first page again. */
   committed(): void;
+  /** The repository has commits to pull (its row offers Pull). */
+  behind(repoId: string): boolean;
 }
 
 /** The native Uncommitted view: a thin adapter from uncommittedModel's descriptors to TreeItems. */
@@ -66,6 +74,18 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   private message: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   readonly ask = new Ask();
+  /** The last error shown (integration test seam). */
+  private lastError: string | undefined;
+
+  private showError(text: string): void {
+    this.lastError = text;
+    void vscode.window.showErrorMessage(text);
+  }
+
+  /** Re-draw (vscode.git opened or closed a repository, ↓/↑ moved). */
+  refresh(): void {
+    this.render();
+  }
 
   constructor(private readonly deps: UncommittedViewDeps) {
     this.view = vscode.window.createTreeView("polylog.uncommitted", { treeDataProvider: this, showCollapseAll: true });
@@ -101,12 +121,12 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   /** "label | description", indented, repo rows with their contextValue (integration test seam). */
-  snapshot(): { message: string | undefined; items: string[] } {
+  snapshot(): { message: string | undefined; items: string[]; lastError: string | undefined } {
     const walk = (nodes: UNode[], depth: number): string[] => nodes.flatMap((n) => [
       `${"  ".repeat(depth)}${n.label} | ${n.description}${n.kind === "repo" ? ` [${n.contextValue}]` : ""}`,
       ...walk(n.children, depth + 1),
     ]);
-    return { message: this.message, items: walk(this.roots, 0) };
+    return { message: this.message, items: walk(this.roots, 0), lastError: this.lastError };
   }
 
   private uriFor(n: UNode): vscode.Uri {
@@ -130,7 +150,8 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     item.id = n.id;
     item.description = n.description;
     item.tooltip = n.tooltip;
-    item.contextValue = n.contextValue;
+    // A repository with commits to pull also offers Pull (".behind").
+    item.contextValue = n.kind === "repo" && this.deps.behind(n.repoId) ? `${n.contextValue}.behind` : n.contextValue;
     if (n.kind === "repo") {
       const accent = this.deps.accents().get(n.repoId) ?? 0;
       item.iconPath = new vscode.ThemeIcon("repo", new vscode.ThemeColor(ACCENT_COLORS[accent % ACCENT_COLORS.length]));
@@ -164,7 +185,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     try {
       await run(r.work.root, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
     } catch (e) {
-      void vscode.window.showErrorMessage(`Polylog could not ${verb} ${r.one ? r.files[0].path : plural(r.files.length, "file")} in ${r.work.name}: ${messageOf(e)}.`);
+      this.showError(`Polylog could not ${verb} ${r.one ? r.files[0].path : plural(r.files.length, "file")} in ${r.work.name}: ${gitMessage(e)}.`);
     }
     await this.deps.store.readRepo(r.work.repoId);
   }
@@ -194,14 +215,16 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     const step = commitStep(work.staged.length, work.changes.length, smart);
     if (step === "nothing") return;
     if (step === "askStageAll" && !(await this.ask.warning(`There are no staged changes in ${work.name}.`, "Stage all changes and commit them?", "Stage All and Commit"))) return;
-    const all = step !== "message";
-    const n = all ? new Set(work.changes.map((f) => f.path)).size : work.staged.length;
+    // Commit all, as VS Code's own smart commit: git.smartCommitChanges "tracked" leaves new files out.
+    const scope = vscode.workspace.getConfiguration("git").get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
+    const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
+    const n = all ? commitCount(work, scope) : work.staged.length;
     const message = await this.ask.input(`Commit message for ${work.name}`, `Message (${plural(n, "file")} ${all ? "to commit" : "staged"})`);
     if (!message || message.trim() === "") return;
     try {
       await this.deps.discovery.commit(work.root, message, all);
     } catch (e) {
-      void vscode.window.showErrorMessage(`Polylog could not commit ${work.name}: ${messageOf(e)}.`);
+      this.showError(`Polylog could not commit ${work.name}: ${gitMessage(e)}.`);
     }
     await this.deps.store.readRepo(work.repoId);
     this.deps.committed();
@@ -230,8 +253,12 @@ const revisionUri = (r: RevisionRef) => vscode.Uri.from({ scheme: SCHEME, ...enc
 function side(work: RepoWork, file: FileChange, s: DiffSide, before: boolean): vscode.Uri {
   const at = before ? file.oldPath ?? file.path : file.path;
   if (s === "worktree") return vscode.Uri.file(path.join(work.root, ...at.split("/")));
-  const ref = s === "head" ? work.head : s === "index" ? INDEX : null;
-  return revisionUri({ root: work.root, ref, path: at });
+  if (s === "index") {
+    // The staged blob in the URI: a new staged version is a new document, never a stale one.
+    const blob = file.blob ?? work.staged.find((f) => f.path === file.path)?.blob;
+    return revisionUri({ root: work.root, ref: INDEX, path: at, ...(blob ? { blob } : {}) });
+  }
+  return revisionUri({ root: work.root, ref: s === "head" ? work.head : null, path: at });
 }
 
 /** Opens one uncommitted file's diff (the Uncommitted view, and the Log's Uncommitted side). */

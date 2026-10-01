@@ -455,6 +455,160 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("the Uncommitted view, edge cases: both halves, staged diffs, group discard, smart commit, hooks, drafts", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root, env: who }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[]; lastError?: string }>("polylog._itest.uncommitted");
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
+    const write = (f: string, text: string) => fs.writeFileSync(path.join(web.root, f), text);
+    const gitCfg = () => vscode.workspace.getConfiguration("git");
+    const api = (vscode.extensions.getExtension("vscode.git")!.exports as { getAPI(v: 1): { getRepository(u: vscode.Uri): { inputBox: { value: string } } | null } }).getAPI(1);
+    const rightText = async () => {
+      const t = await waitFor("a diff", () => { const i = vscode.window.tabGroups.activeTabGroup.activeTab?.input; return i instanceof vscode.TabInputTextDiff ? i : undefined; });
+      return (await vscode.workspace.openTextDocument(t.modified)).getText();
+    };
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      // Review Focus 1: staged, then edited again: in both groups; the Staged diff shows the staged text, fresh after each stage.
+      write("client.ts", "export const ok = 1;\n");
+      git("add", "client.ts");
+      write("client.ts", "export const ok = 2;\n");
+      await send({ type: "refresh" });
+      await seen("client.ts in both groups", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 1"));
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
+      assert.strictEqual(await rightText(), "export const ok = 1;\n", "Staged: the index's version");
+      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      await seen("one Staged row, no Changes row", (i) => i.includes("  Staged | 1") && !i.includes("  Changes | 1"));
+      // The first diff is still open: a stale index document would show here.
+      await vscode.commands.executeCommand("polylog.openUncommittedDiff", { repoId: web.id, group: "staged", path: "client.ts" });
+      assert.strictEqual(await rightText(), "export const ok = 2;\n", "staged again: the new index version, not a stale document");
+      await closeEditors();
+
+      // Review Focus 2: Discard a group with new files in it.
+      write("one.md", "1\n");
+      write("two.md", "2\n");
+      await send({ type: "refresh" });
+      await seen("two new files", (i) => i.some((x) => x.includes("one.md")) && i.some((x) => x.includes("two.md")));
+      await answer("Discard All");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes" });
+      assert.ok(!fs.existsSync(path.join(web.root, "one.md")) && !fs.existsSync(path.join(web.root, "two.md")), "both new files deleted");
+
+      // A failing pre-commit hook: git's own words, and the staged files stay staged.
+      const hook = path.join(web.root, ".git", "hooks", "pre-commit");
+      fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
+      await answer("feat: blocked by the hook");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      fs.rmSync(hook);
+      const err = (await view()).lastError ?? "";
+      assert.match(err, /acme hook says no/, `the hook's message (${err})`);
+      assert.deepStrictEqual(git("diff", "--cached", "--name-only"), "client.ts", "still staged");
+      assert.strictEqual(git("rev-parse", "HEAD"), head, "nothing committed");
+
+      // A draft in Source Control's message box survives a commit from Polylog.
+      const repo = api.getRepository(vscode.Uri.file(web.root))!;
+      repo.inputBox.value = "draft: half-written";
+      await answer("feat: committed from Polylog");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: committed from Polylog");
+      assert.strictEqual(repo.inputBox.value, "draft: half-written", "the Source Control draft is kept");
+
+      // Review Focus 3: nothing staged, git.enableSmartCommit on: commit all without asking; smartCommitChanges "tracked" leaves new files out.
+      write("client.ts", "export const ok = 3;\n");
+      write("scratch.md", "scratch\n");
+      await send({ type: "refresh" });
+      await seen("a change and a new file", (i) => i.some((x) => x.includes("scratch.md")) && i.some((x) => x.includes("client.ts")));
+      await gitCfg().update("enableSmartCommit", true, vscode.ConfigurationTarget.Global);
+      await gitCfg().update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.Global);
+      await answer("feat: smart, tracked only");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: smart, tracked only", "no question asked: the only answer was the message");
+      assert.match(git("status", "--porcelain"), /\?\? scratch\.md/, "the new file was left out");
+    } finally {
+      await gitCfg().update("enableSmartCommit", undefined, vscode.ConfigurationTarget.Global);
+      await gitCfg().update("smartCommitChanges", undefined, vscode.ConfigurationTarget.Global);
+      await answer(undefined);
+      await closeEditors();
+      try { fs.rmSync(path.join(web.root, ".git", "hooks", "pre-commit"), { force: true }); } catch { /* gone */ }
+      git("reset", "-q", "--hard", head);
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
+  it("the switch and File History, a re-created webview, the old setting, the Repo menu in the Uncommitted view", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 9;\n");
+    try {
+      await send({ type: "refresh" });
+      await until("acme-web behind the switch", (x) => x.workRows.length === 1);
+      // File History from the Uncommitted side goes back to the Commit list.
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("Uncommitted", (x) => x.logMode === "uncommitted");
+      await vscode.commands.executeCommand("polylog.fileHistory", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
+      let s = await until("File History on the Commit list", (x) => x.history?.path === "client.ts" && x.logMode === "commits");
+      await until("the history's commits in the Changes view", (x) => !x.changes.items[0]?.includes("not committed") && x.rows.length > 0);
+      await send({ type: "exitHistory" });
+      await until("history closed", (x) => x.history === null);
+      // A re-created webview starts on Commits, and so does the host.
+      await send({ type: "logMode", mode: "uncommitted" });
+      await until("Uncommitted again", (x) => x.logMode === "uncommitted");
+      await send({ type: "ready" });
+      s = await until("Commits after a new webview", (x) => x.logMode === "commits");
+      // The removed setting is gone (VS Code refuses to write an unregistered one), and the
+      // Commit list has no Uncommitted row.
+      const props = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.configuration.properties as Record<string, unknown>;
+      assert.strictEqual(props["polylog.showUncommitted"], undefined);
+      await send({ type: "refresh" });
+      s = await until("only commits", (x) => x.rows.length === 6);
+      assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED));
+      // The Repo menu on the Uncommitted view's repository rows.
+      const menus = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
+      for (const c of ["polylog.repoShowOnly", "polylog.repoOpenFolder", "polylog.repoCopyPath", "polylog.repoPull"]) {
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.uncommitted") && m.when.includes("repo")), `${c} on a repository row of the Uncommitted view`);
+      }
+    } finally {
+      cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
+    }
+    await send({ type: "refresh" });
+    await until("nothing uncommitted", (x) => x.workRows.length === 0);
+  });
+
+  it("Stage needs VS Code's Git: a repository it closes turns review only, and back when reopened", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const libs = s0.repos.find((r) => r.name === "acme-libs")!;
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    const row = (suffix: string) => waitFor(`acme-libs ${suffix}`, async () => ((await view()).items.some((i) => i.startsWith("acme-libs") && i.endsWith(suffix)) ? true : undefined));
+    fs.writeFileSync(path.join(libs.root, "package.json"), "{ \"x\": 1 }\n");
+    try {
+      await send({ type: "refresh" });
+      await row("[repo.stageable]");
+      await vscode.commands.executeCommand("git.close", vscode.Uri.file(libs.root));
+      await row("[repo.readonly]");
+      await vscode.commands.executeCommand("git.openRepository", libs.root);
+      await row("[repo.stageable]");
+    } finally {
+      cp.execFileSync("git", ["checkout", "--", "."], { cwd: libs.root });
+    }
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });

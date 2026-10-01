@@ -11,8 +11,8 @@ export class RevisionProvider implements vscode.TextDocumentContentProvider {
     if (rev.ref === null) return ""; // a root commit's "before" side
     const ctl = new AbortController();
     const sub = token.onCancellationRequested(() => ctl.abort());
-    // The index is `:<path>`; a commit is `<sha>:<path>`.
-    const spec = rev.ref === INDEX ? `:${rev.path}` : `${rev.ref}:${rev.path}`;
+    // The index is `:<path>` (or its blob, when known); a commit is `<sha>:<path>`.
+    const spec = rev.ref === INDEX ? (rev.blob ?? `:${rev.path}`) : `${rev.ref}:${rev.path}`;
     try {
       return await this.run(rev.root, ["show", spec], ctl.signal);
     } catch (e) {

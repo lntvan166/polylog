@@ -16,7 +16,8 @@ interface GitRepository {
   add?(paths: string[]): Promise<void>;
   revert?(paths: string[]): Promise<void>;
   clean?(paths: string[]): Promise<void>;
-  commit?(message: string, opts?: { all?: boolean }): Promise<void>;
+  commit?(message: string, opts?: { all?: boolean | "tracked" }): Promise<void>;
+  inputBox?: { value: string };
 }
 
 /** A repository's state change in vscode.git. */
@@ -123,10 +124,19 @@ export class RepoDiscovery implements vscode.Disposable {
     await r.clean!(this.abs(root, paths));
   }
 
-  /** Commit the staged files (or, with `all`, every change), through VS Code's Git. */
-  async commit(root: string, message: string, all: boolean): Promise<void> {
+  /**
+   * Commit the staged files (or, with `all`, every change; "tracked": tracked files only, as
+   * git.smartCommitChanges says), through VS Code's Git. A draft in Source Control's message
+   * box is kept: vscode.git clears it after any commit.
+   */
+  async commit(root: string, message: string, all: boolean | "tracked"): Promise<void> {
     const r = await this.gitRepoFor(root);
-    await r.commit!(message, all ? { all: true } : undefined);
+    const draft = r.inputBox?.value;
+    try {
+      await r.commit!(message, all ? { all } : undefined);
+    } finally {
+      if (r.inputBox && draft !== undefined) r.inputBox.value = draft;
+    }
   }
 
   async pullWithVsCodeGit(root: string): Promise<void> {
@@ -138,6 +148,9 @@ export class RepoDiscovery implements vscode.Disposable {
 
   /** Roots vscode.git reports state changes for. */
   private readonly watched = new Set<string>();
+  private readonly watchedChanged = new vscode.EventEmitter<void>();
+  /** vscode.git opened or closed a repository: which ones can stage has changed. */
+  readonly onDidChangeWatched = this.watchedChanged.event;
 
   /**
    * Whether VS Code's Git reports this repository's changes (it opened the repository, and
@@ -203,12 +216,14 @@ export class RepoDiscovery implements vscode.Disposable {
       if (d) {
         watching.set(r, d);
         this.watched.add(root);
+        this.watchedChanged.fire();
       }
     };
     const unwatch = (r: GitRepository) => {
       watching.get(r)?.dispose();
       watching.delete(r);
       this.watched.delete(r.rootUri.fsPath);
+      this.watchedChanged.fire();
     };
     api.repositories.forEach(watch);
     this.disposables.push(api.onDidOpenRepository(watch), api.onDidCloseRepository(unwatch), {
@@ -238,6 +253,7 @@ export class RepoDiscovery implements vscode.Disposable {
   dispose(): void {
     this.gitFound.dispose();
     this.repoStateChanged.dispose();
+    this.watchedChanged.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

@@ -190,6 +190,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         // replay. (Also sent when a hidden webview is re-created.)
         if (this.firstLoad) await this.firstLoad;
         else await this.loadRepos();
+        // A new webview starts on Commits: the host follows it rather than disagree.
+        this.setLogMode("commits");
         this.postInit();
         // A re-created webview lost the suggestions it had: send them again (only then).
         if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
@@ -265,7 +267,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private postInit(): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, logMode: this.logMode });
   }
 
   /**
@@ -413,6 +415,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } else {
       this.history = history;
     }
+    // File History is a list of commits: the switch goes back to Commits to show it.
+    if (history) this.setLogMode("commits");
     this.persistFilter();
     this.postInit();
     await this.reload();
@@ -711,7 +715,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   private postSync(): void {
     this.post({ type: "sync", byRepo: Object.fromEntries(this.sync) });
+    this.syncChanged.fire();
   }
+
+  private readonly syncChanged = new vscode.EventEmitter<void>();
+  /** A repository's distance from its upstream changed (the Uncommitted view offers Pull). */
+  readonly onDidChangeSync = this.syncChanged.event;
 
   /** Repositories VS Code's Git reported a change in, whose upstream distance is read again. */
   private readonly syncTouched = new Set<string>();
@@ -737,6 +746,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   /** The repository a right-click on the Log's webview (a pane row or a commit row) was on. */
+  /** The repository has commits to pull (as of the last fetch). */
+  isBehind(repoId: string): boolean {
+    return (this.sync.get(repoId)?.behind ?? 0) > 0;
+  }
+
   private contextRepo(arg: unknown): Repo | undefined {
     const id = (arg as { repoId?: unknown } | undefined)?.repoId;
     return typeof id === "string" ? this.repos.find((r) => r.id === id) : undefined;

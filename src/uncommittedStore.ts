@@ -41,7 +41,7 @@ async function newestMtime(root: string, paths: readonly string[]): Promise<numb
 /** Whether a new read shows the same work as the last one (then nobody is told). */
 function sameWork(a: RepoWork | undefined, b: RepoWork): boolean {
   if (a === undefined) return b.staged.length + b.changes.length === 0;
-  return a.head === b.head && a.canStage === b.canStage && a.editedAt === b.editedAt
+  return a.head === b.head && a.editedAt === b.editedAt
     && JSON.stringify(a.staged) === JSON.stringify(b.staged) && JSON.stringify(a.changes) === JSON.stringify(b.changes);
 }
 
@@ -125,13 +125,15 @@ export class UncommittedStore implements vscode.Disposable {
   /** The work of the repositories read so far, in Repo List order. */
   works(): RepoWork[] {
     return this.scope.repos.flatMap((r) => {
-      const w = this.map.get(r.id);
+      const w = this.get(r.id);
       return w ? [w] : [];
     });
   }
 
+  /** canStage is asked now, not remembered: vscode.git opens repositories after the first read. */
   get(repoId: string): RepoWork | undefined {
-    return this.map.get(repoId);
+    const w = this.map.get(repoId);
+    return w && { ...w, canStage: this.deps.canStage(w.root) };
   }
 
   private innermost(fsPath: string): Repo | undefined {

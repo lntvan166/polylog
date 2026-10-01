@@ -271,3 +271,8 @@ export function meterParts(m: { added: number; modified: number; deleted: number
   if (total === 0) return [];
   return (["added", "modified", "deleted"] as const).filter((k) => m[k] > 0).map((kind) => ({ kind, share: m[kind] / total }));
 }
+
+/** Escape returns focus to the list the Log shows (never to a hidden one). */
+export function escapeTarget(mode: "commits" | "uncommitted"): "list" | "worklist" {
+  return mode === "uncommitted" ? "worklist" : "list";
+}

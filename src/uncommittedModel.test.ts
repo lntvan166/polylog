@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -62,4 +62,10 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   const ids = JSON.stringify(d.roots).match(/"id":"[^"]+"/g)!;
   assert.strictEqual(new Set(ids).size, ids.length, "ids are unique (the same path in both groups)");
   console.log("ok - the Uncommitted view: repositories, Staged/Changes groups, folders, files, read-only rows");
+}
+{
+  // Commit all, as VS Code's smart commit: git.smartCommitChanges "tracked" leaves new files out.
+  assert.strictEqual(commitCount(web, "all"), 3, "all: tracked and new files");
+  assert.strictEqual(commitCount(web, "tracked"), 2, "tracked: the new file stays out");
+  console.log("ok - Commit all counts what git.smartCommitChanges will commit");
 }

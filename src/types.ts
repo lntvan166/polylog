@@ -39,6 +39,8 @@ export interface FileChange {
   staged?: boolean;
   /** Uncommitted changes only: a new file git does not track yet. */
   untracked?: boolean;
+  /** Staged uncommitted changes only: the index's blob id. */
+  blob?: string;
 }
 
 export interface RepoFailure {

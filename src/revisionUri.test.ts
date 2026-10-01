@@ -46,3 +46,12 @@ const SHA = "a".repeat(40);
   assert.strictEqual(workingFile(r, [root]), nodePath.join(root, "src", "app.ts"), "Open File works from a staged diff too");
   console.log("ok - an index revision (the staged version) is a polylog: URI like any other");
 }
+{
+  const root = nodePath.resolve("/ws/acme-web");
+  const a = encodeRevision({ root, ref: INDEX, path: "src/app.ts", blob: "a".repeat(40) });
+  const b = encodeRevision({ root, ref: INDEX, path: "src/app.ts", blob: "b".repeat(40) });
+  assert.notStrictEqual(a.query, b.query, "a new staged version is a new URI: VS Code never shows a stale index document");
+  assert.deepStrictEqual(decodeRevision(a.path, a.query), { root, ref: INDEX, path: "src/app.ts", blob: "a".repeat(40) });
+  assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: INDEX, blob: "not-a-sha" })), "only an object id");
+  console.log("ok - the staged version's URI names its blob");
+}

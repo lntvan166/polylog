@@ -2,7 +2,7 @@ import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
   absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange, switchCount, totalsLabel, meterParts,
+  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange, switchCount, totalsLabel, meterParts, escapeTarget,
 } from "./view";
 
 const NOW = 1790164800;
@@ -189,4 +189,9 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.deepStrictEqual(meterParts({ added: 0, modified: 3, deleted: 0 }).map((p) => p.kind), ["modified"], "empty kinds are left out");
   assert.deepStrictEqual(meterParts({ added: 0, modified: 0, deleted: 0 }), []);
   console.log("ok - the switch's badge, totals and change meter");
+}
+{
+  assert.strictEqual(escapeTarget("commits"), "list");
+  assert.strictEqual(escapeTarget("uncommitted"), "worklist", "Escape never sends focus to a hidden list");
+  console.log("ok - Escape focuses the list the Log shows");
 }

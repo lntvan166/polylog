@@ -95,6 +95,11 @@ export function discardPrompt(repoName: string, files: readonly FileChange[], on
   return { message, detail: `This can't be undone.${extra}`, button: one ? "Discard File" : "Discard All" };
 }
 
+/** Files a commit-all takes, as git.smartCommitChanges says: every change, or tracked files only. */
+export function commitCount(w: RepoWork, changes: "all" | "tracked"): number {
+  return new Set(w.changes.filter((f) => changes === "all" || !f.untracked).map((f) => f.path)).size;
+}
+
 export type CommitStep = "message" | "commitAll" | "askStageAll" | "nothing";
 
 /** What Commit… does first, as VS Code's own commit: staged files, else git.enableSmartCommit or ask. */

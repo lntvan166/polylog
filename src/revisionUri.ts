@@ -14,21 +14,25 @@ export interface RevisionRef {
   ref: string | null;
   /** Repository-relative, forward slashes, as git prints it. */
   path: string;
+  /** The index's blob id (ref INDEX): a new staged version is a new URI, never a stale document. */
+  blob?: string;
 }
 
 export function encodeRevision(r: RevisionRef): { path: string; query: string } {
-  return { path: `/${r.path}`, query: JSON.stringify({ root: r.root, ref: r.ref }) };
+  return { path: `/${r.path}`, query: JSON.stringify(r.blob ? { root: r.root, ref: r.ref, blob: r.blob } : { root: r.root, ref: r.ref }) };
 }
 
 export function decodeRevision(path: string, query: string): RevisionRef {
-  let q: { root?: unknown; ref?: unknown };
+  let q: { root?: unknown; ref?: unknown; blob?: unknown };
   try {
-    q = JSON.parse(query) as { root?: unknown; ref?: unknown };
+    q = JSON.parse(query) as { root?: unknown; ref?: unknown; blob?: unknown };
   } catch {
     throw new Error("not a polylog revision URI");
   }
   if (typeof q.root !== "string" || !(q.ref === null || q.ref === INDEX || isSha(q.ref))) throw new Error("not a polylog revision URI");
-  return { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
+  if (q.blob !== undefined && !isSha(q.blob)) throw new Error("not a polylog revision URI");
+  const r: RevisionRef = { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
+  return typeof q.blob === "string" ? { ...r, blob: q.blob } : r;
 }
 
 /**

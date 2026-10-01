@@ -1,5 +1,5 @@
 import * as vscode from "vscode";
-import { lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
+import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
 import { decorationFor, describeChanges, stat, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
 
@@ -50,8 +50,11 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private allFiles: boolean;
   private loaded = new Map<string, NodeDesc[]>();
   private allReads = new AbortController();
+  /** All Files' folder reads, a few at a time: a commit can touch hundreds of folders. */
+  private reads: Limiter;
 
-  constructor(private readonly runInRepo?: RunInRepo, allFiles = false) {
+  constructor(private readonly runInRepo?: RunInRepo, allFiles = false, private readonly concurrency: () => number = () => 16) {
+    this.reads = new Limiter(concurrency());
     this.allFiles = allFiles;
     this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true });
     this.render();
@@ -78,7 +81,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (ready) return ready;
     const s = this.state!;
     const signal = this.allReads.signal;
-    const out = await this.runInRepo!(s.repoRoot, lsTreeArgs(s.commit.sha, dir), signal).catch(() => "");
+    const out = await this.reads.run(dir, () => (signal.aborted ? Promise.resolve("") : this.runInRepo!(s.repoRoot, lsTreeArgs(s.commit.sha, dir), signal))).catch(() => "");
+    if (this.loaded.get(dir)) return this.loaded.get(dir)!; // asked twice meanwhile: read once
     if (signal.aborted || this.state !== s) return [];
     const merged = mergeLevel(dir, parseLsTree(out), s.files);
     const owner: Owner = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null };
@@ -121,6 +125,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private resetAllFiles(): void {
     this.allReads.abort();
     this.allReads = new AbortController();
+    this.reads = new Limiter(this.concurrency());
     this.loaded = new Map();
   }
 

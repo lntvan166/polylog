@@ -60,3 +60,11 @@ const rec = (xy: string, path: string) => `1 ${xy} N... 100644 100644 100644 ${H
   assert.deepStrictEqual(files.map((f) => [f.path, f.added, f.deleted, f.status, f.untracked === true]), [["a.ts", 3, 1, "M", false], ["b.ts", 0, 0, "A", true]], "an untracked file counts 0/0: new, not binary");
   console.log("ok - Staged and Changes counts come from their own diffs");
 }
+{
+  const I = "c".repeat(40);
+  const line = `1 MM N... 100644 100644 100644 ${"0".repeat(40)} ${I} src/both.ts`;
+  const s = splitStatus(line + "\0" + `2 R. N... 100644 100644 100644 ${"0".repeat(40)} ${I} R100 docs/b.md\0docs/a.md\0`);
+  assert.deepStrictEqual(s.staged.map((e) => [e.path, e.blob]), [["src/both.ts", I], ["docs/b.md", I]], "each staged entry knows its index blob (the hI field)");
+  assert.strictEqual(workFiles(s.staged, new Map())[0].blob, I);
+  console.log("ok - the staged side keeps its index blob id");
+}

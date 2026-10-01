@@ -268,7 +268,7 @@
         },
         {
           "command": "polylog.commitRepo",
-          "when": "view == polylog.uncommitted && viewItem == repo.stageable",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "inline@1"
         },
         {
@@ -288,7 +288,7 @@
         },
         {
           "command": "polylog.commitRepo",
-          "when": "view == polylog.uncommitted && viewItem == repo.stageable",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\.stageable/",
           "group": "1_modification@1"
         },
         {
@@ -305,6 +305,31 @@
           "command": "polylog.discard",
           "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
           "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.repoPull",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./ && viewItem =~ /\\.behind$/",
+          "group": "0_sync@1"
+        },
+        {
+          "command": "polylog.repoShowOnly",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "group": "5_filter@1"
+        },
+        {
+          "command": "polylog.repoHide",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "group": "5_filter@2"
+        },
+        {
+          "command": "polylog.repoOpenFolder",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "group": "6_open@1"
+        },
+        {
+          "command": "polylog.repoCopyPath",
+          "when": "view == polylog.uncommitted && viewItem =~ /^repo\\./",
+          "group": "7_copy@1"
         },
         {
           "command": "polylog.openWorkingFile",

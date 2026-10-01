@@ -29,7 +29,7 @@ export class WorkList {
   }
 
   /** New rows: the selection stays on its repository while it is listed, else the first row. */
-  update(rows: WorkRow[], names: ReadonlyMap<string, string>, accents: ReadonlyMap<string, number>): void {
+  update(rows: WorkRow[], names: ReadonlyMap<string, string>, accents: ReadonlyMap<string, number>, behind: ReadonlySet<string>): void {
     this.rows = rows;
     const keep = rows.some((r) => r.repoId === this.selected);
     if (!keep) this.selected = rows[0]?.repoId;
@@ -40,7 +40,7 @@ export class WorkList {
       this.root.append(h("div", {
         class: "work-row", role: "option", id: `work-${rows.indexOf(r)}`, "aria-selected": String(on), "data-repo": r.repoId,
         // Right-click: the repository's menu (Pull, Show Only…), as on its commits.
-        "data-vscode-context": JSON.stringify({ webviewSection: "uncommitted", repoId: r.repoId, preventDefaultContextMenuItems: true }),
+        "data-vscode-context": JSON.stringify({ webviewSection: "uncommitted", repoId: r.repoId, behind: behind.has(r.repoId), preventDefaultContextMenuItems: true }),
       }, [
         h("span", { class: `chip accent-${accentOf(accents, r.repoId)}`, title: name }, [name]),
         h("span", { class: "work-what" }, [
