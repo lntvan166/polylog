@@ -139,10 +139,11 @@ export function summaryLabel(results: readonly RepoCompare[], ticked: number): s
   return parts.join(" · ");
 }
 
+/** The Compare view's description, next to its title: the pair, without "origin/". */
 export function tabTitle(p: Pair | null): string {
-  if (!p) return "⇄ Compare Branches";
+  if (!p || !p.left || !p.right) return "";
   const short = (n: string) => n.replace(/^origin\//, "");
-  return `⇄ ${short(p.left)} ↔ ${short(p.right)}`;
+  return `${short(p.left)} ↔ ${short(p.right)}`;
 }
 
 export function pushRecent(recent: readonly Pair[], p: Pair, cap = 5): Pair[] {

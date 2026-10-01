@@ -66,18 +66,29 @@
           "type": "webview",
           "id": "polylog.log",
           "name": "Log",
-          "initialSize": 1100
+          "initialSize": 1100,
+          "icon": "$(history)"
         },
         {
           "id": "polylog.changes",
           "name": "Changes",
-          "initialSize": 450
+          "initialSize": 450,
+          "icon": "$(diff)"
         },
         {
           "id": "polylog.uncommitted",
           "name": "Uncommitted",
           "initialSize": 450,
-          "visibility": "collapsed"
+          "visibility": "collapsed",
+          "icon": "$(diff-modified)"
+        },
+        {
+          "type": "webview",
+          "id": "polylog.compare",
+          "name": "Compare",
+          "initialSize": 450,
+          "visibility": "collapsed",
+          "icon": "$(git-compare)"
         }
       ]
     },

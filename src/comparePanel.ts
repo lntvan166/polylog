@@ -37,9 +37,11 @@ const toFile = (f: FileChange, both: ReadonlySet<string>): CFile => ({ path: f.p
 const toCommit = (c: SideCommit): CCommit => ({ sha: c.sha, parent: c.parents[0] ?? null, subject: c.subject, author: c.author, time: c.time, files: null });
 
 /** The Compare tab: one editor tab, its page, and what it asks the store. */
-export class ComparePanel implements vscode.Disposable {
+export class ComparePanel implements vscode.WebviewViewProvider, vscode.Disposable {
   static readonly viewType = "polylog.compare";
-  private panel: vscode.WebviewPanel | undefined;
+  private view: vscode.WebviewView | undefined;
+  /** Compare with…: the left branch to apply when the view's page is next ready. */
+  private wantLeft: string | undefined;
   private created = 0;
   private selected: string | undefined;
   /** What the columns show, and for which repository: a file opens only from the repository it was read for. */
@@ -80,47 +82,68 @@ export class ComparePanel implements vscode.Disposable {
     return this.state.get<CompareMode>(MODE, "files");
   }
 
-  async open(opts: { left?: string } = {}): Promise<void> {
-    if (this.panel) {
-      this.panel.reveal();
-    } else {
-      const out = vscode.Uri.joinPath(this.deps.context.extensionUri, "out");
-      const panel = vscode.window.createWebviewPanel(ComparePanel.viewType, tabTitle(null), vscode.ViewColumn.Active, { enableScripts: true, localResourceRoots: [out] });
-      this.created++;
-      panel.webview.html = renderCompareHtml({
-        cspSource: panel.webview.cspSource,
-        nonce: randomBytes(16).toString("hex"),
-        scriptUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(out, "compare.js")).toString(),
-        styleUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(out, "compare.css")).toString(),
-      });
-      panel.webview.onDidReceiveMessage((m: CompareWebview) => void this.onMessage(m));
-      panel.onDidDispose(() => {
-        if (this.panel !== panel) return;
-        this.panel = undefined;
-        this.selected = undefined;
-        void this.deps.store.setPair(null);
-      });
-      this.panel = panel;
-      const saved = this.state.get<Pair>(PAIR);
-      const left = opts.left && validPair({ left: opts.left, right: "x" }) ? opts.left : undefined;
-      const pair = left ? { left, right: saved?.right ?? "" } : saved;
-      if (pair && validPair(pair)) await this.setPair(pair, false);
-      // Compare with… and no right side yet: the page shows the left name and opens the picker on the right.
-      else if (left) this.pending = { left, right: "" };
-    }
-    if (this.panel && opts.left && this.deps.store.pair && opts.left !== this.deps.store.pair.left && validPair({ left: opts.left, right: this.deps.store.pair.right })) {
-      await this.setPair({ left: opts.left, right: this.deps.store.pair.right });
+  /** The Compare view, in the Polylog panel: a file's diff opens in the editor area above it. */
+  resolveWebviewView(view: vscode.WebviewView): void {
+    this.created++;
+    const out = vscode.Uri.joinPath(this.deps.context.extensionUri, "out");
+    view.webview.options = { enableScripts: true, localResourceRoots: [out] };
+    view.webview.html = renderCompareHtml({
+      cspSource: view.webview.cspSource,
+      nonce: randomBytes(16).toString("hex"),
+      scriptUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "compare.js")).toString(),
+      styleUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "compare.css")).toString(),
+    });
+    view.webview.onDidReceiveMessage((m: CompareWebview) => void this.onMessage(m));
+    // Hidden or collapsed: its reads stop, and showing it reads again (nothing is kept).
+    view.onDidChangeVisibility(() => {
+      if (!view.visible) this.stop();
+    });
+    view.onDidDispose(() => {
+      if (this.view !== view) return;
+      this.view = undefined;
+      this.stop();
+    });
+    this.view = view;
+  }
+
+  private stop(): void {
+    this.selected = undefined;
+    this.pending = null;
+    void this.deps.store.setPair(null);
+  }
+
+  /** The page is on screen (again): read the remembered pair, or the one Compare with… asked for. */
+  private async start(): Promise<void> {
+    const left = this.wantLeft;
+    this.wantLeft = undefined;
+    if (this.deps.store.pair && left === undefined) return;
+    const saved = this.state.get<Pair>(PAIR);
+    const pair = left ? { left, right: this.deps.store.pair?.right ?? saved?.right ?? "" } : saved;
+    if (pair && validPair(pair)) await this.setPair(pair, left !== undefined);
+    // Compare with… and no right side yet: the page shows the left name and opens the picker on the right.
+    else if (left) {
+      this.pending = { left, right: "" };
+      this.postState();
     }
   }
 
+  /** ⇄ Compare Branches… and Compare with…: the user asked, so the view is shown. */
+  async open(opts: { left?: string } = {}): Promise<void> {
+    if (opts.left && validPair({ left: opts.left, right: "x" })) this.wantLeft = opts.left;
+    const shown = this.view?.visible === true;
+    await vscode.commands.executeCommand(`${ComparePanel.viewType}.focus`);
+    // Already on screen: its page will not say "ready" again, so apply Compare with… now.
+    if (shown) await this.start();
+  }
+
   private post(m: CompareHost): void {
-    void this.panel?.webview.postMessage(m);
+    void this.view?.webview.postMessage(m);
   }
 
   private postState(): void {
     const pair = this.deps.store.pair ?? this.pending ?? (this.state.get<Pair>(PAIR) ?? null);
     const message = pair && pair.left === pair.right ? `Pick two different branches. Both sides are ${pair.left}.` : undefined;
-    if (this.panel) this.panel.title = tabTitle(pair);
+    if (this.view) this.view.description = tabTitle(pair);
     this.post({ type: "state", pair, mode: this.mode, recent: this.state.get<Pair[]>(RECENT, []), favorites: this.state.get<string[]>(FAVORITES, []), message });
   }
 
@@ -224,6 +247,7 @@ export class ComparePanel implements vscode.Disposable {
   private async handle(m: CompareWebview): Promise<void> {
     switch (m?.type) {
       case "ready":
+        await this.start();
         this.postState();
         this.postRepos();
         if (!this.deps.store.pair) this.post({ type: "branches", names: await this.deps.store.readBranches() });
@@ -305,7 +329,7 @@ export class ComparePanel implements vscode.Disposable {
     const lines = (xs: CFile[] | CCommit[]) => (xs as (CFile | CCommit)[]).map((x) => ("both" in x ? fileLine(x) : x.subject));
     const { missing } = this.rows();
     return {
-      open: this.panel !== undefined, panels: this.created, title: this.panel?.title ?? "", pair, mode: this.mode,
+      open: this.view?.visible === true, panels: this.created, title: this.view?.description ?? "", pair, mode: this.mode,
       message: pair && pair.left === pair.right ? `Pick two different branches. Both sides are ${pair.left}.` : undefined,
       summary: summaryLabel(this.deps.store.results().map((x) => x.result), this.deps.log.tickedRepos().length),
       rows: this.deps.store.results().map((x) => rowLabel(x.repo.name, x.result)), missing,
@@ -315,7 +339,6 @@ export class ComparePanel implements vscode.Disposable {
 
   dispose(): void {
     this.refreshSoon.cancel();
-    this.panel?.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

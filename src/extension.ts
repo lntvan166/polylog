@@ -80,6 +80,7 @@ export function activate(context: vscode.ExtensionContext): void {
     log.onDidChangeScope(() => void compare.scopeChanged()),
     compare,
     comparePanel,
+    vscode.window.registerWebviewViewProvider(ComparePanel.viewType, comparePanel),
     vscode.commands.registerCommand("polylog.compareBranches", () => comparePanel.open()),
     vscode.commands.registerCommand("polylog.compareWith", () => comparePanel.open({ left: log.branchBox || undefined })),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),

@@ -1289,18 +1289,24 @@ describe("Polylog panel", () => {
         return ok(x) ? x : undefined;
       });
 
-    it("one Compare tab: Files by default, each side's changes with both marked, a file opens its diff", async () => {
+    it("one Compare view in the Polylog panel: Files by default, both marked, a file's diff opens above it", async () => {
       await vscode.commands.executeCommand("polylog.compareBranches");
       await vscode.commands.executeCommand("polylog.compareBranches");
-      let s = await panel();
-      assert.strictEqual(s.panels, 1, "a second run reveals the same tab");
+      let s = await settled("the view shown", (x) => x.open);
+      await sleep(300);
+      s = await panel();
+      assert.strictEqual(s.panels, 1, "a second run shows the same view");
+      const views = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.views.polylog as { id: string; icon?: string }[];
+      assert.deepStrictEqual(views.map((v) => [v.id, v.icon]), [
+        ["polylog.log", "$(history)"], ["polylog.changes", "$(diff)"], ["polylog.uncommitted", "$(diff-modified)"], ["polylog.compare", "$(git-compare)"],
+      ], "each view has its own icon (a collapsed view shows only that)");
       const menus = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["webview/context"] as { command: string; when: string }[];
       for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
         assert.ok(menus.some((m) => m.command === c && m.when.includes("polylog.compare")), `${c} on a Compare repo row`);
       }
       await csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
       s = await settled("acme-api detail", (x) => x.selected !== undefined && x.left.length > 0);
-      assert.strictEqual(s.title, "⇄ release-1.4 ↔ prod");
+      assert.strictEqual(s.title, "release-1.4 ↔ prod");
       assert.strictEqual(s.mode, "files");
       await csend({ type: "select", repoId: roots["acme-api"] });
       s = await settled("acme-api files", (x) => x.selected === roots["acme-api"] && x.right.length === 3);
@@ -1314,6 +1320,7 @@ describe("Polylog panel", () => {
       });
       assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package timeout\n");
       assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "");
+      assert.strictEqual((await panel()).open, true, "the diff opened in the editor area; Compare is still shown");
       await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
     });
 
@@ -1333,8 +1340,8 @@ describe("Polylog panel", () => {
       // Close while a read runs: nothing throws, and the next open reads again.
       void csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
       await settled("pair saved", (x) => x.pair?.left === "release-1.4");
-      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      s = await settled("closed", (x) => !x.open);
+      await vscode.commands.executeCommand("polylog.compare.removeView");
+      s = await settled("hidden", (x) => !x.open);
       await vscode.commands.executeCommand("polylog.compareBranches");
       s = await settled("reopened and read", (x) => x.open && x.rows.length === 3);
       assert.strictEqual(s.pair?.left, "release-1.4", "the last pair is remembered");

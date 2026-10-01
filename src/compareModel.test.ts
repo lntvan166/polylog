@@ -81,9 +81,10 @@ assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · =1 on bot
 assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · =0 on both · 1 identical · in 1 repository");
 console.log("ok - the summary counts what differs, what is identical and what is missing");
 
-assert.strictEqual(tabTitle({ left: "origin/release-1.4", right: "origin/main" }), "⇄ release-1.4 ↔ main");
-assert.strictEqual(tabTitle(null), "⇄ Compare Branches");
-console.log("ok - the tab is named after the pair");
+assert.strictEqual(tabTitle({ left: "origin/release-1.4", right: "origin/main" }), "release-1.4 ↔ main");
+assert.strictEqual(tabTitle(null), "");
+assert.strictEqual(tabTitle({ left: "main", right: "" }), "");
+console.log("ok - the view's description is the pair");
 
 const p1 = { left: "origin/release-1.4", right: "origin/main" };
 const p2 = { left: "origin/release-1.3", right: "origin/prod" };
