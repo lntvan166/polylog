@@ -467,7 +467,12 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * the first page is on screen (so they never compete with it) and run once
    * per set of repositories.
    */
+  private firstPageShown!: () => void;
+  /** Resolves once the first page is on screen: background reads (Compare too) wait for it. */
+  readonly firstPage = new Promise<void>((resolve) => (this.firstPageShown = resolve));
+
   private startBackgroundReads(): void {
+    this.firstPageShown();
     const key = this.repos.map((r) => r.id).join("\0");
     if (key === this.backgroundFor) return;
     this.backgroundFor = key;

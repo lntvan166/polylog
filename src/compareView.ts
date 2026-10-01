@@ -89,7 +89,10 @@ export class CompareView implements vscode.TreeDataProvider<CNode>, vscode.FileD
   }
 
   private async start(): Promise<void> {
-    if (this.deps.store.pair) return;
+    // At startup the Log's first page comes first: Compare's reads (four per repository) wait.
+    // A hidden Log has no first page: then 3 s at most.
+    await Promise.race([this.deps.log.firstPage, new Promise((r) => setTimeout(r, 3000))]);
+    if (this.deps.store.pair || !this.view.visible) return;
     const saved = this.state.get<Pair>(PAIR);
     if (saved && validPair(saved)) await this.setPair(saved);
     else this.changed();
