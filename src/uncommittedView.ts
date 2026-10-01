@@ -5,7 +5,7 @@ import { errorLine } from "./git";
 import type { RepoDiscovery } from "./repoDiscovery";
 import { encodeRevision, INDEX, SCHEME, type RevisionRef } from "./revisionUri";
 import type { FileChange } from "./types";
-import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
+import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, totals, viewLabel, type DiffSide, type Group, type RepoWork, type UNode } from "./uncommittedModel";
 import type { UncommittedStore } from "./uncommittedStore";
 
 /** A row's identity, as menus and inline buttons pass it (a node) or tests do (plain args). */
@@ -98,6 +98,7 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     this.roots = d.roots;
     this.message = d.message;
     this.view.message = d.message;
+    this.view.description = viewLabel(totals(this.deps.store.works()));
     this.parents = new Map();
     const before = this.decorated;
     this.decorated = [];
@@ -121,12 +122,12 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
   }
 
   /** "label | description", indented, repo rows with their contextValue (integration test seam). */
-  snapshot(): { message: string | undefined; items: string[]; lastError: string | undefined } {
+  snapshot(): { message: string | undefined; description: string; items: string[]; lastError: string | undefined } {
     const walk = (nodes: UNode[], depth: number): string[] => nodes.flatMap((n) => [
       `${"  ".repeat(depth)}${n.label} | ${n.description}${n.kind === "repo" ? ` [${n.contextValue}]` : ""}`,
       ...walk(n.children, depth + 1),
     ]);
-    return { message: this.message, items: walk(this.roots, 0), lastError: this.lastError };
+    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), lastError: this.lastError };
   }
 
   private uriFor(n: UNode): vscode.Uri {

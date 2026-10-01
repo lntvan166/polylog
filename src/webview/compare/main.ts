@@ -192,8 +192,9 @@ function renderRepos(): void {
     }, [
       chip(r),
       r.status === "differs"
-        ? h("span", { class: "counts", "aria-label": `${r.left} left only, ${r.right} right only, ${r.same} on both` }, [
-          h("span", { class: "left" }, [`◀${r.left}`]), h("span", { class: "right" }, [`▶${r.right}`]), h("span", { class: "same" }, [`=${r.same}`]),
+        // Only = on the row; the sides' counts are in the tooltip and the column headers.
+        ? h("span", { class: "counts", title: `${r.left} left only · ${r.right} right only · ${r.same} on both`, "aria-label": `${r.same} on both, ${r.left} left only, ${r.right} right only` }, [
+          h("span", { class: "same" }, [`=${r.same}`]),
         ])
         : h("span", { class: r.status === "error" ? "row-note error" : "row-note", title: r.reason ?? "" }, [r.status === "nobase" ? "no common history" : "git error"]),
     ]));

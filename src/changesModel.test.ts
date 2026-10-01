@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { decorationFor, describeChanges, firstOpenable, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
+import { decorationFor, describeChanges, firstOpenable, viewDescription, LOADING, NO_FILES, NO_SELECTION, type ChangesState, type NodeDesc } from "./changesModel";
 import { UNCOMMITTED, type Commit } from "./types";
 
 const NOW = 1790164800;
@@ -107,3 +107,10 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
   console.log("ok - uncommitted changes describe themselves: file count, staged, new");
 }
 
+
+// The view's title says what it shows: a commit, or a repository's uncommitted work.
+assert.strictEqual(viewDescription(null), "");
+assert.strictEqual(viewDescription(state()), `acme-api · 1596c39 · ${state().files.length} files`);
+assert.strictEqual(viewDescription(state({ status: "loading", files: [] })), "acme-api · 1596c39");
+assert.strictEqual(viewDescription(state({ commit: { ...commit, sha: UNCOMMITTED }, files: [state().files[0]] })), "acme-api · uncommitted · 1 file");
+console.log("ok - the Changes view's description names the repository and the commit, or says uncommitted");

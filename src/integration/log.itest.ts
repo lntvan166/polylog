@@ -557,6 +557,8 @@ describe("Polylog panel", () => {
     try {
       await send({ type: "refresh" });
       await until("acme-web behind the switch", (x) => x.workRows.length === 1);
+      const uv = await vscode.commands.executeCommand<{ description: string }>("polylog._itest.uncommitted");
+      assert.strictEqual(uv.description, "1 file · 1 repository", "the Uncommitted view's title counts the work");
       // File History from the Uncommitted side goes back to the Commit list.
       await send({ type: "logMode", mode: "uncommitted" });
       await until("Uncommitted", (x) => x.logMode === "uncommitted");
@@ -828,6 +830,7 @@ describe("Polylog panel", () => {
     assert.strictEqual(s.changes.message, undefined);
     assert.match(s.changes.items[0], /^feat: add retry to uploader \(ACME-7\) \| [0-9a-f]{7} · rin · /);
     assert.deepStrictEqual(s.changes.items.slice(1), ["  upload.go | +2 −0"]);
+    assert.strictEqual(s.changes.description, `acme-api · ${c.sha.slice(0, 7)} · 1 file`, "the title says which repository and commit");
   });
 
   it("the tree follows the last selection, not a slower earlier one", async () => {

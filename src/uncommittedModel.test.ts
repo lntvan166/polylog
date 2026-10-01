@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import type { FileChange } from "./types";
-import { commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
+import { viewLabel, commitCount, commitStep, describeUncommitted, diffFor, discardPrompt, distinctPaths, editedLabel, meter, NO_UNCOMMITTED_VIEW, previewLabel, tags, totals, type RepoWork, type UNode } from "./uncommittedModel";
 
 const f = (path: string, status: FileChange["status"], added = 1, deleted = 0, extra: Partial<FileChange> = {}): FileChange => ({ path, status, added, deleted, ...extra });
 const web: RepoWork = {
@@ -69,3 +69,8 @@ const files = (n: UNode): UNode[] => (n.kind === "file" ? [n] : n.children.flatM
   assert.strictEqual(commitCount(web, "tracked"), 2, "tracked: the new file stays out");
   console.log("ok - Commit all counts what git.smartCommitChanges will commit");
 }
+
+assert.strictEqual(viewLabel({ files: 0, repos: 0 }), "");
+assert.strictEqual(viewLabel({ files: 3, repos: 2 }), "3 files · 2 repositories");
+assert.strictEqual(viewLabel({ files: 1, repos: 1 }), "1 file · 1 repository");
+console.log("ok - the Uncommitted view's description counts files and repositories");

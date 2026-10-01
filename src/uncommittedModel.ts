@@ -165,3 +165,9 @@ export function describeUncommitted(works: readonly RepoWork[]): { message: stri
   });
   return { message: roots.length === 0 ? NO_UNCOMMITTED_VIEW : undefined, roots };
 }
+
+/** The Uncommitted view's description (next to its title): how much is uncommitted, and where. */
+export function viewLabel(t: { files: number; repos: number }): string {
+  if (t.files === 0) return "";
+  return `${plural(t.files, "file")} · ${plural(t.repos, "repository", "repositories")}`;
+}

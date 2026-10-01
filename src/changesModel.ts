@@ -119,3 +119,11 @@ export function describeChanges(s: ChangesState | null, now: number): { message:
     : undefined;
   return { message, roots: [root] };
 }
+
+/** The Changes view's description (next to its title): which repository and commit, or "uncommitted". */
+export function viewDescription(s: ChangesState | null): string {
+  if (!s) return "";
+  const what = s.commit.sha === UNCOMMITTED ? "uncommitted" : s.commit.sha.slice(0, 7);
+  const n = s.status === "ready" ? s.files.length : 0;
+  return [s.repoName, what, ...(n > 0 ? [`${n} ${n === 1 ? "file" : "files"}`] : [])].join(" · ");
+}

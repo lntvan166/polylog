@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { Limiter, lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
-import { decorationFor, describeChanges, stat, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
+import { decorationFor, describeChanges, stat, viewDescription, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
 import { commitKey, UNCOMMITTED } from "./types";
 
 /** Runs git in a repository (All Files reads one folder with it). */
@@ -18,6 +18,8 @@ export interface OpenDiffArgs {
 
 export interface ChangesSnapshot {
   message: string | undefined;
+  /** What the view's title says next to "Changes". */
+  description: string;
   items: string[];
   /** URI scheme of every node's resourceUri, as VS Code receives it (test seam). */
   schemes: string[];
@@ -149,7 +151,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label };
+    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label };
   }
 
   private render(): void {
@@ -158,6 +160,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.roots = d.roots;
     this.message = d.message;
     this.view.message = d.message;
+    // Next to the title: which repository and commit this is, or its uncommitted work.
+    this.view.description = viewDescription(this.state);
     this.decorations = new Map();
     const before = this.decorated;
     this.decorated = [];
@@ -219,7 +223,8 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     item.description = node.description;
     item.tooltip = node.tooltip;
     if (node.kind === "commit") {
-      item.iconPath = new vscode.ThemeIcon("git-commit");
+      // A commit, or uncommitted work: different icons, so the root row says which at a glance.
+      item.iconPath = new vscode.ThemeIcon(this.state?.commit.sha === UNCOMMITTED ? "diff-modified" : "git-commit");
       item.contextValue = "commit";
       return item;
     }
