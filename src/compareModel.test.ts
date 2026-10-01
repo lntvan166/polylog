@@ -16,15 +16,18 @@ assert.ok(!validPair({ left: "main" }));
 assert.ok(!validPair(null));
 console.log("ok - a pair is two names git accepts as branches");
 
-assert.deepStrictEqual(revParseArgs({ left: "origin/release-1.4", right: "main" }), ["rev-parse", "origin/release-1.4^{commit}", "main^{commit}"]);
-assert.deepStrictEqual(parseRevParse(`${A}\n${B}\n`), [A, B]);
-assert.strictEqual(parseRevParse(`${A}\n`), null);
-assert.strictEqual(parseRevParse("nope\nzz\n"), null);
-console.log("ok - both branches resolve to commit ids, or the repository lacks one");
+const T1 = "1".repeat(40);
+const T2 = "2".repeat(40);
+assert.deepStrictEqual(revParseArgs({ left: "origin/release-1.4", right: "main" }), ["rev-parse", "origin/release-1.4^{commit}", "main^{commit}", "origin/release-1.4^{tree}", "main^{tree}"]);
+assert.deepStrictEqual(parseRevParse(`${A}\n${B}\n${T1}\n${T2}\n`), { left: A, right: B, sameFiles: false });
+assert.deepStrictEqual(parseRevParse(`${A}\n${B}\n${T1}\n${T1}\n`), { left: A, right: B, sameFiles: true });
+assert.strictEqual(parseRevParse(`${A}\n${B}\n`), null);
+assert.strictEqual(parseRevParse("nope\nzz\nyy\nxx\n"), null);
+console.log("ok - both branches resolve to commits and trees: the same files means identical");
 
 assert.deepStrictEqual(mergeBaseArgs(A, B), ["merge-base", A, B]);
-assert.deepStrictEqual(sideCountArgs("left", A, B), ["rev-list", "--left-only", "--cherry-mark", "--count", `${A}...${B}`]);
-assert.deepStrictEqual(sideCountArgs("right", A, B), ["rev-list", "--right-only", "--cherry-mark", "--count", `${A}...${B}`]);
+assert.deepStrictEqual(sideCountArgs("left", A, B), ["rev-list", "--left-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
+assert.deepStrictEqual(sideCountArgs("right", A, B), ["rev-list", "--right-only", "--cherry-mark", "--no-merges", "--count", `${A}...${B}`]);
 assert.deepStrictEqual(parseSideCount("2\t1\n"), { only: 2, same: 1 });
 assert.deepStrictEqual(parseSideCount("3\n"), { only: 3, same: 0 });
 assert.deepStrictEqual(parseSideCount(""), { only: 0, same: 0 });
@@ -51,7 +54,7 @@ assert.deepStrictEqual([...bothPaths(files, other)], ["src/new.go"]);
 console.log("ok - a file changed on both sides is matched on its new path");
 
 assert.deepStrictEqual(logArgs("left", A, B, COMMIT_PAGE), [
-  "log", "--left-only", "--cherry-mark", "--max-count=500", "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${A}...${B}`,
+  "log", "--left-only", "--cherry-mark", "--no-merges", "--max-count=500", "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${A}...${B}`,
 ]);
 const log = parseSideLog(`<\x1f${A}\x1f${C}\x1f1758000300\x1fdana\x1ffeat: rate limit\x1e\n=\x1f${B}\x1f${C} ${A}\x1f1758000200\x1frin\x1ffix: retry on 503\x1e\n`);
 assert.deepStrictEqual(log, [
@@ -74,8 +77,8 @@ assert.deepStrictEqual(mirror({ kind: "missing" }), { kind: "missing" });
 console.log("ok - swap mirrors a result without reading git");
 
 const results: RepoCompare[] = [differs, { ...differs, left: 5, right: 0, sameLeft: 0, sameRight: 0 }, { kind: "identical" }, { kind: "missing" }, { kind: "missing" }, { kind: "nobase" }];
-assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · ◀7 ▶1 =1 · 1 identical · 2 missing a branch · in 6 repositories");
-assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · ◀0 ▶0 =0 · 1 identical · in 1 repository");
+assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · =1 on both · 1 identical · 2 missing a branch · in 6 repositories");
+assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · =0 on both · 1 identical · in 1 repository");
 console.log("ok - the summary counts what differs, what is identical and what is missing");
 
 assert.strictEqual(tabTitle({ left: "origin/release-1.4", right: "origin/main" }), "⇄ release-1.4 ↔ main");

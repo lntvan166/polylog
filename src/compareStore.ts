@@ -123,7 +123,7 @@ export class CompareStore implements vscode.Disposable {
   }
 
   private async readOne(r: Repo, p: Pair, signal: AbortSignal): Promise<RepoCompare> {
-    let ids: [string, string] | null;
+    let ids: ReturnType<typeof parseRevParse>;
     try {
       ids = parseRevParse(await this.deps.run(r.root, revParseArgs(p), signal));
     } catch (e) {
@@ -131,8 +131,9 @@ export class CompareStore implements vscode.Disposable {
       return { kind: "missing" };
     }
     if (!ids) return { kind: "missing" };
-    const [l, rt] = ids;
-    if (l === rt) return { kind: "identical" };
+    const { left: l, right: rt } = ids;
+    // The same files on both sides: nothing to review, whatever merges or duplicates the commits hold.
+    if (ids.sameFiles) return { kind: "identical" };
     try {
       // All three at once: a repository's answer waits for one round of git, not two.
       const [base, left, right] = await Promise.all([

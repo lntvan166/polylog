@@ -48,13 +48,15 @@ export function validPair(p: unknown): p is Pair {
   return typeof o?.left === "string" && typeof o.right === "string" && isValidRef(o.left) && isValidRef(o.right);
 }
 
+/** Both tips and their trees in one spawn: the same tree means the same files, whatever the commits. */
 export function revParseArgs(p: Pair): string[] {
-  return ["rev-parse", `${p.left}^{commit}`, `${p.right}^{commit}`];
+  return ["rev-parse", `${p.left}^{commit}`, `${p.right}^{commit}`, `${p.left}^{tree}`, `${p.right}^{tree}`];
 }
 
-export function parseRevParse(out: string): [string, string] | null {
+export function parseRevParse(out: string): { left: string; right: string; sameFiles: boolean } | null {
   const ids = out.split("\n").map((l) => l.trim()).filter(Boolean);
-  return ids.length === 2 && ids.every((id) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id)) ? [ids[0], ids[1]] : null;
+  if (ids.length !== 4 || !ids.every((id) => /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/.test(id))) return null;
+  return { left: ids[0], right: ids[1], sameFiles: ids[2] === ids[3] };
 }
 
 export function mergeBaseArgs(l: string, r: string): string[] {
@@ -63,7 +65,8 @@ export function mergeBaseArgs(l: string, r: string): string[] {
 
 /** A side's commits the other lacks, and (counted apart) its commits whose change the other has too. */
 export function sideCountArgs(side: Side, l: string, r: string): string[] {
-  return ["rev-list", side === "left" ? "--left-only" : "--right-only", "--cherry-mark", "--count", `${l}...${r}`];
+  // Merges carry no change of their own (Files shows what they brought): they are not counted.
+  return ["rev-list", side === "left" ? "--left-only" : "--right-only", "--cherry-mark", "--no-merges", "--count", `${l}...${r}`];
 }
 
 export function parseSideCount(out: string): { only: number; same: number } {
@@ -81,7 +84,7 @@ export function parseFiles(out: string): FileChange[] {
 }
 
 export function logArgs(side: Side, l: string, r: string, max: number): string[] {
-  return ["log", side === "left" ? "--left-only" : "--right-only", "--cherry-mark", `--max-count=${max}`, "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${l}...${r}`];
+  return ["log", side === "left" ? "--left-only" : "--right-only", "--cherry-mark", "--no-merges", `--max-count=${max}`, "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${l}...${r}`];
 }
 
 export function parseSideLog(out: string): SideCommit[] {
@@ -130,7 +133,7 @@ export function summaryLabel(results: readonly RepoCompare[], ticked: number): s
       }
     }
   }
-  const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`, `◀${l} ▶${r} =${same}`, `${identical} identical`];
+  const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`, `=${same} on both`, `${identical} identical`];
   if (missing > 0) parts.push(`${missing} missing a branch`);
   parts.push(`in ${plural(ticked, "repository", "repositories")}`);
   return parts.join(" · ");

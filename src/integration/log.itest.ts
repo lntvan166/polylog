@@ -1219,6 +1219,31 @@ describe("Polylog panel", () => {
       git(roots["acme-libs"], ["update-ref", "refs/heads/prod", "HEAD"]);
     });
 
+    it("the same files means identical, and merge commits are not counted", async () => {
+      const libs = roots["acme-libs"];
+      const web = roots["acme-web"];
+      const libsHead = git(libs, ["rev-parse", "HEAD"]);
+      const webBase = git(web, ["rev-parse", "HEAD"]);
+      // acme-libs: live has one more commit, but the same files (an empty commit).
+      git(libs, ["update-ref", "refs/heads/rc", libsHead]);
+      git(libs, ["update-ref", "refs/heads/live", git(libs, ["commit-tree", `${libsHead}^{tree}`, "-p", libsHead, "-m", "chore: empty"])]);
+      // acme-web: live has a hotfix and the merge that brought it in.
+      const hot = commitOn(web, webBase, { "hotfix.ts": "export {};\n" }, "fix: hotfix", T + 80);
+      git(web, ["update-ref", "refs/heads/rc", webBase]);
+      git(web, ["update-ref", "refs/heads/live", git(web, ["commit-tree", `${hot}^{tree}`, "-p", webBase, "-p", hot, "-m", "Merge hotfix into live"])]);
+      try {
+        await pick({ left: "rc", right: "live" });
+        const s = await waitFor("read", async () => {
+          const x = await store();
+          return !x.reading && x.rows.some((r) => r.startsWith("acme-web")) ? x : undefined;
+        });
+        assert.ok(s.rows.includes("acme-libs identical"), s.rows.join(" | "));
+        assert.ok(s.rows.includes("acme-web ◀0 ▶1 =0"), s.rows.join(" | "));
+      } finally {
+        for (const root of [libs, web]) for (const b of ["rc", "live"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
+      }
+    });
+
     it("two branches with no shared history say so", async () => {
       await pick({ left: "lone", right: "prod" });
       const s = await waitFor("read", async () => {
