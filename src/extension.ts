@@ -11,6 +11,8 @@ import { RevisionProvider } from "./revisionProvider";
 import { SCHEME } from "./revisionUri";
 import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
+import { UncommittedView } from "./uncommittedView";
+import { assignAccents } from "./webview/view";
 
 export function activate(context: vscode.ExtensionContext): void {
   const discovery = new RepoDiscovery();
@@ -25,6 +27,7 @@ export function activate(context: vscode.ExtensionContext): void {
     concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
   });
   const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted });
+  const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged() });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Clicking the Log or Changes header collapses that view; expand it again. Settle
@@ -72,6 +75,15 @@ export function activate(context: vscode.ExtensionContext): void {
     discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.headMoved)),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
+    uncommittedView,
+    vscode.window.registerFileDecorationProvider(uncommittedView),
+    vscode.commands.registerCommand("polylog.focusUncommitted", () => vscode.commands.executeCommand("polylog.uncommitted.focus")),
+    vscode.commands.registerCommand("polylog.refreshUncommitted", () => uncommitted.readAll(true)),
+    vscode.commands.registerCommand("polylog.stage", (arg?: unknown) => uncommittedView.stage(arg)),
+    vscode.commands.registerCommand("polylog.unstage", (arg?: unknown) => uncommittedView.unstage(arg)),
+    vscode.commands.registerCommand("polylog.discard", (arg?: unknown) => uncommittedView.discard(arg)),
+    vscode.commands.registerCommand("polylog.commitRepo", (arg?: unknown) => uncommittedView.commit(arg)),
+    vscode.commands.registerCommand("polylog.openUncommittedDiff", (arg?: unknown) => uncommittedView.openDiff(arg)),
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
     vscode.commands.registerCommand("polylog.fetchAll", () => log.fetchAll()),
@@ -107,6 +119,8 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
+      vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
     );
   }
 }

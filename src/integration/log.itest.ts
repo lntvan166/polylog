@@ -265,6 +265,81 @@ describe("Polylog panel", () => {
     await until("six rows, nothing uncommitted", (x) => x.rows.length === 6 && (work(x)?.changes.length ?? 0) + (work(x)?.staged.length ?? 0) === 0);
   });
 
+  it("the Uncommitted view: Staged and Changes, stage, unstage, discard, commit", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "dana", GIT_AUTHOR_EMAIL: "dana@example.com", GIT_COMMITTER_NAME: "dana", GIT_COMMITTER_EMAIL: "dana@example.com" };
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root, env: who }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    const view = () => vscode.commands.executeCommand<{ message?: string; items: string[] }>("polylog._itest.uncommitted");
+    const answer = (v: string | undefined) => vscode.commands.executeCommand("polylog._itest.answer", v);
+    const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
+    const staged = () => git("diff", "--cached", "--name-only").split("\n").filter(Boolean).sort();
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 2;\n");
+    fs.writeFileSync(path.join(web.root, "notes.md"), "todo\n");
+    fs.writeFileSync(path.join(web.root, "extra.ts"), "x\n");
+    git("add", "extra.ts");
+    const smart = vscode.workspace.getConfiguration("git");
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      await send({ type: "refresh" });
+      let items = await seen("acme-web's uncommitted files", (i) => i.includes("acme-web | 3 files [repo.stageable]") && i.includes("  Staged | 1") && i.includes("  Changes | 2"));
+      assert.ok(items.includes("    notes.md | new"), "untracked files say new");
+
+      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      assert.deepStrictEqual(staged(), ["client.ts", "extra.ts"], "git add, as git itself sees it");
+      await seen("client.ts staged", (i) => i.includes("  Staged | 2") && i.includes("  Changes | 1"));
+      await vscode.commands.executeCommand("polylog.unstage", { repoId: web.id, group: "staged", path: "client.ts" });
+      assert.deepStrictEqual(staged(), ["extra.ts"], "unstaged again");
+      await seen("client.ts back in Changes", (i) => i.includes("  Staged | 1") && i.includes("  Changes | 2"));
+
+      // A file row's right-click: Open File opens the workspace copy.
+      await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", repoId: web.id, group: "changes", path: "client.ts" });
+      await waitFor("client.ts open", () => (vscode.window.activeTextEditor?.document.uri.fsPath === path.join(web.root, "client.ts") ? true : undefined));
+      await closeEditors();
+
+      // Discard asks first; Cancel changes nothing.
+      await answer("Cancel");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      assert.ok(fs.existsSync(path.join(web.root, "notes.md")), "Cancel keeps the file");
+      await answer("Discard File");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "notes.md" });
+      assert.ok(!fs.existsSync(path.join(web.root, "notes.md")), "a new file is deleted when discarded");
+      await seen("notes.md gone", (i) => !i.some((x) => x.includes("notes.md")));
+
+      // Commit… with a message: the staged files only.
+      await vscode.commands.executeCommand("polylog.stage", { repoId: web.id, group: "changes", path: "client.ts" });
+      await seen("both staged", (i) => i.includes("  Staged | 2"));
+      await answer("feat: commit from the view");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(git("log", "-1", "--format=%s"), "feat: commit from the view");
+      await until("the new commit at the top of the Log", (x) => x.rows[0]?.subject === "feat: commit from the view");
+      await seen("acme-web has nothing left", (i) => !i.some((x) => x.startsWith("acme-web")));
+
+      // Nothing staged, git.enableSmartCommit off: it asks; Cancel commits nothing.
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 3;\n");
+      await send({ type: "refresh" });
+      await seen("client.ts changed again", (i) => i.includes("acme-web | 1 file [repo.stageable]"));
+      await smart.update("enableSmartCommit", false, vscode.ConfigurationTarget.Global);
+      const before = git("rev-parse", "HEAD");
+      await answer("Cancel");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(git("rev-parse", "HEAD"), before, "Cancel: nothing committed");
+    } finally {
+      await smart.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.Global);
+      await answer(undefined); // drop any answer left unused
+      await closeEditors();
+      git("reset", "-q", "--hard", head);
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });

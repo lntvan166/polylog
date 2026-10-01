@@ -72,6 +72,12 @@
           "id": "polylog.changes",
           "name": "Changes",
           "initialSize": 450
+        },
+        {
+          "id": "polylog.uncommitted",
+          "name": "Uncommitted",
+          "initialSize": 450,
+          "visibility": "collapsed"
         }
       ]
     },
@@ -179,6 +185,46 @@
         "command": "polylog.repoPull",
         "title": "Pull",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.focusUncommitted",
+        "title": "Focus Uncommitted",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.refreshUncommitted",
+        "title": "Refresh Uncommitted",
+        "category": "Polylog",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "polylog.stage",
+        "title": "Stage Changes",
+        "category": "Polylog",
+        "icon": "$(add)"
+      },
+      {
+        "command": "polylog.unstage",
+        "title": "Unstage Changes",
+        "category": "Polylog",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "polylog.discard",
+        "title": "Discard Changes",
+        "category": "Polylog",
+        "icon": "$(discard)"
+      },
+      {
+        "command": "polylog.commitRepo",
+        "title": "Commit…",
+        "category": "Polylog",
+        "icon": "$(check)"
+      },
+      {
+        "command": "polylog.openUncommittedDiff",
+        "title": "Open Diff",
+        "category": "Polylog"
       }
     ],
     "menus": {
@@ -202,6 +248,56 @@
           "command": "polylog.fileHistory",
           "when": "view == polylog.changes && viewItem =~ /^file/",
           "group": "2_history@1"
+        },
+        {
+          "command": "polylog.commitRepo",
+          "when": "view == polylog.uncommitted && viewItem == repo.stageable",
+          "group": "inline@1"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "group": "inline@1"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.staged$/",
+          "group": "inline@2"
+        },
+        {
+          "command": "polylog.commitRepo",
+          "when": "view == polylog.uncommitted && viewItem == repo.stageable",
+          "group": "1_modification@1"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.staged$/",
+          "group": "1_modification@2"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "view == polylog.uncommitted && viewItem =~ /^(group|file)\\.changes(\\.untracked)?$/",
+          "group": "1_modification@3"
+        },
+        {
+          "command": "polylog.openWorkingFile",
+          "when": "view == polylog.uncommitted && viewItem =~ /^file\\./",
+          "group": "2_open@1"
+        },
+        {
+          "command": "polylog.fileHistory",
+          "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.readonly)?$/",
+          "group": "3_history@1"
         }
       ],
       "commandPalette": [
@@ -264,6 +360,26 @@
         {
           "command": "polylog.repoPull",
           "when": "false"
+        },
+        {
+          "command": "polylog.stage",
+          "when": "false"
+        },
+        {
+          "command": "polylog.unstage",
+          "when": "false"
+        },
+        {
+          "command": "polylog.discard",
+          "when": "false"
+        },
+        {
+          "command": "polylog.commitRepo",
+          "when": "false"
+        },
+        {
+          "command": "polylog.openUncommittedDiff",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -286,6 +402,11 @@
           "command": "polylog.showBehind",
           "when": "view == polylog.log && polylog.anyBehind",
           "group": "1_filter@1"
+        },
+        {
+          "command": "polylog.refreshUncommitted",
+          "when": "view == polylog.uncommitted",
+          "group": "navigation@1"
         }
       ],
       "explorer/context": [

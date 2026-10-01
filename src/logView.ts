@@ -17,6 +17,7 @@ import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type Repo, type RepoFailure } from "./types";
 import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
+import { openWorkDiff } from "./uncommittedView";
 import { renderHtml } from "./webview/html";
 
 const FILTER_KEY = "polylog.filter";
@@ -336,6 +337,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * Uncommitted the tree spans several repositories, so the node's own owner decides.
    */
   private treeFile(arg: unknown): { repo: Repo; path: string } | undefined {
+    // A row of the Uncommitted view: its repository and group say where the file is.
+    const u = arg as { kind?: unknown; repoId?: unknown; group?: unknown; path?: unknown } | undefined;
+    if (u && typeof u === "object" && u.kind === "file" && typeof u.repoId === "string" && (u.group === "staged" || u.group === "changes") && typeof u.path === "string") {
+      const work = this.deps.uncommitted.get(u.repoId);
+      const repo = this.repos.find((r) => r.id === u.repoId);
+      const listed = work && [...work.staged, ...work.changes].some((f) => f.path === u.path);
+      return repo && listed ? { repo, path: u.path } : undefined;
+    }
     const node = arg as { kind?: unknown; path?: unknown; owner?: { repoId?: unknown } } | undefined;
     const current = this.deps.changes.current();
     if (!node || typeof node !== "object" || node.kind !== "file" || typeof node.path !== "string" || !current) return undefined;
@@ -1050,20 +1059,25 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     return modified.toString();
   }
 
-  /**
-   * An uncommitted file: the last commit on the left, the real file on the right (so it can
-   * be edited while reviewing). New files have an empty left side, deleted files an empty right.
-   */
+  /** An uncommitted file: the same diff the Uncommitted view opens (Changes first, else Staged). */
   private async openWorkingDiff(repo: Repo, a: OpenDiffArgs, preserveFocus: boolean): Promise<string | undefined> {
     const work = this.deps.uncommitted.get(repo.id);
-    const file = work?.changes.find((f) => f.path === a.path) ?? work?.staged.find((f) => f.path === a.path);
-    if (!file) return undefined;
-    const isNew = file.status === "A" || file.untracked === true || !a.parent;
-    const before = toUri({ root: repo.root, ref: isNew ? null : a.parent, path: file.oldPath ?? file.path });
-    const after = file.status === "D" ? toUri({ root: repo.root, ref: null, path: file.path }) : vscode.Uri.file(path.join(repo.root, ...file.path.split("/")));
-    const title = `${path.posix.basename(file.path)} (uncommitted) — ${repo.name}`;
-    await vscode.commands.executeCommand("vscode.diff", before, after, title, { preview: true, preserveFocus });
-    return after.toString();
+    const inChanges = work?.changes.find((f) => f.path === a.path);
+    const file = inChanges ?? work?.staged.find((f) => f.path === a.path);
+    if (!work || !file) return undefined;
+    await openWorkDiff(work, inChanges ? "changes" : "staged", file, preserveFocus);
+    return undefined;
+  }
+
+  /** Every repository of the workspace, in Repo List order (accents, the Uncommitted view). */
+  get repoList(): readonly Repo[] {
+    return this.repos;
+  }
+
+  /** A commit was made outside the Log (the Uncommitted view): read the first page again. */
+  commitsChanged(): void {
+    this.reloadSoon.cancel();
+    void this.reload();
   }
 
   private post(m: HostMessage): void {
