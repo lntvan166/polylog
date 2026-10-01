@@ -389,6 +389,72 @@ describe("Polylog panel", () => {
     await until("nothing uncommitted", (x) => x.workRows.length === 0);
   });
 
+  it("All Files in the Changes view: the commit's whole tree, one folder read at a time", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const libs = s0.repos.find((r) => r.name === "acme-libs")!;
+    const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: libs.root, env: who }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    const lsTrees = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length).filter((x) => x.cmd === "ls-tree").length;
+    try {
+      // An unchanged folder, then a commit that adds a file two folders deep and deletes another.
+      fs.mkdirSync(path.join(libs.root, "lib"), { recursive: true });
+      fs.writeFileSync(path.join(libs.root, "lib", "x.ts"), "x\n");
+      git("add", "lib/x.ts");
+      git("commit", "-q", "-m", "chore: add lib");
+      fs.mkdirSync(path.join(libs.root, "src", "a"), { recursive: true });
+      fs.writeFileSync(path.join(libs.root, "src", "a", "one.ts"), "one\n");
+      git("add", "src/a/one.ts");
+      git("rm", "-q", "CHANGELOG.md");
+      git("commit", "-q", "-m", "feat: one, without the changelog");
+      const sha = git("rev-parse", "HEAD");
+      await send({ type: "refresh" });
+      // Listed (not necessarily first: both test commits share one second, and ties have a fixed order).
+      await until("the new commit", (x) => x.rows.some((r) => r.sha === sha));
+      await send({ type: "select", repoId: libs.id, sha });
+      await until("its changed files", (x) => x.changes.items.some((i) => i.includes("one.ts")));
+
+      let mark = await snapshot();
+      await vscode.commands.executeCommand("polylog.changesShowAll");
+      let s = await until("the whole tree", (x) => x.changes.items.some((i) => i.trim().startsWith("package.json")) && x.changes.items.some((i) => i.trim().startsWith("one.ts")));
+      const items = s.changes.items.map((i) => i.trim());
+      assert.ok(items.includes("package.json |"), `an unchanged file, plain (${items.join(" / ")})`);
+      assert.ok(items.some((i) => i.startsWith("CHANGELOG.md | ")), "the deleted file is listed where it was");
+      assert.ok(items.some((i) => i.startsWith("one.ts | +1 −0")), "the added file, two folders down, opened because it holds a change");
+      assert.ok(items.includes("lib |"), "a folder with no change, closed");
+      assert.ok(!items.includes("x.ts |"), "and not read until opened");
+      assert.strictEqual(lsTrees(mark, s), 3, "one git ls-tree per folder shown: the root, src, src/a");
+
+      mark = s;
+      await vscode.commands.executeCommand("polylog._itest.expandChanges", "lib");
+      s = await until("lib's files", (x) => x.changes.items.some((i) => i.trim() === "x.ts |"));
+      assert.strictEqual(lsTrees(mark, s), 1, "opening a folder reads that folder only");
+
+      await closeEditors();
+      await vscode.commands.executeCommand("polylog.openRevision", { repoId: libs.id, sha, path: "package.json" });
+      const doc = await waitFor("package.json at that commit", () => {
+        const d = vscode.window.activeTextEditor?.document;
+        return d?.uri.scheme === "polylog" && d.uri.path.endsWith("package.json") ? d : undefined;
+      });
+      assert.strictEqual(doc.getText(), git("show", `${sha}:package.json`) + "\n", "the file as it was at that commit");
+
+      await vscode.commands.executeCommand("polylog.changesShowChanged");
+      s = await until("changed files only", (x) => !x.changes.items.some((i) => i.trim().startsWith("package.json")));
+      assert.ok(s.changes.items.some((i) => i.includes("one.ts")));
+    } finally {
+      await Promise.resolve(vscode.commands.executeCommand("polylog.changesShowChanged")).catch(() => undefined);
+      await closeEditors();
+      git("reset", "-q", "--hard", head);
+      git("clean", "-fdq");
+    }
+    await send({ type: "refresh" });
+    await until("six rows again", (x) => x.rows.length === 6);
+  });
+
   it("Me means each repository's own user.email", async () => {
     await until("identities read", (x) => x.me.length === 3);
     await send({ type: "filter", filter: { ...ALL, mine: true } });

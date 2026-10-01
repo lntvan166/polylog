@@ -16,7 +16,15 @@ import { assignAccents } from "./webview/view";
 
 export function activate(context: vscode.ExtensionContext): void {
   const discovery = new RepoDiscovery();
-  const changes = new ChangesTree();
+  // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
+  const ALL_FILES_KEY = "polylog.changesAllFiles";
+  const changes: ChangesTree = new ChangesTree((root, args, signal) => log.countedRun(root, args, signal), context.globalState.get<boolean>(ALL_FILES_KEY, false));
+  const setAllFiles = (on: boolean) => {
+    changes.setAllFiles(on);
+    void context.globalState.update(ALL_FILES_KEY, on);
+    void vscode.commands.executeCommand("setContext", ALL_FILES_KEY, on);
+  };
+  void vscode.commands.executeCommand("setContext", ALL_FILES_KEY, changes.showsAllFiles);
   // VS Code's git: git.path first, then the binary its Git extension found, then PATH.
   const git = new GitRunner(() => gitCandidates(vscode.workspace.getConfiguration("git").get("path"), discovery.gitPath()));
   // Uncommitted work runs its git through the Log's counted runner (so the spawn log sees it).
@@ -105,6 +113,9 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider(git.run)),
     vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
     vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
+    vscode.commands.registerCommand("polylog.openRevision", (arg?: unknown) => log.openRevision(arg)),
+    vscode.commands.registerCommand("polylog.changesShowAll", () => setAllFiles(true)),
+    vscode.commands.registerCommand("polylog.changesShowChanged", () => setAllFiles(false)),
     vscode.commands.registerCommand("polylog.copySha", () => {
       const s = changes.current();
       if (s) void vscode.env.clipboard.writeText(s.commit.sha);
@@ -120,6 +131,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
     );
   }

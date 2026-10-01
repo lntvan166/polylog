@@ -1149,6 +1149,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.deps.changes.set({ commit, repoRoot: repo.root, repoName: repo.name, status: "ready", message: "", files });
   }
 
+  /** All Files: a file the commit did not change, opened read-only as it was at that commit. */
+  async openRevision(arg: unknown): Promise<void> {
+    const a = arg as { repoId?: unknown; sha?: unknown; path?: unknown } | undefined;
+    const repo = this.repos.find((r) => r.id === a?.repoId);
+    if (!repo || !isSha(a?.sha) || typeof a?.path !== "string" || a.path === "" || a.path.split("/").includes("..")) return;
+    const uri = toUri({ root: repo.root, ref: a.sha, path: a.path });
+    await vscode.commands.executeCommand("vscode.open", uri, { preview: true }, `${path.posix.basename(a.path)} (${a.sha.slice(0, 7)})`);
+  }
+
   /** Every repository of the workspace, in Repo List order (accents, the Uncommitted view). */
   get repoList(): readonly Repo[] {
     return this.repos;

@@ -32,8 +32,16 @@ interface Base {
   tooltip: string;
 }
 export interface CommitDesc extends Base { kind: "commit"; children: NodeDesc[] }
-export interface FolderDesc extends Base { kind: "folder"; path: string; children: NodeDesc[] }
-export interface FileDesc extends Base { kind: "file"; path: string; file: FileChange; openable: boolean; owner: Owner }
+export interface FolderDesc extends Base {
+  kind: "folder"; path: string; children: NodeDesc[];
+  /** All Files: how many changed files are under it (it opens when there are some). */
+  changedCount?: number;
+}
+export interface FileDesc extends Base {
+  kind: "file"; path: string; file: FileChange; openable: boolean; owner: Owner;
+  /** All Files: a file the commit did not change (it opens as it was, not as a diff). */
+  unchanged?: boolean;
+}
 export type NodeDesc = CommitDesc | FolderDesc | FileDesc;
 
 export interface Decoration {
@@ -65,7 +73,8 @@ export function firstOpenable(files: readonly FileChange[]): FileChange | undefi
   return files.find((f) => f.added !== null);
 }
 
-function stat(f: FileChange): string {
+/** A changed file's description: +/− counts, "new", "binary", a rename's old name, "· staged". */
+export function stat(f: FileChange): string {
   if (f.untracked) return "new";
   if (f.added === null) return f.staged ? "binary · staged" : "binary";
   const counts = `+${f.added} −${f.deleted}`;

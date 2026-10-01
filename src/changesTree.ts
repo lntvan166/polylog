@@ -1,5 +1,10 @@
 import * as vscode from "vscode";
-import { decorationFor, describeChanges, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
+import { lsTreeArgs, mergeLevel, parseLsTree } from "./allFiles";
+import { decorationFor, describeChanges, stat, type ChangesState, type NodeDesc, type Owner } from "./changesModel";
+import { commitKey, UNCOMMITTED } from "./types";
+
+/** Runs git in a repository (All Files reads one folder with it). */
+export type RunInRepo = (root: string, args: string[], signal: AbortSignal) => Promise<string>;
 
 export interface OpenDiffArgs {
   repoId: string;
@@ -41,10 +46,65 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   private message: string | undefined;
   private parents = new Map<NodeDesc, NodeDesc>();
   private focused: NodeDesc | undefined;
+  /** All Files: the commit's whole tree, read one folder at a time; folder path → its rows. */
+  private allFiles: boolean;
+  private loaded = new Map<string, NodeDesc[]>();
+  private allReads = new AbortController();
 
-  constructor() {
+  constructor(private readonly runInRepo?: RunInRepo, allFiles = false) {
+    this.allFiles = allFiles;
     this.view = vscode.window.createTreeView("polylog.changes", { treeDataProvider: this, showCollapseAll: true });
     this.render();
+  }
+
+  get showsAllFiles(): boolean {
+    return this.allFiles;
+  }
+
+  setAllFiles(on: boolean): void {
+    if (on === this.allFiles) return;
+    this.allFiles = on;
+    this.render();
+  }
+
+  /** All Files applies to a loaded commit (not to uncommitted work). */
+  private allFilesActive(): boolean {
+    return this.allFiles && this.runInRepo !== undefined && this.state?.status === "ready" && this.state.commit.sha !== UNCOMMITTED;
+  }
+
+  /** One folder of All Files (read once per commit): its listing at the commit, merged with the changes. */
+  private async level(dir: string, parent: NodeDesc): Promise<NodeDesc[]> {
+    const ready = this.loaded.get(dir);
+    if (ready) return ready;
+    const s = this.state!;
+    const signal = this.allReads.signal;
+    const out = await this.runInRepo!(s.repoRoot, lsTreeArgs(s.commit.sha, dir), signal).catch(() => "");
+    if (signal.aborted || this.state !== s) return [];
+    const merged = mergeLevel(dir, parseLsTree(out), s.files);
+    const owner: Owner = { repoId: s.commit.repoId, sha: s.commit.sha, parent: s.commit.parents[0] ?? null };
+    const base = `${commitKey(s.commit)}/all`;
+    const rows: NodeDesc[] = [
+      ...merged.folders.map((f): NodeDesc => ({ kind: "folder", id: `${base}/d:${f.path}`, label: f.name, description: f.changedCount > 0 ? String(f.changedCount) : "", tooltip: f.path, path: f.path, children: [], changedCount: f.changedCount })),
+      ...merged.files.map((f): NodeDesc => f.change
+        ? { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: stat(f.change), tooltip: f.change.oldPath ? `${f.change.oldPath} → ${f.path}` : f.path, path: f.path, file: f.change, openable: f.change.added !== null, owner }
+        : { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: "", tooltip: f.path, path: f.path, file: { path: f.path, added: 0, deleted: 0 }, openable: true, owner, unchanged: true }),
+    ];
+    for (const r of rows) this.parents.set(r, parent);
+    this.loaded.set(dir, rows);
+    return rows;
+  }
+
+  /** Opens an All Files folder (integration test seam: the tree view cannot be clicked from a test). */
+  async expandPath(dir: string): Promise<void> {
+    const parent = this.findFolder(dir);
+    if (!parent) return;
+    await this.level(dir, parent);
+    this.emitter.fire(undefined);
+  }
+
+  private findFolder(dir: string): NodeDesc | undefined {
+    for (const rows of this.loaded.values()) for (const r of rows) if (r.kind === "folder" && r.path === dir) return r;
+    return undefined;
   }
 
   /** Expanded and on screen (keepExpanded.ts). */
@@ -72,14 +132,23 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     this.render();
   }
 
+  /** A fresh tree: All Files reads still running for the previous commit stop. */
+  private resetAllFiles(): void {
+    this.allReads.abort();
+    this.allReads = new AbortController();
+    this.loaded = new Map();
+  }
+
   current(): ChangesState | null {
     return this.state;
   }
 
   snapshot(): ChangesSnapshot {
+    // All Files: the folders read so far (what is on screen).
+    const kids = (n: NodeDesc): NodeDesc[] => (n.kind === "file" ? [] : this.allFilesActive() ? this.loaded.get(n.kind === "commit" ? "" : n.path) ?? [] : n.children);
     const walk = (nodes: NodeDesc[], depth: number): string[] =>
-      nodes.flatMap((n) => [`${"  ".repeat(depth)}${n.label} | ${n.description}`, ...(n.kind === "file" ? [] : walk(n.children, depth + 1))]);
-    const all = (nodes: NodeDesc[]): NodeDesc[] => nodes.flatMap((n) => [n, ...(n.kind === "file" ? [] : all(n.children))]);
+      nodes.flatMap((n) => [`${"  ".repeat(depth)}${n.label} | ${n.description}`, ...walk(kids(n), depth + 1)]);
+    const all = (nodes: NodeDesc[]): NodeDesc[] => nodes.flatMap((n) => [n, ...all(kids(n))]);
     const schemes = all(this.roots).flatMap((n) => {
       const uri = this.getTreeItem(n).resourceUri;
       return uri ? [uri.scheme] : [];
@@ -94,6 +163,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   }
 
   private render(): void {
+    this.resetAllFiles();
     const d = describeChanges(this.state, nowSec());
     this.roots = d.roots;
     this.message = d.message;
@@ -144,13 +214,17 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     return this.parents.get(node);
   }
 
-  getChildren(node?: NodeDesc): NodeDesc[] {
+  getChildren(node?: NodeDesc): NodeDesc[] | Promise<NodeDesc[]> {
     if (!node) return this.roots;
-    return node.kind === "file" ? [] : node.children;
+    if (node.kind === "file") return [];
+    if (this.allFilesActive()) return this.level(node.kind === "commit" ? "" : node.path, node);
+    return node.children;
   }
 
   getTreeItem(node: NodeDesc): vscode.TreeItem {
-    const item = new vscode.TreeItem(node.label, node.kind === "file" ? vscode.TreeItemCollapsibleState.None : vscode.TreeItemCollapsibleState.Expanded);
+    // All Files: folders holding changes open, the others wait to be opened (and read).
+    const closed = node.kind === "folder" && node.changedCount === 0;
+    const item = new vscode.TreeItem(node.label, node.kind === "file" ? vscode.TreeItemCollapsibleState.None : closed ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.Expanded);
     item.id = node.id;
     item.description = node.description;
     item.tooltip = node.tooltip;
@@ -166,7 +240,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     item.iconPath = node.kind === "folder" ? vscode.ThemeIcon.Folder : vscode.ThemeIcon.File;
     // A deleted file has no working-tree copy to open: "fileDeleted" drops Open File from its menu.
     if (node.kind === "file") item.contextValue = node.file.status === "D" ? "fileDeleted" : "file";
-    if (node.kind === "file" && node.openable) {
+    if (node.kind === "file" && node.unchanged) {
+      // Not changed by the commit: the file as it was then, read-only.
+      item.command = { command: "polylog.openRevision", title: "Open File at Commit", arguments: [{ repoId: node.owner.repoId, sha: node.owner.sha, path: node.path }] };
+    } else if (node.kind === "file" && node.openable) {
       const args: OpenDiffArgs = { repoId: node.owner.repoId, sha: node.owner.sha, parent: node.owner.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status };
       item.command = { command: "polylog.openDiff", title: "Open Diff", arguments: [args] };
     }
