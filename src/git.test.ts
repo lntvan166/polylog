@@ -9,7 +9,7 @@ import { commitAt, gitEnv, makeRepo } from "./fixtures";
 import { errorLine, GitError, GitRunner, runGit } from "./git";
 import { parseHistory, parseLog } from "./gitLog";
 import { aheadBehindArgs, parseAheadBehind } from "./upstream";
-import { numstatArgs, parseNumstat, parseStatus, statusArgs, uncommittedFiles } from "./workingTree";
+import { numstatArgs, parseNumstat, parseStatus, splitStatus, stagedNumstatArgs, statusArgs, uncommittedFiles, unstagedNumstatArgs, workFiles } from "./workingTree";
 import { isAbortError } from "./pool";
 
 const home = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-git-test-"));
@@ -183,6 +183,14 @@ const log = async (f: FilterState, o: { now?: number; cursor?: { skip: number } 
     const only = parseStatus(await runGit(wt, statusArgs([":(literal)a.ts"])));
     assert.deepStrictEqual(only.map((e) => e.path), ["a.ts"], "the Path filter narrows it");
     console.log("ok - real git: uncommitted changes, staged or not, new, deleted, renamed and untracked");
+    const split = splitStatus(await runGit(wt, statusArgs([])));
+    assert.deepStrictEqual(split.staged.map((e) => e.path).sort(), ["b.ts", "new.md", "new.ts"], "staged: the edit added, the new file, the rename");
+    assert.deepStrictEqual(split.changes.map((e) => e.path).sort(), ["a.ts", "gone.ts", "to do é.txt"], "not staged: the edit, the deletion, the untracked file");
+    const staged = new Map(workFiles(split.staged, parseNumstat(await runGit(wt, stagedNumstatArgs(head, [])))).map((f) => [f.path, f]));
+    assert.deepStrictEqual([staged.get("b.ts")!.added, staged.get("new.ts")!.added, staged.get("new.md")!.oldPath], [1, 1, "old.md"], "git diff --cached counts the staged side");
+    const changes = new Map(workFiles(split.changes, parseNumstat(await runGit(wt, unstagedNumstatArgs([])))).map((f) => [f.path, f]));
+    assert.deepStrictEqual([changes.get("a.ts")!.added, changes.get("gone.ts")!.status, changes.get("to do é.txt")!.added], [1, "D", 0], "git diff counts the unstaged side; untracked 0");
+    console.log("ok - real git: Staged and Changes from status, counts from their own diffs");
   }
   {
     // Ahead/behind against a real upstream: one commit to pull, two not pushed; none without one.

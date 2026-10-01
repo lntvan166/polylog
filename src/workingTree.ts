@@ -114,3 +114,65 @@ export function uncommittedFiles(status: readonly StatusEntry[], counts: Readonl
     };
   });
 }
+
+/** One side of an uncommitted file: what is staged (index) or what is not yet (working tree). */
+export interface WorkEntry {
+  path: string;
+  oldPath?: string;
+  status: ChangeStatus;
+  untracked?: boolean;
+  conflicted?: boolean;
+}
+
+const letter = (c: string): ChangeStatus => (c === "A" ? "A" : c === "D" ? "D" : c === "T" ? "T" : "M");
+
+/**
+ * `git status --porcelain=v2 -z` as Source Control shows it: the index half (Staged) and the
+ * working-tree half (Changes). A file staged and changed again is in both.
+ */
+export function splitStatus(stdout: string): { staged: WorkEntry[]; changes: WorkEntry[] } {
+  const staged: WorkEntry[] = [];
+  const changes: WorkEntry[] = [];
+  const tokens = stdout.split("\0");
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (t === "" || t.startsWith("# ")) continue;
+    const parts = t.split(" ");
+    const kind = t[0];
+    if (kind === "?") {
+      changes.push({ path: t.slice(2), status: "A", untracked: true });
+    } else if (kind === "1") {
+      const [x, y] = parts[1];
+      const path = parts.slice(8).join(" ");
+      if (x !== ".") staged.push({ path, status: letter(x) });
+      if (y !== ".") changes.push({ path, status: letter(y) });
+    } else if (kind === "2") {
+      const [x, y] = parts[1];
+      const path = parts.slice(9).join(" ");
+      const oldPath = tokens[++i]; // the original name is the next NUL field
+      if (x !== ".") staged.push({ path, oldPath, status: x === "C" ? "C" : "R" });
+      if (y !== ".") changes.push({ path, status: letter(y) });
+    } else if (kind === "u") {
+      changes.push({ path: parts.slice(10).join(" "), status: "M", conflicted: true });
+    }
+  }
+  return { staged, changes };
+}
+
+/** +/- of what is staged: the index against the last commit (or the empty tree). */
+export function stagedNumstatArgs(head: string | null, pathspecs: readonly string[]): string[] {
+  return ["diff", "--cached", head ?? EMPTY_TREE, "--numstat", "-z", "-M", "--", ...pathspecs];
+}
+
+/** +/- of what is not staged: the working tree against the index. */
+export function unstagedNumstatArgs(pathspecs: readonly string[]): string[] {
+  return ["diff", "--numstat", "-z", "--", ...pathspecs];
+}
+
+/** One side's file list, with its counts. Untracked files count 0/0 (new, not binary). */
+export function workFiles(entries: readonly WorkEntry[], counts: ReadonlyMap<string, { added: number | null; deleted: number | null }>): FileChange[] {
+  return entries.map((e) => {
+    const c = counts.get(e.path) ?? { added: 0, deleted: 0 };
+    return { path: e.path, ...(e.oldPath ? { oldPath: e.oldPath } : {}), added: c.added, deleted: c.deleted, status: e.status, ...(e.untracked ? { untracked: true } : {}) };
+  });
+}
