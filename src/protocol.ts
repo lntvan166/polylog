@@ -23,14 +23,9 @@ export interface BranchName {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; review: { files: number; repos: number } | null }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null }
   | { type: "loading" }
   | { type: "page"; rows: Commit[]; append: boolean; failures: RepoFailure[]; done: boolean; now: number; branchUse?: BranchUse }
-  /**
-   * The uncommitted rows changed (a save, the toggle): they replace the pinned rows above the
-   * commits the webview already has. `review`: Review Uncommitted's new totals.
-   */
-  | { type: "pinned"; rows: Commit[]; review: { files: number; repos: number } | null }
   /** Each repository's distance from its upstream (only those ahead or behind). */
   | { type: "sync"; byRepo: Record<string, { ahead: number; behind: number }> }
   /** Suggestions a box asked for (wantSuggestions). Its own message: it must not touch the filter. */
@@ -46,7 +41,6 @@ export type WebviewMessage =
   | { type: "openFirst"; repoId: string; sha: string }
   | { type: "layout"; repoPaneWidth: number }
   | { type: "exitHistory" }
-  | { type: "exitReview" }
   /** A suggestion box got focus for the first time: read its suggestions now, not at startup. */
   | { type: "wantSuggestions"; kind: "authors" | "branches" }
   | { type: "openSettings" };

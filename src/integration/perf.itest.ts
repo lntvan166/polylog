@@ -28,15 +28,16 @@ describe("Polylog startup", () => {
     const path = require("path") as typeof import("path");
     const dirty = settled.repos.slice(0, 5);
     for (const r of dirty) fs.writeFileSync(path.join(r.root, "UNCOMMITTED.md"), "x\n");
-    const pinned = (s: LogSnapshot | undefined) => (s ? s.rows.filter((r) => r.uncommitted !== undefined).length : 0);
+    // Uncommitted work is read in the background; Refresh reads every repository again.
+    const known = (s: LogSnapshot | undefined) => (s ? s.uncommitted.filter((w) => w.changes.length + w.staged.length > 0).length : 0);
     const t1 = Date.now();
-    void vscode.commands.executeCommand("polylog.showUncommitted");
+    void vscode.commands.executeCommand("polylog._itest.send", { type: "refresh" });
     let msFirstPinned = -1;
     for (;;) {
-      const n = pinned(await snapshot());
+      const n = known(await snapshot());
       if (n > 0 && msFirstPinned < 0) msFirstPinned = Date.now() - t1;
       if (n === dirty.length) break;
-      if (Date.now() - t1 > 60000) throw new Error("the pinned rows never all appeared");
+      if (Date.now() - t1 > 60000) throw new Error("the uncommitted work never all appeared");
       await sleep(5);
     }
     const msAllPinned = Date.now() - t1;
@@ -57,7 +58,6 @@ describe("Polylog startup", () => {
       postBytes: posted(after) - posted(before),
     };
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-    await vscode.commands.executeCommand("polylog.hideUncommitted");
     for (const r of dirty) fs.rmSync(path.join(r.root, "UNCOMMITTED.md"));
     console.log("PERF " + JSON.stringify({
       msFirstRows, reposAtFirstRows: first.repos.length, reposSettled: settled.repos.length,

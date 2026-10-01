@@ -9,20 +9,26 @@ import type { WebviewMessage } from "./protocol";
 import { RepoDiscovery } from "./repoDiscovery";
 import { RevisionProvider } from "./revisionProvider";
 import { SCHEME } from "./revisionUri";
+import { readSettings } from "./settings";
+import { UncommittedStore } from "./uncommittedStore";
 
 export function activate(context: vscode.ExtensionContext): void {
   const discovery = new RepoDiscovery();
   const changes = new ChangesTree();
   // VS Code's git: git.path first, then the binary its Git extension found, then PATH.
   const git = new GitRunner(() => gitCandidates(vscode.workspace.getConfiguration("git").get("path"), discovery.gitPath()));
-  const log = new LogView(context, { discovery, run: git.run, changes });
+  // Uncommitted work runs its git through the Log's counted runner (so the spawn log sees it).
+  const uncommitted: UncommittedStore = new UncommittedStore({
+    run: (cwd, args, signal, opts): Promise<string> => log.countedRun(cwd, args, signal, opts),
+    reportsChanges: (root) => discovery.reportsChanges(root),
+    canStage: (root) => discovery.vsCodeGitHas(root),
+    concurrency: () => readSettings((k) => vscode.workspace.getConfiguration("polylog").get(k)).maxConcurrency,
+  });
+  const log: LogView = new LogView(context, { discovery, run: git.run, changes, uncommitted });
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Clicking the Log or Changes header collapses that view; expand it again. Settle
   // first: switching to another panel tab hides both, one event at a time.
-  const syncUncommittedContext = () =>
-    void vscode.commands.executeCommand("setContext", "polylog.showUncommitted", vscode.workspace.getConfiguration("polylog").get<boolean>("showUncommitted", false));
-  syncUncommittedContext();
   // Hidden again within 10 s of an undo means the user hid it on purpose (keepExpanded.ts).
   const undo = new UndoCollapse(10_000);
   const undoCollapse = debounce(() => {
@@ -58,18 +64,14 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.fileHistory", (arg?: unknown) => log.fileHistory(arg)),
     vscode.commands.registerCommand("polylog.openWorkingFile", (arg?: unknown) => log.openWorkingFile(arg)),
     vscode.commands.registerCommand("polylog.showRepos", () => log.setGroupByRepo(true)),
-    vscode.commands.registerCommand("polylog.reviewUncommitted", () => log.reviewUncommitted()),
-    // The toggle acts at once; the setting is written back in the background.
-    vscode.commands.registerCommand("polylog.showUncommitted", () => log.setUncommittedOn(true)),
-    vscode.commands.registerCommand("polylog.hideUncommitted", () => log.setUncommittedOn(false)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("polylog.showUncommitted")) void log.uncommittedSettingChanged();
       if (e.affectsConfiguration("polylog.excludeRepos") || e.affectsConfiguration("polylog.scanDepth")) void log.reposSettingChanged();
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
     // repository, or a save. Only that repository is read again.
     discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.headMoved)),
-    vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && log.workingTreeChanged(doc.uri.fsPath)),
+    vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
+    uncommitted,
     vscode.commands.registerCommand("polylog.hideRepos", () => log.setGroupByRepo(false)),
     // Right-click on a repository in the Log's webview (a Repositories pane row or a commit row).
     vscode.commands.registerCommand("polylog.fetchAll", () => log.fetchAll()),

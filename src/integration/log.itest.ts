@@ -148,28 +148,23 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
-  it("uncommitted changes: pinned above the commits when the toggle is on, and they follow a save", async () => {
+  it("the uncommitted store follows saves and git events, one repository at a time", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
     const cp = require("child_process") as typeof import("child_process");
-    const cfg = vscode.workspace.getConfiguration("polylog");
     await send({ type: "filter", filter: ALL });
     const web = (await until("six rows", (x) => x.rows.length === 6)).repos.find((r) => r.name === "acme-web")!;
     const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
     const head = git("rev-parse", "HEAD");
+    const work = (x: LogSnapshot) => x.uncommitted.find((w) => w.repoId === web.id);
     fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = false;\n");
     fs.writeFileSync(path.join(web.root, "notes.md"), "todo\n");
     try {
+      // Read in the background after the first page: no toggle, nothing to open.
       await send({ type: "refresh" });
-      await sleep(500);
-      assert.ok(!(await snapshot()).rows.some((r) => r.sha === UNCOMMITTED), "off by default");
-      await cfg.update("showUncommitted", true, vscode.ConfigurationTarget.Global);
-      let s = await until("the pinned row", (x) => x.rows[0]?.sha === UNCOMMITTED && x.rows.length === 7);
-      assert.deepStrictEqual([s.rows[0].repoId, s.rows[0].uncommitted], [web.id, 2], "one row for the repo with changes, with its file count");
-
-      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
-      s = await until("its files", (x) => x.changes.items.length === 3);
-      assert.deepStrictEqual(s.changes.items.slice(1).sort(), ["  client.ts | +1 −1", "  notes.md | new"]);
+      let s = await until("acme-web's uncommitted files", (x) => work(x)?.changes.length === 2);
+      assert.deepStrictEqual([work(s)!.staged, [...work(s)!.changes].sort()], [[], ["client.ts", "notes.md"]]);
+      assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED), "the Commit list shows only commits");
 
       await closeEditors();
       await vscode.commands.executeCommand("polylog.openDiff", { repoId: web.id, sha: UNCOMMITTED, parent: head, path: "client.ts" });
@@ -177,10 +172,9 @@ describe("Polylog panel", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
         return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
       });
-      assert.strictEqual(input.modified.scheme, "file", "the right side is the real, editable file");
       assert.strictEqual((await vscode.workspace.openTextDocument(input.original)).getText(), "export const ok = true;\n", "the left side is the last commit");
 
-      // A save in the editor refreshes the row.
+      // A save in the editor reads its repository again.
       const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(path.join(web.root, "notes.md")));
       fs.writeFileSync(path.join(web.root, "extra.ts"), "x\n");
       const edit = new vscode.WorkspaceEdit();
@@ -188,7 +182,7 @@ describe("Polylog panel", () => {
       await vscode.workspace.applyEdit(edit);
       let mark = await snapshot();
       await doc.save();
-      await until("the row after a save", (x) => x.rows[0]?.uncommitted === 3);
+      await until("the files after a save", (x) => work(x)?.changes.length === 3);
       // Only the saved file's repository is read again (VS Code's Git reports it too, a moment later).
       await sleep(1500);
       const statusSince = (from: LogSnapshot, to: LogSnapshot) => to.spawnLog.slice(from.spawnLog.length).filter((x) => x.cmd === "status").map((x) => x.root);
@@ -196,7 +190,7 @@ describe("Polylog panel", () => {
       const read = statusSince(mark, now);
       assert.ok(read.length > 0 && read.every((root) => root === web.root), `a save re-reads only its own repository, not all of them (read: ${read.join(", ")})`);
 
-      // A save that changes nothing git reports posts nothing to the Log.
+      // A save that changes nothing git reports changes nothing.
       mark = now;
       const again = new vscode.WorkspaceEdit();
       again.insert(doc.uri, new vscode.Position(0, 0), "x");
@@ -205,17 +199,18 @@ describe("Polylog panel", () => {
       await sleep(1500);
       now = await snapshot();
       assert.ok(statusSince(mark, now).length > 0, "it was read again");
-      const posted = (s: LogSnapshot) => (s.posts.page?.count ?? 0) + (s.posts.pinned?.count ?? 0);
-      assert.strictEqual(posted(now), posted(mark), "and nothing was posted: the same files, the same counts");
+      assert.deepStrictEqual(work(now), work(mark), "the same files on both sides");
+      assert.ok(now.uncommittedChanges - mark.uncommittedChanges <= 1, "at most one change: the file's edit time moved, nothing else");
 
       // A save outside every repository reads nothing. First let VS Code's Git finish reporting
       // the saves above (on a slow runner its report comes seconds later).
-      mark = await waitFor("git to go quiet", async () => {
+      const quiet = () => waitFor("git to go quiet", async () => {
         const a = await snapshot();
         await sleep(1500);
         const b = await snapshot();
         return b.spawnLog.length === a.spawnLog.length ? b : undefined;
       });
+      mark = await quiet();
       const outside = path.join(require("os").tmpdir(), `polylog-outside-${Date.now()}.txt`);
       fs.writeFileSync(outside, "a\n");
       const other = await vscode.workspace.openTextDocument(vscode.Uri.file(outside));
@@ -224,8 +219,7 @@ describe("Polylog panel", () => {
       await vscode.workspace.applyEdit(edit3);
       await other.save();
       await sleep(1000);
-      // VS Code's Git may still report acme-web on its own; the other repositories stay unread
-      // (before, any save read every repository).
+      // VS Code's Git may still report acme-web on its own; the other repositories stay unread.
       const outsideRead = statusSince(mark, await snapshot());
       assert.ok(outsideRead.every((root) => root === web.root), `a file outside every repository is not a working-tree change (read: ${outsideRead.join(", ")})`);
       await closeEditors();
@@ -233,15 +227,10 @@ describe("Polylog panel", () => {
 
       // A date change cannot change the working tree: repositories VS Code's Git reports on are
       // not read again (a late report of acme-web's own saves may still read acme-web).
-      mark = await waitFor("git to go quiet", async () => {
-        const a = await snapshot();
-        await sleep(1500);
-        const b = await snapshot();
-        return b.spawnLog.length === a.spawnLog.length ? b : undefined;
-      });
+      mark = await quiet();
       assert.ok(mark.reported.length > 0, "VS Code's Git reports on the fixture repositories (else this proves nothing)");
       await send({ type: "filter", filter: { ...ALL, date: "30d" } });
-      now = await until("the 30-day page", (x) => x.filter.date === "30d" && x.stats.reloads > mark.stats.reloads);
+      await until("the 30-day page", (x) => x.filter.date === "30d" && x.stats.reloads > mark.stats.reloads);
       await sleep(300);
       const reread = statusSince(mark, await snapshot()).filter((root) => mark.reported.includes(root) && root !== web.root);
       assert.deepStrictEqual(reread, [], "the working tree is not read again for a date change");
@@ -258,83 +247,22 @@ describe("Polylog panel", () => {
         await gitCfg().update("autorefresh", undefined, vscode.ConfigurationTarget.Global);
       }
       await send({ type: "filter", filter: ALL });
-      await until("all time again", (x) => x.filter.date === "all" && x.rows[0]?.sha === UNCOMMITTED);
+      await until("all time again", (x) => x.filter.date === "all" && x.rows.length === 6);
       mark = await snapshot();
       await send({ type: "refresh" });
       await waitFor("Refresh reads it again", async () => (statusSince(mark, await snapshot()).length >= 3 ? true : undefined));
-
-      await send({ type: "filter", filter: { ...ALL, text: "retry" } });
-      await until("no pinned row while searching", (x) => x.rows.length === 1 && x.rows[0].sha !== UNCOMMITTED);
+      // Unticking a repository takes it out of the uncommitted work; ticking it back reads it.
+      await send({ type: "filter", filter: { ...ALL, repoIds: s.repos.filter((r) => r.id !== web.id).map((r) => r.id) } });
+      await until("acme-web left out", (x) => work(x) === undefined);
       await send({ type: "filter", filter: ALL });
-      await until("the pinned row again", (x) => x.rows[0]?.sha === UNCOMMITTED);
-
-      // The toolbar buttons act at once and write the setting back.
-      await vscode.commands.executeCommand("polylog.hideUncommitted");
-      await until("hidden by the button", (x) => !x.rows.some((r) => r.sha === UNCOMMITTED));
-      await waitFor("the setting written back", () => (cfg.get("showUncommitted") === false ? true : undefined));
-      await vscode.commands.executeCommand("polylog.showUncommitted");
-      await until("shown by the button", (x) => x.rows[0]?.sha === UNCOMMITTED);
-      await waitFor("the setting written back", () => (vscode.workspace.getConfiguration("polylog").get("showUncommitted") === true ? true : undefined));
+      await until("acme-web back", (x) => work(x)?.changes.length === 3);
     } finally {
-      await cfg.update("showUncommitted", undefined, vscode.ConfigurationTarget.Global);
       await closeEditors();
       git("checkout", "--", ".");
       git("clean", "-fdq");
     }
     await send({ type: "refresh" });
-    await until("six rows, no pinned row", (x) => x.rows.length === 6 && !x.rows.some((r) => r.sha === UNCOMMITTED));
-  });
-
-  it("Review Uncommitted: every repository's uncommitted files in one tree, then back to the log", async () => {
-    const fs = require("fs") as typeof import("fs");
-    const path = require("path") as typeof import("path");
-    const cp = require("child_process") as typeof import("child_process");
-    await send({ type: "filter", filter: ALL });
-    const s0 = await until("six rows", (x) => x.rows.length === 6);
-    const web = s0.repos.find((r) => r.name === "acme-web")!;
-    const api = s0.repos.find((r) => r.name === "acme-api")!;
-    const git = (root: string, ...args: string[]) => cp.execFileSync("git", args, { cwd: root }).toString().trim();
-    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 1;\n");
-    fs.writeFileSync(path.join(api.root, "upload.go"), "package upload\n\nfunc Retry() { retry() }\n");
-    fs.writeFileSync(path.join(api.root, "notes.md"), "n\n");
-    try {
-      await vscode.commands.executeCommand("polylog.reviewUncommitted");
-      let s = await until("the review", (x) => x.review && x.rows.length === 2 && x.changes.items.length > 0);
-      assert.ok(s.rows.every((r) => r.sha === UNCOMMITTED), "only the repositories with changes, no commits (the rows toggle is off)");
-      const roots = (x: LogSnapshot) => x.changes.items.filter((i) => !i.startsWith(" "));
-      // The webview selects the first row when the rows arrive: let that land before clicking.
-      await until("the webview's own first selection", (x) => roots(x).length === 1);
-      // The tree shows the repository clicked in the Log, not all of them.
-      await send({ type: "select", repoId: api.id, sha: UNCOMMITTED });
-      s = await until("acme-api's files only", (x) => roots(x).length === 1 && roots(x)[0].startsWith("acme-api"));
-      assert.deepStrictEqual(roots(s), ["acme-api | 2 files · not committed"]);
-      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
-      s = await until("acme-web's files only", (x) => roots(x).length === 1 && roots(x)[0].startsWith("acme-web"));
-      assert.deepStrictEqual(roots(s), ["acme-web | 1 file · not committed"]);
-      await send({ type: "select", repoId: api.id, sha: UNCOMMITTED });
-      await until("acme-api again", (x) => roots(x)[0]?.startsWith("acme-api") === true);
-      await closeEditors();
-      await vscode.commands.executeCommand("polylog.openDiff", { repoId: api.id, sha: UNCOMMITTED, parent: git(api.root, "rev-parse", "HEAD"), path: "upload.go" });
-      const input = await waitFor("a working-tree diff", () => {
-        const t = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-        return t instanceof vscode.TabInputTextDiff && t.modified.scheme === "file" ? t : undefined;
-      });
-      assert.match(input.modified.fsPath, /acme-api[\\/]upload\.go$/);
-      // A group's file knows its repository: Open File on acme-web's file goes to acme-web.
-      await send({ type: "select", repoId: web.id, sha: UNCOMMITTED });
-      await until("acme-web shown", (x) => roots(x)[0]?.startsWith("acme-web") === true);
-      await vscode.commands.executeCommand("polylog.openWorkingFile", { kind: "file", path: "client.ts", owner: { repoId: web.id, sha: UNCOMMITTED, parent: null } });
-      await waitFor("client.ts in acme-web", () => (vscode.window.activeTextEditor?.document.uri.fsPath.endsWith(path.join("acme-web", "client.ts")) ? true : undefined));
-      await send({ type: "exitReview" });
-      s = await until("the log again", (x) => !x.review && x.rows.length === 6);
-      assert.ok(!s.rows.some((r) => r.sha === UNCOMMITTED), "and no pinned rows, since the toggle is off");
-    } finally {
-      await closeEditors();
-      for (const root of [web.root, api.root]) {
-        git(root, "checkout", "--", ".");
-        git(root, "clean", "-fdq");
-      }
-    }
+    await until("six rows, nothing uncommitted", (x) => x.rows.length === 6 && (work(x)?.changes.length ?? 0) + (work(x)?.staged.length ?? 0) === 0);
   });
 
   it("Me means each repository's own user.email", async () => {

@@ -1,8 +1,8 @@
 import * as assert from "assert";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
 import {
-  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, reviewLabel, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
-  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange, withPinned,
+  absoluteTime, accentOf, ACCENT_COUNT, assignAccents, chipsThatFit, fitMiddle, middleTruncate, repoColumnChars, branchUseLabel, countLabel, dateLabel, emptyState, moveSelection,
+  relativeTime, repoButtonLabel, reselect, splitPath, visibleRange,
 } from "./view";
 
 const NOW = 1790164800;
@@ -107,17 +107,6 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   console.log("ok - reselect keeps the selection across a replay or refresh");
 }
 {
-  const c = (repoId: string, sha: string, uncommitted?: number) => ({ repoId, sha, uncommitted });
-  const U = "0".repeat(40);
-  const rows = [c("/ws/acme-api", U, 2), c("/ws/acme-web", "a"), c("/ws/acme-api", "b")];
-  assert.deepStrictEqual(withPinned(rows, [c("/ws/acme-web", U, 1), c("/ws/acme-api", U, 3)]).map((r) => [r.repoId, r.sha, r.uncommitted]),
-    [["/ws/acme-web", U, 1], ["/ws/acme-api", U, 3], ["/ws/acme-web", "a", undefined], ["/ws/acme-api", "b", undefined]],
-    "the new pinned rows replace the old ones, above the commits already loaded");
-  assert.deepStrictEqual(withPinned(rows, []).map((r) => r.sha), ["a", "b"], "none left: only the commits");
-  assert.deepStrictEqual(withPinned([], [c("/ws/acme-web", U, 1)]).map((r) => r.sha), [U], "Review Uncommitted: only pinned rows");
-  console.log("ok - pinned rows are replaced without resending the commits");
-}
-{
   const by = emptyState({ repoCount: 3, filter: { ...ALL, author: "rin" } });
   assert.strictEqual(by.body, "No commits by “rin” in 3 repositories.");
   assert.deepStrictEqual(by.action, { label: "Clear Author", id: "clearAuthor" });
@@ -188,14 +177,4 @@ const repos = ["acme-web", "acme-api", "acme-libs"].map((n) => ({ id: `/ws/${n}`
   assert.strictEqual(chipsThatFit([50, 60, 70], 20, 30, 3), 0, "no room: everything behind +3");
   assert.strictEqual(chipsThatFit([], 100, 30, 3), 0);
   console.log("ok - author chips keep their width; the ones that do not fit collapse into +N");
-}
-{
-  const clean = emptyState({ repoCount: 3, filter: ALL, review: true });
-  assert.deepStrictEqual([clean.title, clean.action], ["No uncommitted changes", undefined]);
-  assert.match(clean.body, /Every repository is clean/);
-  assert.match(emptyState({ repoCount: 3, filter: { ...ALL, path: "src" }, review: true }).body, /touches “src”/, "under a Path filter, it says so");
-  assert.strictEqual(reviewLabel({ files: 4, repos: 2 }), "4 files in 2 repositories");
-  assert.strictEqual(reviewLabel({ files: 1, repos: 1 }), "1 file in 1 repository");
-  assert.strictEqual(reviewLabel({ files: 0, repos: 0 }), "nothing to review");
-  console.log("ok - Review Uncommitted's mode bar and empty state");
 }

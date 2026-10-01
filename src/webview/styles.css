@@ -146,9 +146,6 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .path-filter { flex: 1 1 130px; min-width: 100px; }
 /* File History already filters to one file. */
 .app.history .path-filter { display: none; }
-/* Review Uncommitted: uncommitted work has no message, author, branch or date to filter on. */
-.app.review :is(#search, .author-field, #branch, #date, #custom-range) { display: none; }
-.app.review .footer .note { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 /* The focus outline would hide the error while typing: it takes the error color too. */
 .filters input[aria-invalid="true"]:focus-visible { outline-color: var(--vscode-inputValidation-errorBorder); }
@@ -202,9 +199,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
   align-items: center; column-gap: 10px; padding: 0 var(--pad-x); cursor: default;
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
-/* A repository's uncommitted changes, pinned above its commits. */
-.row.uncommitted .subject { font-style: italic; }
-.pending-dot { margin-right: 6px; font-style: normal; color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-descriptionForeground)); }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 .list:focus .row[aria-selected="true"] {
   background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);

@@ -89,7 +89,7 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
 }
 
 {
-  const wt: Commit = { repoId: "/ws/acme-web", sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["c".repeat(40)], uncommitted: 3 };
+  const wt: Commit = { repoId: "/ws/acme-web", sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["c".repeat(40)] };
   const d = describeChanges({ commit: wt, repoRoot: "/ws/acme-web", repoName: "acme-web", status: "ready", message: "", files: [
     { path: "src/app.ts", added: 3, deleted: 1, status: "M", staged: false },
     { path: "src/staged.ts", added: 1, deleted: 0, status: "M", staged: true },
@@ -107,7 +107,7 @@ const flat = (nodes: NodeDesc[], depth = 0): string[] =>
 }
 
 {
-  const pin = (repoId: string, n: number): Commit => ({ repoId, sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["d".repeat(40)], uncommitted: n });
+  const pin = (repoId: string, n: number): Commit => ({ repoId, sha: UNCOMMITTED, time: NOW, author: "", email: "", subject: "Uncommitted changes", parents: ["d".repeat(40)] });
   const review: ChangesState = {
     commit: pin("/ws/acme-web", 2), repoRoot: "/ws/acme-web", repoName: "acme-web", status: "ready", message: "", files: [],
     groups: [

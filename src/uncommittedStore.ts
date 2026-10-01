@@ -1,0 +1,245 @@
+import { promises as fs } from "fs";
+import * as path from "path";
+import * as vscode from "vscode";
+import { debounce } from "./debounce";
+import type { RunGit } from "./logQuery";
+import { runPool } from "./pool";
+import type { FileChange, Repo } from "./types";
+import type { RepoWork } from "./uncommittedModel";
+import { headOf, parseNumstat, splitStatus, stagedNumstatArgs, statusArgs, unstagedNumstatArgs, workFiles } from "./workingTree";
+
+/** What the store reads: the ticked repositories (Repo List order) under the Path box. */
+export interface Scope {
+  repos: readonly Repo[];
+  pathspecs: readonly string[];
+}
+
+export interface StoreDeps {
+  run: RunGit;
+  /** VS Code's Git reports this repository's changes (else it is read on every full read). */
+  reportsChanges(root: string): boolean;
+  /** VS Code's Git has the repository open: Stage, Discard and Commit work there. */
+  canStage(root: string): boolean;
+  concurrency(): number;
+}
+
+interface Entry extends RepoWork {
+  /** Orders reads of one repository: a slower, older read never replaces a newer one. */
+  seq: number;
+}
+
+/** Changed files whose modification time decides "edited N ago". */
+const EDITED_SAMPLE = 50;
+
+async function newestMtime(root: string, paths: readonly string[]): Promise<number | null> {
+  const stats = await Promise.allSettled(paths.map((p) => fs.stat(path.join(root, ...p.split("/")))));
+  let newest: number | null = null;
+  for (const s of stats) if (s.status === "fulfilled" && (newest === null || s.value.mtimeMs > newest)) newest = s.value.mtimeMs;
+  return newest;
+}
+
+/** Whether a new read shows the same work as the last one (then nobody is told). */
+function sameWork(a: RepoWork | undefined, b: RepoWork): boolean {
+  if (a === undefined) return b.staged.length + b.changes.length === 0;
+  return a.head === b.head && a.canStage === b.canStage && a.editedAt === b.editedAt
+    && JSON.stringify(a.staged) === JSON.stringify(b.staged) && JSON.stringify(a.changes) === JSON.stringify(b.changes);
+}
+
+/**
+ * Each ticked repository's uncommitted work, read from git: once in the background after the
+ * Log's first page, then one repository at a time when a save or VS Code's Git says it changed.
+ * Nothing here is a cache: every value is a git read, kept current by those events.
+ * The Log's Commits | Uncommitted switch and the Uncommitted view both show it.
+ */
+export class UncommittedStore implements vscode.Disposable {
+  private scope: Scope = { repos: [], pathspecs: [] };
+  private readonly map = new Map<string, Entry>();
+  /** The pathspec the map was read under (a new one reads every repository again). */
+  private spec: string | undefined;
+  private seq = 0;
+  /** The read of every repository; a newer one aborts it. */
+  private fullRead = new AbortController();
+  /** Reads of single repositories; a read of every repository aborts them. */
+  private repoReads = new AbortController();
+  /**
+   * The repositories and pathspec of the last complete read of every repository (and of the one
+   * in flight). The same again reads only what VS Code's Git does not report on.
+   */
+  private done: string | undefined;
+  private inFlight: string | undefined;
+  private reading: Promise<void> | undefined;
+  private readonly touched = new Set<string>();
+  private readonly touchedSoon = debounce(() => {
+    const ids = new Set(this.touched);
+    this.touched.clear();
+    void this.read(ids);
+  }, 400);
+  private readonly emitter = new vscode.EventEmitter<void>();
+  /** The work changed (coalesced: at most once every 80 ms while repositories come in). */
+  readonly onDidChange = this.emitter.event;
+  private changeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** How many times onDidChange fired (integration test seam). */
+  changes = 0;
+  /** The background read has started (before it, nothing is read). */
+  started = false;
+  /** A read of every repository finished: the switch's badge can show a number. */
+  known = false;
+
+  constructor(private readonly deps: StoreDeps) {}
+
+  /** The ticked repositories or the Path box changed. Repositories left out are forgotten at once. */
+  setScope(scope: Scope): void {
+    this.scope = scope;
+    const ids = new Set(scope.repos.map((r) => r.id));
+    let dropped = false;
+    for (const id of [...this.map.keys()]) {
+      if (ids.has(id)) continue;
+      const w = this.map.get(id)!;
+      this.map.delete(id);
+      if (w.staged.length + w.changes.length > 0) dropped = true;
+    }
+    if (dropped) this.changedSoon();
+  }
+
+  /** Reads every repository of the scope (force: even if an identical read finished: Refresh, a new git). */
+  readAll(force = false): Promise<void> {
+    this.started = true;
+    if (force) this.done = this.inFlight = this.reading = undefined;
+    return this.read();
+  }
+
+  /** A save, or VS Code's Git reporting a repository: read that repository again after a burst. */
+  touch(fsPath: string): void {
+    if (!this.started) return;
+    const repo = this.innermost(fsPath);
+    if (!repo) return; // outside every ticked repository
+    this.touched.add(repo.id);
+    this.touchedSoon();
+  }
+
+  /** Reads one repository now (after Stage, Unstage, Discard, Commit). */
+  readRepo(repoId: string): Promise<void> {
+    return this.read(new Set([repoId]));
+  }
+
+  /** The work of the repositories read so far, in Repo List order. */
+  works(): RepoWork[] {
+    return this.scope.repos.flatMap((r) => {
+      const w = this.map.get(r.id);
+      return w ? [w] : [];
+    });
+  }
+
+  get(repoId: string): RepoWork | undefined {
+    return this.map.get(repoId);
+  }
+
+  private innermost(fsPath: string): Repo | undefined {
+    return this.scope.repos
+      .map((r) => ({ r, rel: path.relative(r.root, fsPath) }))
+      .filter((x) => x.rel !== ".." && !x.rel.startsWith(`..${path.sep}`) && !path.isAbsolute(x.rel))
+      .sort((a, b) => a.rel.length - b.rel.length)[0]?.r;
+  }
+
+  private async read(only?: ReadonlySet<string>): Promise<void> {
+    const specs = this.scope.pathspecs;
+    const spec = specs.join("\0");
+    let repos = [...this.scope.repos];
+    let ctl: AbortController;
+    if (only) {
+      // Under another pathspec, a read of every repository is already on its way.
+      if (spec !== this.spec) return;
+      repos = repos.filter((r) => only.has(r.id));
+      ctl = this.repoReads;
+    } else {
+      const key = `${spec}\n${repos.map((r) => r.id).join("\0")}`;
+      if (key === this.inFlight && !this.fullRead.signal.aborted && this.reading) return this.reading;
+      if (key === this.done) {
+        // Kept current by VS Code's Git and saves, except where it reports nothing: read those.
+        const unreported = repos.filter((r) => !this.deps.reportsChanges(r.root));
+        if (unreported.length > 0) await this.read(new Set(unreported.map((r) => r.id)));
+        return;
+      }
+      this.done = undefined;
+      this.inFlight = key;
+      this.fullRead.abort();
+      this.repoReads.abort();
+      this.repoReads = new AbortController();
+      ctl = this.fullRead = new AbortController();
+      // Until its new result lands, each repository keeps its last one (no flicker), unless the
+      // pathspec changed: then the old work answers another question.
+      if (spec !== this.spec) {
+        const had = [...this.map.values()].some((w) => w.staged.length + w.changes.length > 0);
+        this.map.clear();
+        if (had) this.changedSoon();
+      }
+      this.spec = spec;
+    }
+    const reading = runPool(repos, this.deps.concurrency(), async (r, signal) => {
+      const seq = ++this.seq;
+      const work = await this.readOne(r, specs, signal);
+      if (ctl.signal.aborted) return;
+      const old = this.map.get(r.id);
+      if (old && old.seq > seq) return;
+      this.map.set(r.id, { ...work, seq });
+      // Show each repository as soon as it is read, rather than after the slowest one.
+      if (!sameWork(old, work)) this.changedSoon();
+    }, ctl.signal);
+    if (only) {
+      await reading;
+      return;
+    }
+    const done = reading.then((settled) => {
+      if (this.fullRead !== ctl) return;
+      this.reading = undefined;
+      // Done only if every repository answered: one that failed is read again next time.
+      if (!ctl.signal.aborted && settled.every((s) => s.status === "fulfilled")) this.done = this.inFlight;
+      this.inFlight = undefined;
+      if (!ctl.signal.aborted && !this.known) {
+        this.known = true;
+        this.changedSoon();
+      }
+    });
+    this.reading = done;
+    await done;
+  }
+
+  /** git status, then (only where something changed) the two numstat reads and the edit times. */
+  private async readOne(r: Repo, specs: readonly string[], signal: AbortSignal): Promise<RepoWork> {
+    // One call for a clean repository: --branch carries the last commit's id too.
+    const out = await this.deps.run(r.root, statusArgs(specs), signal);
+    const head = headOf(out);
+    const split = splitStatus(out);
+    let staged: FileChange[] = [];
+    let changes: FileChange[] = [];
+    let editedAt: number | null = null;
+    if (split.staged.length + split.changes.length > 0) {
+      const [s, u] = await Promise.all([
+        split.staged.length > 0 ? this.deps.run(r.root, stagedNumstatArgs(head, specs), signal) : Promise.resolve(""),
+        split.changes.length > 0 ? this.deps.run(r.root, unstagedNumstatArgs(specs), signal) : Promise.resolve(""),
+      ]);
+      staged = workFiles(split.staged, parseNumstat(s));
+      changes = workFiles(split.changes, parseNumstat(u));
+      const present = [...new Set([...staged, ...changes].filter((f) => f.status !== "D").map((f) => f.path))].slice(0, EDITED_SAMPLE);
+      editedAt = await newestMtime(r.root, present);
+    }
+    return { repoId: r.id, root: r.root, name: r.name, head, staged, changes, editedAt, canStage: this.deps.canStage(r.root) };
+  }
+
+  private changedSoon(): void {
+    if (this.changeTimer) return;
+    this.changeTimer = setTimeout(() => {
+      this.changeTimer = undefined;
+      this.changes++;
+      this.emitter.fire();
+    }, 80);
+  }
+
+  dispose(): void {
+    this.fullRead.abort();
+    this.repoReads.abort();
+    this.touchedSoon.cancel();
+    clearTimeout(this.changeTimer);
+    this.emitter.dispose();
+  }
+}
