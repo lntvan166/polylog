@@ -1312,5 +1312,18 @@ describe("Polylog panel", () => {
       assert.strictEqual(s.pair?.left, "release-1.4", "the last pair is remembered");
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     });
+
+    it("a branch that moves is read again; Fetch All reads every repository again", async () => {
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      await csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      await settled("read", (x) => x.rows.includes("acme-web ◀1 ▶0 =0"));
+      const web = roots["acme-web"];
+      const tip = git(web, ["rev-parse", "refs/heads/release-1.4"]);
+      git(web, ["update-ref", "refs/heads/release-1.4", commitOn(web, tip, { "export.ts": "export {};\n" }, "feat: export CSV", T + 60)]);
+      await vscode.commands.executeCommand("polylog.fetchAll");
+      await settled("re-read after Fetch All", (x) => x.rows.includes("acme-web ◀2 ▶0 =0"));
+      git(web, ["update-ref", "refs/heads/release-1.4", tip]);
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    });
   });
 });

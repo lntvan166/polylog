@@ -5,6 +5,7 @@ import { COMMIT_PAGE, pairDuplicates, pushRecent, summaryLabel, tabTitle, validP
 import type { CCommit, CFile, CompareHost, CompareMode, CompareWebview, CRepoRow } from "./compareProtocol";
 import { rowLabel, type CompareStore } from "./compareStore";
 import type { LogView } from "./logView";
+import { debounce } from "./debounce";
 import { isAbortError } from "./pool";
 import { isSha, type FileChange } from "./types";
 import { renderCompareHtml } from "./webview/compare/html";
@@ -45,11 +46,26 @@ export class ComparePanel implements vscode.Disposable {
   private limits = { left: COMMIT_PAGE, right: COMMIT_PAGE };
   private detailSeq = 0;
   private readonly disposables: vscode.Disposable[] = [];
+  /** Repositories whose branches moved; vscode.git reports one several times in a burst. */
+  private readonly touched = new Set<string>();
+  private readonly refreshSoon = debounce(() => {
+    const ids = [...this.touched];
+    this.touched.clear();
+    for (const id of ids) void this.deps.store.refresh(id);
+  }, 400);
 
   constructor(private readonly deps: { context: vscode.ExtensionContext; store: CompareStore; log: LogView }) {
     this.disposables.push(
       deps.store.onDidChange(() => this.postRepos()),
-      deps.log.onDidChangeRefs((id) => void deps.store.refresh(id)),
+      deps.log.onDidChangeRefs((id) => {
+        if (id === undefined) {
+          this.touched.clear();
+          void deps.store.refresh();
+          return;
+        }
+        this.touched.add(id);
+        this.refreshSoon();
+      }),
     );
   }
 
@@ -275,6 +291,7 @@ export class ComparePanel implements vscode.Disposable {
   }
 
   dispose(): void {
+    this.refreshSoon.cancel();
     this.panel?.dispose();
     for (const d of this.disposables) d.dispose();
   }
