@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import type { RunGit } from "./logQuery";
-import { decodeRevision } from "./revisionUri";
+import { decodeRevision, INDEX } from "./revisionUri";
 
 /** Serves `polylog:` URIs: the content of <ref>:<path> in one repository. */
 export class RevisionProvider implements vscode.TextDocumentContentProvider {
@@ -11,7 +11,8 @@ export class RevisionProvider implements vscode.TextDocumentContentProvider {
     if (rev.ref === null) return ""; // a root commit's "before" side
     const ctl = new AbortController();
     const sub = token.onCancellationRequested(() => ctl.abort());
-    const spec = `${rev.ref}:${rev.path}`;
+    // The index is `:<path>`; a commit is `<sha>:<path>`.
+    const spec = rev.ref === INDEX ? `:${rev.path}` : `${rev.ref}:${rev.path}`;
     try {
       return await this.run(rev.root, ["show", spec], ctl.signal);
     } catch (e) {

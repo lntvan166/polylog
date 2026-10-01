@@ -5,9 +5,12 @@ import { isSha } from "./types";
 // vscode.git and have changed between releases.
 export const SCHEME = "polylog";
 
+/** The index (staging area): `git show :<path>` is the staged version of a file. */
+export const INDEX = ":";
+
 export interface RevisionRef {
   root: string;
-  /** null renders as empty content (a root commit's "before" side). */
+  /** A commit id; INDEX for the staged version; null renders as empty (a root commit's "before" side). */
   ref: string | null;
   /** Repository-relative, forward slashes, as git prints it. */
   path: string;
@@ -24,7 +27,7 @@ export function decodeRevision(path: string, query: string): RevisionRef {
   } catch {
     throw new Error("not a polylog revision URI");
   }
-  if (typeof q.root !== "string" || !(q.ref === null || isSha(q.ref))) throw new Error("not a polylog revision URI");
+  if (typeof q.root !== "string" || !(q.ref === null || q.ref === INDEX || isSha(q.ref))) throw new Error("not a polylog revision URI");
   return { root: q.root, ref: q.ref, path: path.replace(/^\//, "") };
 }
 
