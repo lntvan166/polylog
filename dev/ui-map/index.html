@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Polylog UI Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a field guide. Each section is a faithful mock of a Polylog view with numbered tags,
+   followed by the glossary that names every tag. Mocks scroll sideways on phones; text never does. */
+:root {
+  --page: #f3f4f6;
+  --ink: #1f2328;
+  --muted: #59636e;
+  --line: #d6dae0;
+  --tag: #d1242f;
+  --tag-ink: #ffffff;
+  --planned: #8a5a00;
+  --planned-bg: #fff4d6;
+  /* the mock itself: VS Code's light theme */
+  --vs-bg: #ffffff;
+  --vs-panel: #f8f8f8;
+  --vs-border: #e5e5e5;
+  --vs-fg: #3b3b3b;
+  --vs-dim: #767676;
+  --vs-input: #ffffff;
+  --vs-input-border: #cecece;
+  --vs-sel: #e4e6f1;
+  --vs-hover: #f2f2f2;
+  --vs-menu: #ffffff;
+  --vs-add: #388a34;
+  --vs-mod: #895503;
+  --c-web: #1a85ff; --c-api: #9b59d0; --c-libs: #2a9d4b; --c-docs: #0ea5b7;
+  --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --vs-font: system-ui, -apple-system, "Segoe UI", Ubuntu, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #15171a; --ink: #e6e8eb; --muted: #9aa3ad; --line: #2c3036; --tag: #ff6b6b; --tag-ink: #1a0b0b;
+  --planned: #f0c060; --planned-bg: #3a2e12;
+  --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
+  --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
+  --vs-add: #81b88b; --vs-mod: #e2c08d;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --page: #15171a; --ink: #e6e8eb; --muted: #9aa3ad; --line: #2c3036; --tag: #ff6b6b; --tag-ink: #1a0b0b;
+  --planned: #f0c060; --planned-bg: #3a2e12;
+  --vs-bg: #1f1f1f; --vs-panel: #181818; --vs-border: #2b2b2b; --vs-fg: #cccccc; --vs-dim: #9d9d9d;
+  --vs-input: #313131; --vs-input-border: #3c3c3c; --vs-sel: #04395e; --vs-hover: #2a2d2e; --vs-menu: #252526;
+  --vs-add: #81b88b; --vs-mod: #e2c08d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--page); color: var(--ink); font: 15px/1.55 var(--font); }
+.wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 32px 56px; display: grid; gap: 40px; }
+header { display: grid; gap: 8px; max-width: 68ch; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; font-weight: 600; text-wrap: balance; }
+h2 { font-size: 19px; margin: 0; font-weight: 600; text-wrap: balance; }
+p { margin: 0; }
+.lede { color: var(--muted); }
+.how { font-size: 14px; color: var(--muted); }
+code { font-family: var(--mono); font-size: 0.9em; }
+section { display: grid; gap: 16px; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; }
+.pill { font: 600 11px/1 var(--font); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 7px; border-radius: 4px; }
+.pill.now { background: var(--line); color: var(--ink); }
+.pill.planned { background: var(--planned-bg); color: var(--planned); }
+
+/* ---------- the mock ---------- */
+.stage { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--vs-panel); }
+.vs { padding: 16px; min-width: 980px; font: 13px/1.4 var(--vs-font); color: var(--vs-fg); background: var(--vs-panel); position: relative; }
+.tabs { display: flex; gap: 18px; padding: 8px 14px 0; border-bottom: 1px solid var(--vs-border); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--vs-dim); }
+.tabs span { padding-bottom: 6px; }
+.tabs .on { color: var(--vs-fg); border-bottom: 1px solid var(--vs-fg); }
+.views { display: grid; grid-template-columns: 1fr 300px; min-height: 330px; }
+.view { display: grid; grid-template-rows: auto 1fr; min-width: 0; }
+.view + .view { border-left: 1px solid var(--vs-border); }
+.vhead { display: flex; align-items: center; gap: 6px; padding: 5px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.vhead .tools { margin-left: auto; display: flex; gap: 10px; font-weight: 400; font-size: 14px; color: var(--vs-fg); }
+.vbody { background: var(--vs-panel); min-width: 0; }
+.log { display: grid; grid-template-columns: 180px 1fr; min-height: 290px; }
+.pane { border-right: 1px solid var(--vs-border); padding: 6px 8px; display: grid; align-content: start; gap: 4px; }
+.input { background: var(--vs-input); border: 1px solid var(--vs-input-border); color: var(--vs-dim); padding: 3px 6px; border-radius: 2px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.reporow { display: flex; align-items: center; gap: 7px; height: 22px; font-size: 13px; }
+.box { width: 13px; height: 13px; border: 1px solid var(--vs-input-border); border-radius: 3px; display: grid; place-items: center; font-size: 10px; flex: none; }
+.dot { width: 7px; height: 7px; border-radius: 2px; flex: none; }
+.cnt { margin-left: auto; color: var(--vs-dim); font-variant-numeric: tabular-nums; }
+.sync { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 600; }
+.main { display: grid; grid-template-rows: auto auto 1fr auto; min-width: 0; }
+.fbar { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 6px; padding: 6px 8px 0; }
+.fbar2 { display: grid; grid-template-columns: 2.2fr 1fr auto; gap: 6px; padding: 6px 8px; align-items: center; }
+.rows { padding: 0 8px; display: grid; align-content: start; }
+.row { display: grid; grid-template-columns: 92px 1fr 60px 64px; gap: 10px; align-items: center; height: 24px; font-size: 13px; }
+.row.sel { background: var(--vs-sel); }
+.chip { font-size: 12px; padding: 1px 6px; border-radius: 3px; border: 1px solid currentColor; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.subj { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.when { text-align: right; color: var(--vs-dim); }
+.who { color: var(--vs-dim); }
+.pending { color: var(--vs-mod); }
+.more { justify-self: start; margin: 4px 0; font-size: 12px; padding: 2px 10px; border: 1px solid var(--vs-input-border); border-radius: 2px; }
+.foot { display: flex; gap: 12px; padding: 4px 8px; border-top: 1px solid var(--vs-border); color: var(--vs-dim); font-size: 12px; }
+.foot .r { margin-left: auto; }
+.tree { padding: 4px 0; display: grid; align-content: start; }
+.node { display: flex; align-items: center; gap: 6px; height: 22px; padding-left: calc(10px + var(--d, 0) * 14px); padding-right: 10px; white-space: nowrap; }
+.node .desc { color: var(--vs-dim); font-size: 12px; }
+.node .badge { margin-left: auto; font-size: 12px; font-weight: 600; }
+.add { color: var(--vs-add); } .mod { color: var(--vs-mod); }
+.web { color: var(--c-web); } .api { color: var(--c-api); } .libs { color: var(--c-libs); } .docs { color: var(--c-docs); }
+.bg-web { background: var(--c-web); } .bg-api { background: var(--c-api); } .bg-libs { background: var(--c-libs); } .bg-docs { background: var(--c-docs); }
+.menus { display: flex; flex-wrap: wrap; gap: 24px; padding: 16px; align-items: flex-start; min-width: 0; }
+.menu { background: var(--vs-menu); border: 1px solid var(--vs-border); border-radius: 6px; padding: 4px 0; min-width: 250px; box-shadow: 0 6px 18px rgb(0 0 0 / 0.12); font: 13px/1.4 var(--vs-font); color: var(--vs-fg); position: relative; }
+.menu .it { padding: 3px 24px; }
+.menu hr { border: 0; border-top: 1px solid var(--vs-border); margin: 4px 0; }
+.menu .cap { font: 600 11px/1 var(--font); color: var(--vs-dim); padding: 6px 24px 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+.ghost { opacity: 0.55; }
+
+/* numbered tags */
+.t { position: relative; outline: 1.5px solid var(--tag); outline-offset: 1px; border-radius: 2px; }
+.view.t, .tabs.t { outline-offset: -3px; }
+.reporow.t, .row.t, .node.t, .more.t, .foot.t { margin-block: 9px; }
+.input.t { overflow: visible; }
+.wrap > *, section > * { min-width: 0; }
+.stage { max-width: 100%; }
+.tabs .on.t { padding-left: 12px; }
+.fbar, .fbar2 { padding-top: 14px; column-gap: 16px; }
+.pane { padding-top: 14px; padding-left: 14px; }
+.rows { padding-left: 16px; }
+.vhead .tools.t { padding: 0 4px; }
+.view.t.planned-box { outline-color: var(--planned); }
+.n { position: absolute; z-index: 2; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; line-height: 18px !important; background: var(--tag); color: var(--tag-ink); font: 600 11px/20px var(--font); text-align: center; box-shadow: 0 0 0 2px var(--vs-panel); pointer-events: none; }
+.n.tl { top: -10px; left: -10px; } .n.tr { top: -9px; right: -9px; } .n.r { top: 50%; right: -8px; transform: translateY(-50%); } .n.l { top: 50%; left: -26px; transform: translateY(-50%); }
+
+/* glossary */
+.gloss { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px 28px; }
+.g { display: grid; grid-template-columns: 28px 1fr; gap: 2px 10px; align-items: start; padding-block: 6px; border-top: 1px solid var(--line); }
+.g .num { grid-row: span 2; min-width: 22px; height: 22px; border-radius: 11px; background: var(--tag); color: var(--tag-ink); font: 600 11px/22px var(--font); text-align: center; }
+.g b { font-weight: 600; }
+.g span { color: var(--muted); font-size: 14px; min-width: 0; }
+.g.planned .num { background: var(--planned); color: var(--page); }
+.q { border-left: 3px solid var(--planned); background: var(--planned-bg); padding: 12px 14px; border-radius: 0 6px 6px 0; max-width: 72ch; display: grid; gap: 6px; }
+.q b { color: var(--planned); }
+@media (max-width: 520px) { h1 { font-size: 23px; } .gloss { grid-template-columns: 1fr; } }
+.t { cursor: copy; transition: outline-width .08s, background-color .08s; }
+.t.hot { outline-width: 3px; background-color: color-mix(in srgb, var(--tag) 10%, transparent); }
+.n { pointer-events: auto !important; cursor: copy; }
+.g { cursor: copy; border-radius: 4px; }
+.g:hover, .g:focus-visible { background: color-mix(in srgb, var(--tag) 8%, transparent); outline: none; }
+.toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--page); font: 500 14px/1.3 var(--font); padding: 9px 14px; border-radius: 6px; box-shadow: 0 6px 18px rgb(0 0 0 / .25); opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 10; }
+.toast.on { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .t, .toast { transition: none; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Polylog UI Map</h1>
+  <p class="lede">Every part of the Polylog panel, with the name we'll both use for it. Say "Repo List row" or "Log toolbar" and we mean the same thing.</p>
+  <!-- Dev-only (not in the VSIX). Serve with: npm run ui-map. Keep it in step with the UI: /ui-map. -->
+  <p class="how"><b>Click any box, number or name to copy the name.</b> Each red box is one named region, and its red number points to the name below. Boxes inside boxes are parts of a bigger region (the Filter bar sits inside the Log view). Amber boxes are the planned views from our current design talk. The mocks scroll sideways on a narrow screen.</p>
+</header>
+
+<!-- ============ TODAY ============ -->
+<section aria-labelledby="s-now">
+  <div class="sec-head"><h2 id="s-now">The Polylog panel today</h2><span class="pill now">Exists</span></div>
+  <div class="stage">
+    <div class="vs">
+      <div class="tabs"><span>Problems</span><span>Output</span><span>Terminal</span><span class="on t">Polylog<i class="n tl">1</i></span></div>
+      <div class="views">
+        <!-- Log view -->
+        <div class="view t">
+          <i class="n tl">2</i>
+          <div class="vhead">▾ Log
+            <span class="tools t" title="Log toolbar">☰ ☑ ◉ ☁ ⋯<i class="n tl">3</i></span>
+          </div>
+          <div class="vbody log">
+            <div class="pane t"><i class="n tl">4</i>
+              <div class="input t">Filter repositories<i class="n tl">5</i></div>
+              <div class="reporow t"><span class="box">✓</span><span class="dot" style="border:1px solid var(--vs-dim)"></span>All repositories<span class="cnt">4</span><i class="n tl">6</i></div>
+              <div class="reporow"><span class="box">✓</span><span class="dot bg-api"></span>acme-api<span class="sync t" style="padding:0 3px">↓1<i class="n tl">7</i></span></div>
+              <div class="reporow"><span class="box">✓</span><span class="dot bg-docs"></span>acme-docs</div>
+              <div class="reporow"><span class="box">✓</span><span class="dot bg-libs"></span>acme-libs<span class="sync">↓1 ↑2</span></div>
+              <div class="reporow t"><span class="box">✓</span><span class="dot bg-web"></span>acme-web<i class="n tl">8</i></div>
+            </div>
+            <div class="main">
+              <div class="fbar t"><i class="n tl">9</i>
+                <div class="input t">Search messages<i class="n tl">10</i></div>
+                <div class="input t" style="display:flex">Author<span style="margin-left:auto;color:var(--vs-fg);font-weight:600">Me</span><i class="n tl">11</i></div>
+                <div class="input t">Path or glob<i class="n tl">12</i></div>
+              </div>
+              <div class="fbar2">
+                <div class="input t">Current branch<i class="n tl">13</i></div>
+                <div class="input t" style="color:var(--vs-fg)">Last 24 hours ▾<i class="n tl">14</i></div>
+                <div class="t" style="padding:0 6px">⟳<i class="n tl">15</i></div>
+              </div>
+              <div class="rows">
+                <div class="row t"><span class="chip api">acme-api</span><span class="subj pending">● Uncommitted changes · 2 files</span><span class="who"></span><span class="when">now</span><i class="n tl">16</i></div>
+                <div class="row sel t"><span class="chip web">acme-web</span><span class="subj">feat(checkout): pay with a saved card</span><span class="who">rin</span><span class="when">24m ago</span><i class="n tl">17</i></div>
+                <div class="row"><span class="chip docs">acme-docs</span><span class="subj">docs(payments): saved cards guide</span><span class="who">dana</span><span class="when">1h ago</span></div>
+                <div class="row"><span class="chip api">acme-api</span><span class="subj">feat(payments): list saved cards</span><span class="who">dana</span><span class="when">1h ago</span></div>
+                <div class="row"><span class="chip libs">acme-libs</span><span class="subj">feat(ui): card brand icon</span><span class="who">rin</span><span class="when">2h ago</span></div>
+                <span class="more t">Load more<i class="n tl">18</i></span>
+              </div>
+              <div class="foot t"><span>Newest first by commit date</span><span class="r">16 commits</span><i class="n tl">19</i></div>
+            </div>
+          </div>
+        </div>
+        <!-- Changes view -->
+        <div class="view t">
+          <i class="n tl">20</i>
+          <div class="vhead">▾ Changes</div>
+          <div class="vbody tree">
+            <div class="node t" style="--d:0">▾ ◇ feat(checkout): pay with a saved card <span class="desc">acme-web</span><i class="n tl">21</i></div>
+            <div class="node t" style="--d:1">▾ src <span class="desc">3</span><i class="n tl">22</i></div>
+            <div class="node" style="--d:2">▾ checkout <span class="desc">2</span></div>
+            <div class="node t" style="--d:3"><span class="mod">PaymentStep.tsx</span> <span class="desc">+11 −1</span><span class="badge mod">M</span><i class="n tl">23</i></div>
+            <div class="node" style="--d:3"><span class="add">SavedCards.tsx</span> <span class="desc">+25 −0</span><span class="badge add">A</span></div>
+            <div class="node" style="--d:2"><span class="mod">client.ts</span> <span class="desc">+2 −0</span><span class="badge mod">M</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="gloss">
+    <div class="g"><i class="num">1</i><b>Polylog panel</b><span>The "Polylog" tab in VS Code's bottom panel. Holds every Polylog view.</span></div>
+    <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
+    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Icons in the Log's title, left to right: Group by Repository, Review Uncommitted, Show/Hide Uncommitted (the eye), Fetch All, and the "⋯" menu.</span></div>
+    <div class="g"><i class="num">4</i><b>Repo List</b><span>The list of repositories on the Log's left. Tick to choose which repositories the Log shows. Today's name in the code is "Repositories pane".</span></div>
+    <div class="g"><i class="num">5</i><b>Repo search</b><span>"Filter repositories": narrows the Repo List by name.</span></div>
+    <div class="g"><i class="num">6</i><b>All repositories row</b><span>Ticks or unticks every repository; shows how many are picked.</span></div>
+    <div class="g"><i class="num">7</i><b>Sync badge</b><span>↓ commits to pull, ↑ commits not pushed, as of the last fetch.</span></div>
+    <div class="g"><i class="num">8</i><b>Repo List row</b><span>One repository: checkbox, color dot (same color as its chip in the Commit list), name. Right-click for the Repo menu.</span></div>
+    <div class="g"><i class="num">9</i><b>Filter bar</b><span>The boxes above the commits. Every filter runs inside git.</span></div>
+    <div class="g"><i class="num">10</i><b>Search box</b><span>Commit messages, across every repository.</span></div>
+    <div class="g"><i class="num">11</i><b>Author box</b><span>Author chips, with suggestions, and the Me toggle.</span></div>
+    <div class="g"><i class="num">12</i><b>Path box</b><span>Commits that touched a file, folder or glob.</span></div>
+    <div class="g"><i class="num">13</i><b>Branch box</b><span>Read each repository on this branch (falls back to its current branch).</span></div>
+    <div class="g"><i class="num">14</i><b>Date range</b><span>24 hours, 7 days, 30 days, all time, or custom.</span></div>
+    <div class="g"><i class="num">15</i><b>Refresh button</b><span>Reads every repository again.</span></div>
+    <div class="g"><i class="num">16</i><b>Uncommitted row</b><span>Pinned above the commits while the eye is on: one per repository with uncommitted work.</span></div>
+    <div class="g"><i class="num">17</i><b>Commit row</b><span>Repo chip, subject, author, date. Click: its files go to the Changes view. Right-click: the Commit menu.</span></div>
+    <div class="g"><i class="num">18</i><b>Load more</b><span>The next page of commits.</span></div>
+    <div class="g"><i class="num">19</i><b>Log footer</b><span>Sort order, the branch in use, and how many commits are listed.</span></div>
+    <div class="g"><i class="num">20</i><b>Changes view</b><span>Native tree: the files of the selected Commit row.</span></div>
+    <div class="g"><i class="num">21</i><b>Commit header</b><span>The selected commit's subject and repository. Right-click to copy its id or message.</span></div>
+    <div class="g"><i class="num">22</i><b>Folder row</b><span>A folder, with how many changed files it holds.</span></div>
+    <div class="g"><i class="num">23</i><b>File row</b><span>A changed file: +/− lines and its A/M/D/R badge. Click opens the diff.</span></div>
+  </div>
+</section>
+
+<!-- ============ MODES + MENUS ============ -->
+<section aria-labelledby="s-menus">
+  <div class="sec-head"><h2 id="s-menus">Modes and right-click menus</h2><span class="pill now">Exists</span></div>
+  <div class="stage">
+    <div class="menus">
+      <div class="menu t"><i class="n tl">24</i>
+        <div class="cap">Mode bar · File History</div>
+        <div class="it">All commits · src/checkout/PaymentStep.tsx · acme-web ✕</div>
+      </div>
+      <div class="menu t"><i class="n tl">25</i>
+        <div class="cap">Repo menu</div>
+        <div class="it">Pull <span class="ghost">(only when ↓)</span></div><hr>
+        <div class="it">Show Only This Repository</div><div class="it">Hide from the Log</div>
+        <div class="it">Show All Repositories</div><div class="it">Show Only Repositories Behind</div><hr>
+        <div class="it">Open Folder in New Window</div><hr><div class="it">Copy Path</div><hr><div class="it">Exclude from Polylog</div>
+      </div>
+      <div class="menu t"><i class="n tl">26</i>
+        <div class="cap">Commit menu</div>
+        <div class="it">Copy Commit ID</div><div class="it">Copy Message</div><div class="it">Open on Remote</div><hr>
+        <div class="it ghost">…then the Repo menu</div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g"><i class="num">24</i><b>Mode bar</b><span>Appears above the Filter bar in File History or Review Uncommitted, with a way back to all commits.</span></div>
+    <div class="g"><i class="num">25</i><b>Repo menu</b><span>Right-click a Repo List row, or any row of that repository in the Commit list.</span></div>
+    <div class="g"><i class="num">26</i><b>Commit menu</b><span>Right-click a Commit row: the commit's items first, then the Repo menu.</span></div>
+  </div>
+</section>
+
+<!-- ============ PLANNED ============ -->
+<section aria-labelledby="s-planned">
+  <div class="sec-head"><h2 id="s-planned">Planned views</h2><span class="pill planned">Being designed</span></div>
+  <div class="stage">
+    <div class="vs">
+      <div class="tabs"><span>Problems</span><span>Terminal</span><span class="on">Polylog</span></div>
+      <div class="views" style="grid-template-columns: 1fr 1fr">
+        <div class="view t planned-box"><i class="n tl" style="background:var(--planned);color:var(--page)">27</i>
+          <div class="vhead">▾ Uncommitted <span class="tools">⟳</span></div>
+          <div class="vbody tree">
+            <div class="node" style="--d:0">▾ <span class="dot bg-web"></span> acme-web <span class="desc">3 files</span></div>
+            <div class="node" style="--d:1"><span class="mod">src/app.ts</span> <span class="desc">+3 −1</span><span class="badge mod">M</span></div>
+            <div class="node" style="--d:1"><span class="add">src/new.ts</span> <span class="desc">new</span><span class="badge add">A</span></div>
+            <div class="node" style="--d:1"><span class="mod">notes.md</span> <span class="desc">· staged</span><span class="badge mod">M</span></div>
+            <div class="node" style="--d:0">▾ <span class="dot bg-api"></span> acme-api <span class="desc">1 file</span></div>
+            <div class="node" style="--d:1"><span class="mod">upload.go</span> <span class="desc">+2 −0</span><span class="badge mod">M</span></div>
+          </div>
+        </div>
+        <div class="view t planned-box"><i class="n tl" style="background:var(--planned);color:var(--page)">28</i>
+          <div class="vhead">▾ Compare Branches</div>
+          <div class="vbody tree">
+            <div class="node" style="--d:0;gap:8px"><span class="input" style="color:var(--vs-fg)">main ▾</span> ↔ <span class="input" style="color:var(--vs-fg)">origin/release-1.4 ▾</span></div>
+            <div class="node" style="--d:0">▾ <span class="dot bg-api"></span> acme-api <span class="desc">4 commits · 6 files</span></div>
+            <div class="node" style="--d:1">▾ payments <span class="desc">2</span></div>
+            <div class="node" style="--d:2"><span class="mod">cards.go</span> <span class="desc">+40 −3</span><span class="badge mod">M</span></div>
+            <div class="node" style="--d:0">▸ <span class="dot bg-web"></span> acme-web <span class="desc">1 commit · 2 files</span></div>
+            <div class="node" style="--d:0"><span class="desc">acme-docs, acme-libs: no difference (hidden)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="gloss">
+    <div class="g planned"><i class="num">27</i><b>Uncommitted view</b><span>Its own view in the Polylog panel, replacing the eye, the Uncommitted rows and Review Uncommitted. One row per repository with uncommitted work, its files below.</span></div>
+    <div class="g planned"><i class="num">28</i><b>Compare Branches view</b><span>Pick two branches; only the repositories where they differ are listed, each with its changed files as a tree. Not designed yet.</span></div>
+  </div>
+</section>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script>
+(() => {
+  // number -> name, from the glossary
+  const names = new Map();
+  for (const g of document.querySelectorAll(".g")) {
+    const num = g.querySelector(".num")?.textContent.trim();
+    const name = g.querySelector("b")?.textContent.trim();
+    if (num && name) { names.set(num, name); g.tabIndex = 0; g.dataset.name = name; g.title = `Click to copy "${name}"`; }
+  }
+  // each boxed region knows its own number (its direct tag), so the innermost box wins
+  for (const t of document.querySelectorAll(".t")) {
+    const tag = [...t.children].find((c) => c.classList.contains("n"));
+    const name = tag && names.get(tag.textContent.trim());
+    if (name) { t.dataset.name = name; t.title = `${name} (click to copy)`; }
+  }
+  const toast = document.getElementById("toast");
+  let timer;
+  const show = (text) => { toast.textContent = text; toast.classList.add("on"); clearTimeout(timer); timer = setTimeout(() => toast.classList.remove("on"), 1600); };
+  const fallback = (text) => {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.append(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch {}
+    ta.remove(); return ok;
+  };
+  const copy = (name) => {
+    const done = () => show(`Copied "${name}"`);
+    const fail = () => (fallback(name) ? done() : show(`Select and copy: ${name}`));
+    try { navigator.clipboard.writeText(name).then(done, fail); } catch { fail(); }
+  };
+  const target = (el) => el.closest("[data-name]");
+  document.addEventListener("click", (e) => { const t = target(e.target); if (t) { e.preventDefault(); copy(t.dataset.name); } });
+  document.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && e.target.matches?.(".g[data-name]")) { e.preventDefault(); copy(e.target.dataset.name); } });
+  // hover: highlight only the innermost region under the pointer
+  let hot;
+  document.addEventListener("mouseover", (e) => {
+    const t = e.target.closest(".t[data-name]");
+    if (t === hot) return;
+    hot?.classList.remove("hot"); hot = t; hot?.classList.add("hot");
+  });
+})();
+</script>
+</body>
+</html>

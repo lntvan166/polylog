@@ -471,6 +471,7 @@
     "bundle:web": "esbuild src/webview/main.ts --bundle --outfile=out/webview.js --platform=browser --format=iife --target=es2022",
     "harness": "node dev/harness/build.mjs --serve",
     "harness:build": "node dev/harness/build.mjs",
+    "ui-map": "node dev/ui-map/serve.mjs",
     "check:theme": "node scripts/check-theme-tokens.mjs",
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
