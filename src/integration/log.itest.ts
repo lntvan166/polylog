@@ -1252,5 +1252,61 @@ describe("Polylog panel", () => {
       const after = await snapshot();
       assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
     });
+
+    const panel = () => vscode.commands.executeCommand<import("../comparePanel").CompareSnapshot>("polylog._itest.compare");
+    const csend = (m: import("../compareProtocol").CompareWebview) => vscode.commands.executeCommand("polylog._itest.compareSend", m);
+    const settled = (what: string, ok: (x: import("../comparePanel").CompareSnapshot) => boolean) =>
+      waitFor(what, async () => {
+        const x = await panel();
+        return ok(x) ? x : undefined;
+      });
+
+    it("one Compare tab: Files by default, each side's changes with both marked, a file opens its diff", async () => {
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      let s = await panel();
+      assert.strictEqual(s.panels, 1, "a second run reveals the same tab");
+      await csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      s = await settled("acme-api detail", (x) => x.selected !== undefined && x.left.length > 0);
+      assert.strictEqual(s.title, "⇄ release-1.4 ↔ prod");
+      assert.strictEqual(s.mode, "files");
+      await csend({ type: "select", repoId: roots["acme-api"] });
+      s = await settled("acme-api files", (x) => x.selected === roots["acme-api"] && x.right.length === 3);
+      assert.deepStrictEqual(s.left, ["limit.go +1 −0 both", "retry.go +1 −0 both"]);
+      assert.deepStrictEqual(s.right, ["limit.go +1 −0 both", "retry.go +1 −0 both", "timeout.go +1 −0"]);
+      assert.deepStrictEqual(s.duplicates, ["fix: retry on 503 ◀ ▶"]);
+      await csend({ type: "openFile", repoId: roots["acme-api"], side: "right", path: "timeout.go" });
+      const tab = await waitFor("a diff", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+        return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
+      });
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package timeout\n");
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "");
+      await vscode.commands.executeCommand("workbench.action.closeActiveEditor");
+    });
+
+    it("Commits mode, swap, the same branch twice, and closing the tab mid-read", async () => {
+      await csend({ type: "mode", mode: "commits" });
+      await csend({ type: "select", repoId: roots["acme-api"] });
+      let s = await settled("commits", (x) => x.mode === "commits" && x.left.length === 1 && x.right.length === 1);
+      assert.deepStrictEqual([s.left, s.right], [["feat: rate limit per client"], ["hotfix: raise upstream timeout"]]);
+      await csend({ type: "swap" });
+      s = await settled("swapped", (x) => x.pair?.left === "prod" && x.left[0] === "hotfix: raise upstream timeout");
+      assert.ok(s.rows.includes("acme-api ◀1 ▶1 =1"));
+      assert.ok(s.rows.includes("acme-web ◀0 ▶1 =0"), s.rows.join(" | "));
+      await csend({ type: "pick", pair: { left: "prod", right: "prod" } });
+      s = await settled("same", (x) => x.message !== undefined);
+      assert.strictEqual(s.message, "Pick two different branches. Both sides are prod.");
+      await csend({ type: "mode", mode: "files" });
+      // Close while a read runs: nothing throws, and the next open reads again.
+      void csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      await settled("pair saved", (x) => x.pair?.left === "release-1.4");
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      s = await settled("closed", (x) => !x.open);
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      s = await settled("reopened and read", (x) => x.open && x.rows.length === 3);
+      assert.strictEqual(s.pair?.left, "release-1.4", "the last pair is remembered");
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    });
   });
 });
