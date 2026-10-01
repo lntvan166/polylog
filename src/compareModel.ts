@@ -133,7 +133,9 @@ export function summaryLabel(results: readonly RepoCompare[], ticked: number): s
       }
     }
   }
-  const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`, `=${same} on both`, `${identical} identical`];
+  const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`];
+  if (same > 0) parts.push(`=${same} on both`);
+  if (identical > 0) parts.push(`${identical} identical`);
   if (missing > 0) parts.push(`${missing} missing a branch`);
   parts.push(`in ${plural(ticked, "repository", "repositories")}`);
   return parts.join(" · ");
@@ -177,4 +179,14 @@ function isRemoteName(n: string): boolean {
 /** The remotes the store found (`git for-each-ref refs/remotes`), so "feat/billing" stays Local. */
 export function setRemoteNames(names: Iterable<string>): void {
   remotes = new Set(names);
+}
+
+/** A repository row's description: its = count when it has one, or why it cannot be compared. */
+export function repoDescription(c: RepoCompare): string {
+  switch (c.kind) {
+    case "differs": return c.sameLeft > 0 ? `=${c.sameLeft}` : "";
+    case "nobase": return "no common history";
+    case "error": return "git error";
+    default: return "";
+  }
 }

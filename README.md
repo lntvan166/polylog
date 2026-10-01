@@ -129,7 +129,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     brought back);
   - **= on both**: the same change committed on each side (a cherry-pick).
 
-  Each repository row shows its **=** count (◀ and ▶ are in its tooltip). Repositories whose
+  **Pick Branches…** in the view's title opens VS Code's Quick Pick (recent pairs, favorites,
+  local and remote branches). Each repository row shows its **=** count (◀ and ▶ are in its
+  tooltip). Repositories whose
   files are the same on both branches are hidden, whatever merge commits differ; ones that
   lack a branch are listed at the bottom. **Files** (the default) shows each side's changes
   since the branches split as a folder tree, a file changed on both sides marked **both**;

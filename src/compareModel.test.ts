@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import {
   bothPaths, COMMIT_PAGE, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
-  parseSideCount, parseSideLog, pickerGroups, pushRecent, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
+  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
 
@@ -78,7 +78,8 @@ console.log("ok - swap mirrors a result without reading git");
 
 const results: RepoCompare[] = [differs, { ...differs, left: 5, right: 0, sameLeft: 0, sameRight: 0 }, { kind: "identical" }, { kind: "missing" }, { kind: "missing" }, { kind: "nobase" }];
 assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · =1 on both · 1 identical · 2 missing a branch · in 6 repositories");
-assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · =0 on both · 1 identical · in 1 repository");
+assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · 1 identical · in 1 repository");
+assert.strictEqual(summaryLabel([{ ...results[1] }], 1), "1 repository differs · in 1 repository", "no =0, no 0 identical");
 console.log("ok - the summary counts what differs, what is identical and what is missing");
 
 assert.strictEqual(tabTitle({ left: "origin/release-1.4", right: "origin/main" }), "release-1.4 ↔ main");
@@ -103,3 +104,11 @@ const searched = pickerGroups(names, ["origin/main"], [p1], "REL");
 assert.deepStrictEqual(searched.map((g) => g.title), ["Remote"]);
 assert.deepStrictEqual(pickerGroups(names, [], [], "zzz"), []);
 console.log("ok - the Branch picker groups names and filters them as you type");
+
+// A repository row says only = (when there is one), or why it cannot be compared.
+const row = { kind: "differs" as const, leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 2, sameRight: 2 };
+assert.strictEqual(repoDescription(row), "=2");
+assert.strictEqual(repoDescription({ ...row, sameLeft: 0, sameRight: 0 }), "");
+assert.strictEqual(repoDescription({ kind: "nobase" }), "no common history");
+assert.strictEqual(repoDescription({ kind: "error", reason: "bad object" }), "git error");
+console.log("ok - a repository row shows = only when there is one, or why it cannot be compared");

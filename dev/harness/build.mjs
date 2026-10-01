@@ -20,21 +20,12 @@ const html = renderHtml({ cspSource: "", nonce: "harness", scriptUri: "webview.j
   .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
   .replace("</head>", '<link id="theme" rel="stylesheet" href="themes/dark.css">\n<script src="shim.js"></script>\n</head>');
 writeFileSync(join(dist, "index.html"), html);
-const compareBuild = await esbuild.build({
-  entryPoints: [join(root, "src/webview/compare/html.ts")], bundle: true, format: "esm", platform: "node", write: false,
-});
-const { renderCompareHtml } = await import(`data:text/javascript;base64,${Buffer.from(compareBuild.outputFiles[0].text).toString("base64")}`);
-writeFileSync(join(dist, "compare.html"), renderCompareHtml({ cspSource: "", nonce: "harness", scriptUri: "compare.js", styleUri: "compare.css" })
-  .replace(/<meta http-equiv="Content-Security-Policy"[^>]*>\n?/, "")
-  .replace("</head>", '<link id="theme" rel="stylesheet" href="themes/dark.css">\n<script src="compareShim.js"></script>\n</head>'));
 cpSync(join(here, "themes"), join(dist, "themes"), { recursive: true });
 cpSync(join(here, "gallery.html"), join(dist, "gallery.html"));
 
 const contexts = await Promise.all([
   esbuild.context({ entryPoints: [join(root, "src/webview/main.ts")], bundle: true, format: "iife", outfile: join(dist, "webview.js"), sourcemap: true }),
   esbuild.context({ entryPoints: [join(here, "shim.ts")], bundle: true, format: "iife", outfile: join(dist, "shim.js"), sourcemap: true }),
-  esbuild.context({ entryPoints: [join(root, "src/webview/compare/main.ts")], bundle: true, format: "iife", outfile: join(dist, "compare.js"), sourcemap: true }),
-  esbuild.context({ entryPoints: [join(here, "compareShim.ts")], bundle: true, format: "iife", outfile: join(dist, "compareShim.js"), sourcemap: true }),
 ]);
 
 if (process.argv.includes("--serve")) {
@@ -42,7 +33,6 @@ if (process.argv.includes("--serve")) {
   const { port } = await contexts[0].serve({ servedir: dist, port: 5178 });
   console.log(`harness:  http://localhost:${port}/?theme=dark&state=default`);
   console.log(`gallery:  http://localhost:${port}/gallery.html?state=default`);
-  console.log(`compare:  http://localhost:${port}/compare.html?theme=dark`);
 } else {
   await Promise.all(contexts.map((c) => c.rebuild()));
   await Promise.all(contexts.map((c) => c.dispose()));
