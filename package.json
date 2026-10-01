@@ -578,6 +578,31 @@
           "command": "polylog.repoExclude",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "4_exclude@1"
+        },
+        {
+          "command": "polylog.repoPull",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo' && behind",
+          "group": "0_sync@1"
+        },
+        {
+          "command": "polylog.repoShowOnly",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "1_filter@1"
+        },
+        {
+          "command": "polylog.repoHide",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "1_filter@2"
+        },
+        {
+          "command": "polylog.repoOpenFolder",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "2_open@1"
+        },
+        {
+          "command": "polylog.repoCopyPath",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "3_copy@1"
         }
       ]
     },

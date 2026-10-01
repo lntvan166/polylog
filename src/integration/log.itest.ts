@@ -1266,6 +1266,10 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.compareBranches");
       let s = await panel();
       assert.strictEqual(s.panels, 1, "a second run reveals the same tab");
+      const menus = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["webview/context"] as { command: string; when: string }[];
+      for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("polylog.compare")), `${c} on a Compare repo row`);
+      }
       await csend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
       s = await settled("acme-api detail", (x) => x.selected !== undefined && x.left.length > 0);
       assert.strictEqual(s.title, "⇄ release-1.4 ↔ prod");

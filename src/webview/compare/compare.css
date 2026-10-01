@@ -1,1 +1,84 @@
-:root { color-scheme: normal; }
+@import "../accents.css";
+
+body { margin: 0; padding: 0; background: var(--vscode-editor-background); color: var(--vscode-foreground); font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+.compare { display: flex; flex-direction: column; height: 100vh; position: relative; }
+.mono, .branch-name { font-family: var(--vscode-editor-font-family); }
+
+.cbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 20px; padding: 8px 12px; border-bottom: 1px solid var(--vscode-panel-border); }
+.cbar-pair, .cbar-show { display: flex; align-items: center; gap: 6px; }
+.csummary { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.branch-box { display: inline-flex; align-items: center; gap: 6px; min-width: 150px; padding: 3px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; font: inherit; }
+.branch-box .caret { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.icon-button { background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 3px; padding: 2px 6px; cursor: pointer; font: inherit; }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground, var(--vscode-list-hoverBackground)); outline: 1px dashed var(--vscode-contrastActiveBorder, transparent); }
+.seg { display: inline-flex; border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 3px; overflow: hidden; }
+.seg button { background: transparent; color: var(--vscode-foreground); border: 0; padding: 3px 10px; cursor: pointer; font: inherit; }
+.seg button[aria-pressed="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); box-shadow: inset 0 -2px 0 var(--vscode-focusBorder); }
+button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+.left, .branch-box.left .side-mark { color: var(--vscode-charts-blue); }
+.right, .branch-box.right .side-mark { color: var(--vscode-charts-yellow); }
+.branch-box.left, .branch-box.right { color: var(--vscode-input-foreground, var(--vscode-foreground)); }
+.same, .both { color: var(--vscode-charts-green); }
+.added { color: var(--vscode-gitDecoration-addedResourceForeground); }
+.deleted { color: var(--vscode-gitDecoration-deletedResourceForeground); }
+.error { color: var(--vscode-errorForeground); }
+
+.cmessage { padding: 24px 16px; text-align: center; color: var(--vscode-descriptionForeground); }
+.cbody { flex: 1; display: flex; min-height: 0; }
+.cbody[hidden], .columns[hidden], .dups[hidden] { display: none; }
+.crepos { width: 240px; flex: none; display: flex; flex-direction: column; border-right: 1px solid var(--vscode-panel-border); }
+.repo-list { flex: 1; overflow: auto; }
+.crepo { display: flex; align-items: center; gap: 8px; padding: 4px 10px; cursor: pointer; white-space: nowrap; }
+.crepo:hover { background: var(--vscode-list-hoverBackground); }
+.crepo.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
+.crepo.selected .counts span, .crepo.selected .row-note { color: inherit; }
+/* As the Log's chips: the accent tints the background; the text stays the theme foreground. */
+.chip { padding: 1px 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--vscode-foreground); overflow: hidden; text-overflow: ellipsis; outline: 1px solid var(--vscode-contrastBorder, transparent); }
+body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.crepo.selected .chip { color: inherit; }
+.counts { margin-left: auto; display: flex; gap: 6px; font-family: var(--vscode-editor-font-family); }
+.row-note { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.missing { border-top: 1px solid var(--vscode-panel-border); color: var(--vscode-descriptionForeground); }
+.missing summary { padding: 6px 10px; cursor: pointer; }
+.missing ul { margin: 0; padding: 0 10px 8px 28px; max-height: 120px; overflow: auto; }
+
+.cmain { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.columns { flex: 1; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; }
+.column { overflow: auto; border-right: 1px solid var(--vscode-panel-border); }
+.column:last-child { border-right: 0; }
+.colhead { position: sticky; top: 0; z-index: 1; display: flex; gap: 8px; align-items: baseline; padding: 8px 12px; background: var(--vscode-editor-background); border-bottom: 1px solid var(--vscode-panel-border); }
+.colhead small { color: var(--vscode-descriptionForeground); }
+.cempty { padding: 24px 16px; text-align: center; color: var(--vscode-descriptionForeground); }
+.trow { display: flex; align-items: center; gap: 8px; padding: 2px 12px; line-height: 22px; white-space: nowrap; }
+.trow.file { cursor: pointer; }
+.trow.file:hover { background: var(--vscode-list-hoverBackground); }
+.trow .tcount, .trow .tstat { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.trow .tstat .added, .trow .tstat .deleted { font-family: var(--vscode-editor-font-family); }
+.renamed { color: var(--vscode-descriptionForeground); }
+.both { border: 1px solid currentColor; border-radius: 3px; padding: 0 4px; font-family: var(--vscode-editor-font-family); }
+.twisty { width: 12px; color: var(--vscode-descriptionForeground); }
+.ccommit { padding: 6px 12px; border-bottom: 1px solid var(--vscode-panel-border); cursor: pointer; }
+.ccommit:hover { background: var(--vscode-list-hoverBackground); }
+.csubject { display: flex; gap: 6px; }
+.cmeta { display: flex; gap: 12px; margin-left: 18px; color: var(--vscode-descriptionForeground); }
+.cfiles { margin: 4px 0 0 12px; }
+.more { margin: 8px 12px; background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); border: 1px solid var(--vscode-button-border, transparent); padding: 3px 10px; cursor: pointer; font: inherit; }
+.dups { border-top: 1px solid var(--vscode-panel-border); }
+.dups summary { padding: 6px 12px; cursor: pointer; }
+.dup { display: flex; gap: 12px; padding: 3px 12px 3px 28px; }
+
+.picker { position: absolute; z-index: 5; width: 380px; background: var(--vscode-quickInput-background, var(--vscode-editorWidget-background, var(--vscode-editor-background))); color: var(--vscode-quickInput-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-widget-border, var(--vscode-panel-border)); box-shadow: 0 4px 16px var(--vscode-widget-shadow); }
+.picker[hidden] { display: none; }
+.picker input { box-sizing: border-box; width: calc(100% - 16px); margin: 8px; padding: 4px 8px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-focusBorder); font: inherit; }
+.picker-items { max-height: 320px; overflow: auto; padding-bottom: 6px; }
+.picker-group { padding: 6px 12px 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--vscode-descriptionForeground); }
+.picker-row { display: flex; align-items: center; gap: 6px; padding: 3px 12px; cursor: pointer; }
+.picker-row[aria-selected="true"] { background: var(--vscode-quickInputList-focusBackground, var(--vscode-list-activeSelectionBackground)); color: var(--vscode-quickInputList-focusForeground, var(--vscode-list-activeSelectionForeground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
+.picker-row[aria-selected="true"] .picker-count, .picker-row[aria-selected="true"] .side-mark { color: inherit; }
+.picker-count { margin-left: auto; color: var(--vscode-descriptionForeground); }
+.picker mark { background: transparent; color: var(--vscode-list-highlightForeground); font-weight: 600; }
+.picker-row[aria-selected="true"] mark { color: inherit; text-decoration: underline; }
+.star { background: transparent; border: 0; padding: 0; cursor: pointer; color: var(--vscode-descriptionForeground); font: inherit; }
+.star.on { color: var(--vscode-charts-yellow); }
+.picker-empty { padding: 16px 12px; color: var(--vscode-descriptionForeground); }

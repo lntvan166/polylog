@@ -1,3 +1,4 @@
+@import "./accents.css";
 /*
  * Every color and font below is a --vscode-* variable, so the panel follows the
  * user's theme — light, dark and high-contrast (CLAUDE.md constraint 2).
@@ -220,13 +221,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 /* 16% of a hue is pale on a white panel: light themes get a stronger tint. The text stays the
    theme foreground, so contrast still does not depend on the hue. */
 body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
-.accent-0 { --accent: var(--vscode-charts-red); }
-.accent-1 { --accent: var(--vscode-charts-blue); }
-.accent-2 { --accent: var(--vscode-charts-yellow); }
-.accent-3 { --accent: var(--vscode-charts-green); }
-.accent-4 { --accent: var(--vscode-charts-purple); }
-/* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
-.accent-5 { --accent: var(--vscode-terminal-ansiCyan); }
 
 .skeleton .bar { display: inline-block; width: 70%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
 .skeleton .bar.short { width: 50%; }
