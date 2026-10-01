@@ -95,11 +95,34 @@ describe("Polylog startup", () => {
     const cp = require("child_process") as typeof import("child_process");
     cp.execFileSync("git", ["reset", "-q", "--", "UNCOMMITTED.md"], { cwd: dirty[0].root });
     for (const r of dirty) fs.rmSync(path.join(r.root, "UNCOMMITTED.md"));
+    // Compare Branches: counts in every repository for a small and a whole-history divergence.
+    const roots = settled.repos.map((r) => r.root);
+    for (const root of roots) {
+      const head = cp.execFileSync("git", ["rev-parse", "HEAD"], { cwd: root }).toString().trim();
+      const back = cp.spawnSync("git", ["rev-parse", "HEAD~3"], { cwd: root }).stdout.toString().trim() || head;
+      const first = cp.execFileSync("git", ["rev-list", "--max-parents=0", "HEAD"], { cwd: root }).toString().trim().split("\n")[0];
+      cp.execFileSync("git", ["update-ref", "refs/heads/perf-right", head], { cwd: root });
+      cp.execFileSync("git", ["update-ref", "refs/heads/perf-left", back], { cwd: root });
+      cp.execFileSync("git", ["update-ref", "refs/heads/perf-root", first], { cwd: root });
+    }
+    const compareRead = async (left: string) => {
+      const before = (await snapshot())!.spawnLog.length;
+      const t = Date.now();
+      await vscode.commands.executeCommand("polylog._itest.comparePick", { left, right: "perf-right" });
+      const ms = Date.now() - t;
+      const log = (await snapshot())!.spawnLog.slice(before);
+      return { ms, spawnsByCmd: log.reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {}) };
+    };
+    const small = await compareRead("perf-left");
+    const long = await compareRead("perf-root");
+    await vscode.commands.executeCommand("polylog._itest.comparePick", null);
+    for (const root of roots) for (const b of ["perf-left", "perf-right", "perf-root"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
     console.log("PERF " + JSON.stringify({
       msFirstRows, reposAtFirstRows: first.repos.length, reposSettled: settled.repos.length,
       rowsSettled: settled.rows.length, stats: settled.stats, branches: settled.branches.length,
       spawnsByCmd: settled.spawnLog.reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {}),
       uncommitted: { msBadgeAfterFirstRows, badgeStatus, msAllPinned, msFirstPinned, dirty: dirty.length, save, stage }, msAllFiles,
+      compare: { msCounts: small.ms, msLong: long.ms, spawnsByCmd: small.spawnsByCmd },
     }));
   });
 });

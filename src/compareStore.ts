@@ -131,17 +131,16 @@ export class CompareStore implements vscode.Disposable {
     const [l, rt] = ids;
     if (l === rt) return { kind: "identical" };
     try {
-      let base: string;
-      try {
-        base = (await this.deps.run(r.root, mergeBaseArgs(l, rt), signal)).trim();
-      } catch (e) {
-        if (e instanceof GitError && e.exitCode === 1) return { kind: "nobase" };
-        throw e;
-      }
-      const [left, right] = await Promise.all([
+      // All three at once: a repository's answer waits for one round of git, not two.
+      const [base, left, right] = await Promise.all([
+        this.deps.run(r.root, mergeBaseArgs(l, rt), signal).then((out) => out.trim(), (e) => {
+          if (e instanceof GitError && e.exitCode === 1) return null;
+          throw e;
+        }),
         this.deps.run(r.root, sideCountArgs("left", l, rt), signal).then(parseSideCount),
         this.deps.run(r.root, sideCountArgs("right", l, rt), signal).then(parseSideCount),
       ]);
+      if (base === null) return { kind: "nobase" };
       return { kind: "differs", leftSha: l, rightSha: rt, base, left: left.only, right: right.only, sameLeft: left.same, sameRight: right.same };
     } catch (e) {
       if (isAbortError(e)) throw e;

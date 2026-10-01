@@ -120,6 +120,18 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     the Changes tree.
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
+- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens a tab that
+  compares two branches in every ticked repository, for example `origin/release-1.4` (◀ left,
+  what you merge from) and `origin/main` (▶ right, where it goes):
+  - **◀ left only**: commits the merge brings in;
+  - **▶ right only**: commits on the target the release does not have (a hotfix never
+    brought back);
+  - **= on both**: the same change committed on each side (a cherry-pick).
+
+  Repositories where the branches are the same are hidden; ones that lack a branch are
+  listed at the bottom. **Files** (the default) shows each side's changes since the branches
+  split as a folder tree, a file changed on both sides marked **both**; **Commits** lists
+  them commit by commit. Click a file to open its diff.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.
