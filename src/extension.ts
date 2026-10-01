@@ -39,7 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const uncommittedView = new UncommittedView({ store: uncommitted, discovery, accents: () => assignAccents(log.repoList), committed: () => log.commitsChanged(), behind: (id) => log.isBehind(id) });
   const compare = new CompareStore({
     run: (root, args, signal) => log.countedRun(root, args, signal),
-    concurrency: () => vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16),
+    concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16))),
     repos: () => log.tickedRepos(),
   });
   const compareView = new CompareView({ context, store: compare, log });

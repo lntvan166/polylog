@@ -116,6 +116,31 @@ describe("Polylog startup", () => {
     const small = await compareRead("perf-left");
     const long = await compareRead("perf-root");
     await vscode.commands.executeCommand("polylog._itest.comparePick", null);
+    // A diff: time until both sides are read and the diff tab is active. Idle, then while Compare reads.
+    const diffTime = async () => {
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      const c = settled.rows.find((r) => r.parents.length === 1)!;
+      const root = settled.repos.find((r) => r.id === c.repoId)!.root;
+      const file = cp.execFileSync("git", ["show", "--name-only", "--format=", c.sha], { cwd: root }).toString().trim().split("\n")[0];
+      const t = Date.now();
+      await vscode.commands.executeCommand("polylog.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: file });
+      for (let i = 0; i < 2000; i++) {
+        const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
+        if (tab?.input instanceof vscode.TabInputTextDiff) {
+          await vscode.workspace.openTextDocument(tab.input.original);
+          await vscode.workspace.openTextDocument(tab.input.modified);
+          break;
+        }
+        await sleep(5);
+      }
+      return Date.now() - t;
+    };
+    const msDiffIdle = await diffTime();
+    void vscode.commands.executeCommand("polylog._itest.comparePick", { left: "perf-root", right: "perf-right" });
+    await sleep(20);
+    const msDiffDuringCompare = await diffTime();
+    await vscode.commands.executeCommand("polylog._itest.comparePick", null);
+    const msDiffIdle2 = await diffTime();
     for (const root of roots) for (const b of ["perf-left", "perf-right", "perf-root"]) cp.spawnSync("git", ["update-ref", "-d", `refs/heads/${b}`], { cwd: root });
     console.log("PERF " + JSON.stringify({
       msFirstRows, reposAtFirstRows: first.repos.length, reposSettled: settled.repos.length,
@@ -123,6 +148,7 @@ describe("Polylog startup", () => {
       spawnsByCmd: settled.spawnLog.reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {}),
       uncommitted: { msBadgeAfterFirstRows, badgeStatus, msAllPinned, msFirstPinned, dirty: dirty.length, save, stage }, msAllFiles,
       compare: { msCounts: small.ms, msLong: long.ms, spawnsByCmd: small.spawnsByCmd },
+      diff: { msDiffIdle, msDiffDuringCompare, msDiffIdle2 },
     }));
   });
 });
