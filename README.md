@@ -103,18 +103,23 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   repository's `origin`; credentials in the URL are never opened).
 - **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
+  **All Files** (in its title bar) shows the commit's whole tree, like the Explorer: the
+  folders holding changes open, each other folder read only when you open it, deleted files
+  still listed, and unchanged files opening as they were at that commit.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **Show Uncommitted Changes** (the eye in the Log's toolbar) pins one row per repository
-    with uncommitted work above its commits.
-  - **Review Uncommitted Changes** (the checklist) lists every repository with uncommitted
-    work; click one to see its files in the Changes tree, for a last look before you
-    commit.
-  - Staged and unstaged changes are both compared with the last commit; staged files are
-    marked "staged" and new files "new". A file opens with your real, editable file on the
-    right.
-  - Both follow your saves and git actions.
+  - **The Uncommitted view** (third in the Polylog panel, collapsed until you open it): one
+    row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
+    files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
+    first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
+    Control stays in step. Each file opens the diff Source Control would.
+  - **Commits | Uncommitted**, the switch at the top of the Log: its badge counts your
+    uncommitted files. The Uncommitted side lists the repositories with work (files, a
+    change meter, staged and new tags, when last edited); click one to review its files in
+    the Changes tree.
+  - Read once in the background after the Log's first page, then kept current by your
+    saves and VS Code's Git, one repository at a time.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.
@@ -172,8 +177,6 @@ skewed clock can place a commit out of order.
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
-| `polylog.showUncommitted` | `false` | Pin each repository's uncommitted changes above its commits. Toggle it from the Log's toolbar. |
-| `polylog.keepViewsExpanded` | `true` | Expand the Log or Changes again when a header click collapses it. Hiding a view again right after is respected until reload. |
 
 ---
 

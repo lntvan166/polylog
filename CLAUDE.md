@@ -7,7 +7,8 @@ repository in the workspace**. Click a commit to see its changed files; click a 
 it in the native diff editor.
 
 Every other VS Code git extension gives you a repository **picker** — one repo's history at
-a time. Merging the log is the entire product. Everything else is a non-goal.
+a time. Merging the log is the core of the product; the panel also gives a cross-repository
+view of uncommitted work (and, later, of two branches). Anything else is a non-goal.
 
 **Current status: v1 implemented per the plan in docs/superpowers/plans/2026-09-23-polylog.md; not released.** The authoritative design is
 `docs/superpowers/specs/2026-09-23-polylog-design.md`. Read it before writing any code; this

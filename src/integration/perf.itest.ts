@@ -21,6 +21,17 @@ describe("Polylog startup", () => {
       await sleep(20);
     }
     const msFirstRows = Date.now() - t0;
+    // The switch's badge: every repository's uncommitted work, read in the background after the first page.
+    const tFirst = Date.now();
+    let badge: LogSnapshot | undefined;
+    for (;;) {
+      badge = await snapshot();
+      if (badge?.workKnown) break;
+      if (Date.now() - tFirst > 60000) throw new Error("the badge never became known");
+      await sleep(5);
+    }
+    const msBadgeAfterFirstRows = Date.now() - tFirst;
+    const badgeStatus = badge!.spawnLog.filter((x) => x.cmd === "status").length;
     await sleep(10000); // let repository discovery and background reads settle
     const settled = (await snapshot())!;
     // Show Uncommitted Changes, with 5 of the repositories dirty.
@@ -58,11 +69,37 @@ describe("Polylog startup", () => {
       postBytes: posted(after) - posted(before),
     };
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    // Stage one file from the Uncommitted view: one repository read again, nothing else.
+    const beforeStage = (await snapshot())!;
+    await vscode.commands.executeCommand("polylog.stage", { repoId: dirty[0].id, group: "changes", path: "UNCOMMITTED.md" });
+    const afterStage = (await snapshot())!;
+    const stage = {
+      spawns: afterStage.spawnLog.length - beforeStage.spawnLog.length,
+      reposRead: new Set(afterStage.spawnLog.slice(beforeStage.spawnLog.length).map((x) => x.root)).size,
+    };
+    // All Files on the newest commit: time to its first level.
+    const top = afterStage.rows[0];
+    await vscode.commands.executeCommand("polylog._itest.send", { type: "select", repoId: top.repoId, sha: top.sha });
+    for (let i = 0; i < 400 && !(await snapshot())!.changes.items.length; i++) await sleep(5);
+    await vscode.commands.executeCommand("polylog.changes.focus");
+    const tAll = Date.now();
+    const headerOnly = (await snapshot())!.changes.items.length;
+    await vscode.commands.executeCommand("polylog.changesShowAll");
+    let msAllFiles = -1;
+    for (;;) {
+      const n = (await snapshot())!.changes.items.length;
+      if (n > headerOnly || Date.now() - tAll > 10000) { msAllFiles = n > headerOnly ? Date.now() - tAll : -1; break; }
+      await sleep(5);
+    }
+    await vscode.commands.executeCommand("polylog.changesShowChanged");
+    const cp = require("child_process") as typeof import("child_process");
+    cp.execFileSync("git", ["reset", "-q", "--", "UNCOMMITTED.md"], { cwd: dirty[0].root });
     for (const r of dirty) fs.rmSync(path.join(r.root, "UNCOMMITTED.md"));
     console.log("PERF " + JSON.stringify({
       msFirstRows, reposAtFirstRows: first.repos.length, reposSettled: settled.repos.length,
       rowsSettled: settled.rows.length, stats: settled.stats, branches: settled.branches.length,
-      uncommitted: { msFirstPinned, msAllPinned, dirty: dirty.length, save },
+      spawnsByCmd: settled.spawnLog.reduce<Record<string, number>>((m, x) => ({ ...m, [x.cmd]: (m[x.cmd] ?? 0) + 1 }), {}),
+      uncommitted: { msBadgeAfterFirstRows, badgeStatus, msAllPinned, msFirstPinned, dirty: dirty.length, save, stage }, msAllFiles,
     }));
   });
 });

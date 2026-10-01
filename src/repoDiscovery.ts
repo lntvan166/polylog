@@ -24,6 +24,11 @@ export interface RepoStateChange {
   root: string;
   /** Its HEAD commit, branch, upstream or ahead/behind differ from the last report (or from when it was first seen). */
   headMoved: boolean;
+  /**
+   * vscode.git is still opening repositories (its first reports of each, before its list
+   * settled): nothing changed, it only learned the state.
+   */
+  initial: boolean;
 }
 
 /** Two folder paths are one: normalized, no trailing separator, case-insensitive where the file system is. */
@@ -190,9 +195,10 @@ export class RepoDiscovery implements vscode.Disposable {
       let head = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
       const d = r.state?.onDidChange?.(() => {
         const now = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
+        const initial = (head === undefined && now !== undefined) || this.ready === undefined;
         const headMoved = head !== undefined && now !== undefined && now !== head;
         if (now !== undefined) head = now;
-        this.repoStateChanged.fire({ root, headMoved });
+        this.repoStateChanged.fire({ root, headMoved, initial });
       });
       if (d) {
         watching.set(r, d);

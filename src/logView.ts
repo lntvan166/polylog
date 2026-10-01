@@ -726,8 +726,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    * its uncommitted changes may have moved; its distance from its upstream only if HEAD or
    * the upstream did (a save does not move them).
    */
-  repoStateChanged(root: string, headMoved: boolean): void {
-    this.deps.uncommitted.touch(root);
+  repoStateChanged(root: string, headMoved: boolean, initial = false): void {
+    // vscode.git's first status of a repository is not a change: the background read covers it.
+    if (!initial) this.deps.uncommitted.touch(root);
     if (!headMoved) return;
     const repo = this.innermost(root)?.r;
     if (!repo) return;

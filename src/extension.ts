@@ -64,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     // Uncommitted changes follow the working tree: VS Code's Git reporting a change in a
     // repository, or a save. Only that repository is read again.
-    discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.headMoved)),
+    discovery.onDidChangeRepoState((e) => log.repoStateChanged(e.root, e.headMoved, e.initial)),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
     uncommittedView,
