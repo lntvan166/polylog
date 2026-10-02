@@ -179,6 +179,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
       vscode.commands.registerCommand("polylog._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
       vscode.commands.registerCommand("polylog._itest.compareSelect", (id: string) => compareRepos.select(id)),
+      vscode.commands.registerCommand("polylog._itest.comparePosted", () => compareRepos.posted),
       vscode.commands.registerCommand("polylog._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),

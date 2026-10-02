@@ -19,7 +19,12 @@ export interface CRepoRow {
 /** Host → Repositories page. */
 export type ReposHost =
   | { type: "state"; pair: Pair | null; mode: CompareMode; recent: Pair[]; favorites: string[]; message?: string }
-  | { type: "repos"; reading: boolean; summary: string; rows: CRepoRow[]; missing: string[]; selected?: string }
+  /**
+   * message: the page shows it instead of the list (no pair, no ticks…). empty: the list's text when
+   * it has no rows — only claims "the same files" once a read is done. pairKey: unfolded duplicates
+   * belong to one pair (and side).
+   */
+  | { type: "repos"; reading: boolean; summary: string; rows: CRepoRow[]; missing: string[]; selected?: string; message?: string; empty?: string; pairKey: string }
   | { type: "branches"; names: { name: string; count: number }[]; remotes: string[] }
   | { type: "dups"; repoId: string; items: Duplicate[] }
   /** Compare with… / Pick Branches…: open the Branch picker on this side. */

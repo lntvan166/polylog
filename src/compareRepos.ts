@@ -62,7 +62,11 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     this.view = view;
   }
 
+  /** The last message of each type posted to the page (integration test seam). */
+  readonly posted: Partial<Record<ReposHost["type"], ReposHost>> = {};
+
   private post(m: ReposHost): void {
+    this.posted[m.type] = m;
     void this.view?.webview.postMessage(m);
   }
 
@@ -81,7 +85,11 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     await vscode.commands.executeCommand("setContext", "polylog.compareShown", false);
   }
 
+  /** The repository the user picked, kept while the tab is hidden: it is picked again when listed. */
+  private remembered: string | undefined;
+
   private stop(): void {
+    if (this.chosen && this.deps.selection.repoId) this.remembered = this.deps.selection.repoId;
     this.deps.selection.set(undefined);
     void this.deps.store.setPair(null);
   }
@@ -91,7 +99,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     await Promise.race([this.deps.log.firstPage, new Promise((r) => setTimeout(r, 3000))]);
     if (this.deps.store.pair || !this.view?.visible) return;
     const saved = this.state.get<Pair>(PAIR);
-    if (!this.pending && saved && validPair(saved)) await this.setPair(saved);
+    if (!this.pending && saved && validPair(saved)) await this.setPair(saved, true);
     else this.changed();
   }
 
@@ -122,9 +130,11 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     if (this.view) this.post({ type: "openPicker", side });
   }
 
-  async setPair(p: Pair): Promise<void> {
+  async setPair(p: Pair, resume = false): Promise<void> {
     if (!validPair(p)) return;
     this.pending = null;
+    // A new pair is a new comparison: what was picked under the old one is forgotten.
+    if (!resume) this.remembered = undefined;
     await this.state.update(PAIR, p);
     if (p.left !== p.right) await this.state.update(RECENT, pushRecent(this.state.get<Pair[]>(RECENT, []), p));
     // The old pair's files leave the sides at once.
@@ -226,17 +236,33 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   private changed(): void {
     const pair = this.deps.store.pair;
     const listed = this.listed();
-    const sel = this.deps.selection.repoId;
     // Until the user picks one, the selection is the first listed repository (repositories answer
     // in any order). A side whose repository's branches moved reads again on its own (its key changed).
+    // Shown again: the repository the user had picked, once it is listed.
+    if (!this.chosen && this.remembered && listed.some((x) => x.repo.id === this.remembered)) {
+      this.chosen = true;
+      this.deps.selection.set(this.remembered);
+      this.remembered = undefined;
+    }
+    const sel = this.deps.selection.repoId;
     if (pair && pair.left !== pair.right && (!this.chosen || !sel || !listed.some((x) => x.repo.id === sel))) {
       if (sel && !listed.some((x) => x.repo.id === sel)) this.chosen = false;
       this.deps.selection.set(listed[0]?.repo.id);
     }
     if (this.view) this.view.description = tabTitle(this.pairShown());
+    const rows = this.rows();
+    const results = this.deps.store.results();
+    const shown = this.pairShown();
+    // "The same files" only once this pair's read is done and found identical repositories.
+    const done = pair !== null && shown !== null && pair.left === shown.left && pair.right === shown.right && !this.deps.store.reading;
+    const empty = rows.length > 0 ? undefined
+      : !done ? (pair ? "Reading…" : undefined)
+      : results.some((x) => x.result.kind === "identical") ? `${pair.left} and ${pair.right} have the same files in every repository.`
+      : results.length > 0 ? `None of the ticked repositories has both ${pair.left} and ${pair.right}.` : undefined;
     this.post({
-      type: "repos", reading: this.deps.store.reading, summary: pair && pair.left !== pair.right ? this.summary() : "", rows: this.rows(),
-      missing: this.deps.store.results().filter((x) => x.result.kind === "missing").map((x) => x.repo.name), selected: this.deps.selection.repoId,
+      type: "repos", reading: this.deps.store.reading, summary: pair && pair.left !== pair.right ? this.summary() : "", rows,
+      missing: results.filter((x) => x.result.kind === "missing").map((x) => x.repo.name), selected: this.deps.selection.repoId,
+      message: this.message(), empty, pairKey: pair ? `${pair.left}\0${pair.right}` : "",
     });
     void this.setContext();
   }
@@ -279,9 +305,19 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
           return;
         }
         case "wantDups": {
-          if (typeof m.repoId !== "string" || !resultOf(this.deps.store, m.repoId)) return;
-          const [l, r] = await Promise.all([this.deps.store.readCommits(m.repoId, "left", COMMIT_PAGE), this.deps.store.readCommits(m.repoId, "right", COMMIT_PAGE)]);
-          this.post({ type: "dups", repoId: m.repoId, items: pairDuplicates(l.filter((c) => c.mark === "="), r.filter((c) => c.mark === "=")) });
+          if (typeof m.repoId !== "string") return;
+          const repoId = m.repoId;
+          // Always answered (an empty list if the read fails or is aborted): the page never waits forever.
+          let items: ReturnType<typeof pairDuplicates> = [];
+          if (resultOf(this.deps.store, repoId)) {
+            try {
+              const [l, r] = await Promise.all([this.deps.store.readCommits(repoId, "left", COMMIT_PAGE), this.deps.store.readCommits(repoId, "right", COMMIT_PAGE)]);
+              items = pairDuplicates(l.filter((c) => c.mark === "="), r.filter((c) => c.mark === "="));
+            } catch {
+              items = [];
+            }
+          }
+          this.post({ type: "dups", repoId, items });
           return;
         }
       }

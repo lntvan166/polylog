@@ -16,6 +16,9 @@ let names: { name: string; count: number }[] = [];
 let rows: CRepoRow[] = [];
 let selected: string | undefined;
 let pickingSide: Side = "left";
+/** What the list says when it has no rows (decided by the host, which knows whether a read is done). */
+let empty: string | undefined;
+let pairKey = "";
 /** Repositories whose duplicates are unfolded, and what the host sent for them. */
 const open = new Map<string, Duplicate[] | undefined>();
 
@@ -98,8 +101,13 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
     case "repos":
       rows = m.rows;
       selected = m.selected;
+      empty = m.empty;
+      // Unfolded duplicates belong to one pair and orientation: a new pair or a swap folds them.
+      if (m.pairKey !== pairKey) open.clear();
+      pairKey = m.pairKey;
       for (const id of [...open.keys()]) if (!rows.some((r) => r.repoId === id)) open.delete(id);
       byId("summary").textContent = m.summary;
+      renderState(m.message);
       renderMissing(m.missing);
       renderRows();
       return;
@@ -141,10 +149,7 @@ const cell = (n: number, cls: string, mark: string) => h("span", { class: `count
 
 function renderRows(): void {
   clear(list);
-  if (rows.length === 0 && pair?.left && pair.right && pair.left !== pair.right) {
-    const s = byId("summary").textContent ?? "";
-    list.append(h("div", { class: "cempty" }, [s.startsWith("Reading") ? "Reading…" : `${pair.left} and ${pair.right} have the same files in every repository.`]));
-  }
+  if (rows.length === 0 && empty) list.append(h("div", { class: "cempty" }, [empty]));
   rows.forEach((r, i) => {
     const on = r.repoId === selected;
     const dups = r.status === "differs" && r.same > 0;

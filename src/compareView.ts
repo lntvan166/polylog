@@ -87,6 +87,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       deps.selection.onDidChange(() => {
         this.limit = COMMIT_PAGE;
         this.detail = undefined;
+        // The detail is dropped: always redraw, even when what is asked is the same (Refresh).
+        this.drawn = undefined;
         this.render();
       }),
       deps.store.onDidChange(() => this.render()),

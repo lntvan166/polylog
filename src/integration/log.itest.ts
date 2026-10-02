@@ -1464,6 +1464,62 @@ describe("Polylog panel", () => {
       assert.strictEqual(tabs(), before, "a file opens only from the repository whose files are shown");
     });
 
+    it("Repositories says what it knows: nothing before the read, 'the same files' only once it is done, ticks followed", async () => {
+      type Posted = { repos?: { empty?: string; message?: string; rows: unknown[] } };
+      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
+      await viewPick({ left: "release-1.4", right: "release-1.4" });
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("same names", repos, (x) => x.message?.startsWith("Pick two different") === true);
+      // Not yet read: no claim.
+      await vscode.commands.executeCommand("polylog._itest.compareView", { left: "release-1.4", right: "prod" });
+      const during = await posted();
+      assert.notStrictEqual(during.repos?.empty, "release-1.4 and prod have the same files in every repository.", "no claim before the read is done");
+      // Nothing ticked: the message follows the ticks.
+      const s0 = await snapshot();
+      try {
+        await send({ type: "filter", filter: { ...ALL, repoIds: [] } });
+        await waitFor("no ticks", async () => ((await posted()).repos?.message === "No repositories are ticked in the Repo List." ? true : undefined));
+      } finally {
+        await send({ type: "filter", filter: ALL });
+      }
+      await waitFor("ticked again", async () => ((await posted()).repos?.message === undefined && ((await posted()).repos?.rows.length ?? 0) > 0 ? true : undefined));
+      assert.ok(s0.repos.length > 0);
+    });
+
+    it("the picked repository survives a panel tab switch; duplicates are always answered", async () => {
+      type Posted = { dups?: { repoId: string; items: unknown[] } };
+      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("listed", repos, (x) => x.open && x.roots.length === 2);
+      await rsend({ type: "select", repoId: roots["acme-web"] });
+      await until2("acme-web picked", repos, (x) => x.selected === roots["acme-web"]);
+      await vscode.commands.executeCommand("workbench.action.terminal.toggleTerminal");
+      await until2("tab hidden", repos, (x) => !x.open);
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("back, read again", repos, (x) => x.open && x.roots.length === 2);
+      await until2("still acme-web, not the first row", repos, (x) => x.selected === roots["acme-web"]);
+      // A repository with no result (or a read that fails): the page still gets an answer.
+      await rsend({ type: "wantDups", repoId: "/nowhere" });
+      assert.deepStrictEqual((await posted()).dups, { type: "dups", repoId: "/nowhere", items: [] });
+    });
+
+    it("after Refresh, a file in Left or Right still opens its diff", async () => {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("listed", repos, (x) => x.open && x.roots.length === 2);
+      await select(roots["acme-api"]);
+      await until2("api right", () => sideOf("right"), (x) => x.tree.some((l) => l.startsWith("timeout.go")));
+      await vscode.commands.executeCommand("polylog.compareRefresh");
+      await sleep(400);
+      // No snapshot in between: it would read the side again and hide the bug.
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
+      await waitFor("a diff after Refresh", () => (vscode.window.tabGroups.activeTabGroup.activeTab?.input instanceof vscode.TabInputTextDiff ? true : undefined), 3000);
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+    });
+
     it("the Polylog Compare tab is hidden until Compare Branches is clicked, and × hides it again", async () => {
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       for (const v of pkg.views["polylog-compare"] as { id: string; when?: string }[]) assert.strictEqual(v.when, "polylog.compareShown", `${v.id} is hidden by default`);
