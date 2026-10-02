@@ -321,6 +321,11 @@
         "command": "polylog.compareOpenFile",
         "title": "Open Diff",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.compareMore",
+        "title": "Show More Commits",
+        "category": "Polylog"
       }
     ],
     "menus": {
@@ -554,6 +559,10 @@
         {
           "command": "polylog.compareOpenFile",
           "when": "false"
+        },
+        {
+          "command": "polylog.compareMore",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -621,6 +630,16 @@
           "command": "polylog.compareRefresh",
           "when": "view == polylog.compare && polylog.comparePair",
           "group": "navigation@4"
+        },
+        {
+          "command": "polylog.compareShowCommits",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits",
+          "group": "navigation@1"
+        },
+        {
+          "command": "polylog.compareShowFiles",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode == commits",
+          "group": "navigation@1"
         }
       ],
       "explorer/context": [

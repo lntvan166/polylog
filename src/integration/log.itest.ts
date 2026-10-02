@@ -1281,23 +1281,26 @@ describe("Polylog panel", () => {
       assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
     });
 
-    type Snap = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; tree: string[] };
-    const view = (expand?: string) => vscode.commands.executeCommand<Snap>("polylog._itest.compare", expand);
+    type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined };
+    type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[] };
+    const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
+    const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
     const viewPick = (p: Pair) => vscode.commands.executeCommand("polylog._itest.compareView", p);
-    const settled = (what: string, ok: (x: Snap) => boolean, expand?: string) =>
+    const select = (id: string) => vscode.commands.executeCommand("polylog._itest.compareSelect", id);
+    const until2 = <T>(what: string, get: () => Thenable<T>, ok: (x: T) => boolean) =>
       waitFor(what, async () => {
-        const x = await view(expand);
+        const x = await get();
         return ok(x) ? x : undefined;
       });
     const tabs = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
 
-    it("the Compare view: a native tree in the Polylog panel, Files by default, a file's diff opens in the editor", async () => {
+    it("the Polylog Compare tab: Repositories with counts; selecting one fills both sides", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
       await vscode.commands.executeCommand("polylog.compareBranches");
-      let s = await settled("shown and read", (x) => x.open && x.roots.length === 2);
-      assert.strictEqual(s.description, "release-1.4 ↔ prod");
-      assert.strictEqual(s.mode, "files");
-      assert.deepStrictEqual(s.roots, ["acme-api | =1", "acme-web | "], "only the repositories whose files differ");
+      const r = await until2("listed", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
+      assert.strictEqual(r.description, "release-1.4 ↔ prod");
+      assert.deepStrictEqual(r.roots, ["acme-api | 1 ◀ · 1 ▶ · =1", "acme-web | 1 ◀"]);
+      assert.strictEqual(r.selected, roots["acme-api"], "the first listed repository is selected");
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
       assert.deepStrictEqual(pkg.viewsContainers, {
@@ -1313,70 +1316,89 @@ describe("Polylog panel", () => {
       for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
         assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.compare")), `${c} on a Compare repository row`);
       }
-      s = await settled("acme-api read", (x) => x.tree.length > 3, roots["acme-api"]);
-      const dup = s.tree.find((l) => l.includes("fix: retry on 503"));
-      assert.deepStrictEqual(s.tree.filter((l) => l !== dup), [
-        "acme-api | =1",
-        "  release-1.4 only | 2 files",
-        "    limit.go | +1 −0 · both",
-        "    retry.go | +1 −0 · both",
-        "  prod only | 3 files",
-        "    limit.go | +1 −0 · both",
-        "    retry.go | +1 −0 · both",
-        "    timeout.go | +1 −0",
-        "  = on both | 1",
-        "acme-web | ",
-      ]);
-      assert.match(dup ?? "", /^    fix: retry on 503 \| ◀ [0-9a-f]{7} · ▶ [0-9a-f]{7}$/);
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { repoId: roots["acme-api"], side: "right", path: "timeout.go" });
+      const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0);
+      assert.strictEqual(left.title, "release-1.4 only");
+      assert.strictEqual(left.description, "acme-api · 2 files");
+      assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · both"]);
+      const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0);
+      assert.strictEqual(right.title, "prod only");
+      assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · both", "timeout.go | +1 −0"]);
+      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       const tab = await waitFor("a diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
       });
       assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package timeout\n");
       assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "");
-      assert.strictEqual((await view()).open, true, "the diff opened in the editor area; Compare is still shown");
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
-      // A file of a repository whose files were not read here is not opened.
+      // Another repository: both sides follow; a file of the old one no longer opens.
+      await select(roots["acme-web"]);
+      await until2("acme-web left", () => sideOf("left"), (x) => x.tree.join() === "billing.ts | +1 −0");
+      assert.strictEqual((await sideOf("right")).message, "No changes on this side.");
+      // A click from acme-api's tree, landing after the selection moved: billing.ts is acme-web's, not acme-api's.
       const before = tabs();
-      await vscode.commands.executeCommand("polylog.compareOpenFile", { repoId: roots["acme-web"], side: "left", path: "limit.go" });
+      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "billing.ts" });
       await sleep(300);
-      assert.strictEqual(tabs(), before);
+      assert.strictEqual(tabs(), before, "a file opens only from the repository whose files are shown");
     });
 
-    it("Commits mode, swap, the same branch twice, and hiding the view mid-read", async () => {
+    it("Commits mode, swap, a new pair, and hiding the tab mid-read", async () => {
+      await select(roots["acme-api"]);
       await vscode.commands.executeCommand("polylog._itest.compareMode", "commits");
-      let s = await settled("commits", (x) => x.mode === "commits" && x.tree.some((l) => l.includes("feat: rate limit")), roots["acme-api"]);
-      assert.deepStrictEqual(s.tree.slice(0, 5).map((l) => l.replace(/ · [0-9a-f]{7}$/, "")), [
-        "acme-api | =1", "  release-1.4 only | 1 commit", "    feat: rate limit per client | dana", "  prod only | 1 commit", "    hotfix: raise upstream timeout | dana",
-      ]);
+      let left = await until2("commits", () => sideOf("left"), (x) => x.tree.some((l) => l.startsWith("feat: rate limit")));
+      assert.strictEqual(left.description, "acme-api · 1 commit");
+      assert.deepStrictEqual(left.tree.map((l) => l.replace(/ · .*$/, "")), ["feat: rate limit per client | dana", "  limit.go | +1 −0"]);
       await vscode.commands.executeCommand("polylog.compareSwap");
-      s = await settled("swapped", (x) => x.description === "prod ↔ release-1.4" && x.tree[2]?.includes("hotfix") === true, roots["acme-api"]);
+      left = await until2("swapped", () => sideOf("left"), (x) => x.title === "prod only" && x.tree[0]?.startsWith("hotfix") === true);
+      assert.ok((await repos()).roots.includes("acme-web | 1 ▶"));
       await vscode.commands.executeCommand("polylog._itest.compareMode", "files");
+      // A new pair: the old pair's files are gone at once.
       await viewPick({ left: "prod", right: "prod" });
-      s = await settled("same", (x) => x.message !== undefined && x.message.startsWith("Pick two different"));
-      assert.strictEqual(s.message, "Pick two different branches. Both sides are prod.");
-      // Hide while a read runs: nothing throws, and showing it reads again.
+      const same = await until2("same", repos, (x) => x.message?.startsWith("Pick two different") === true);
+      assert.strictEqual(same.message, "Pick two different branches. Both sides are prod.");
+      assert.deepStrictEqual((await sideOf("left")).tree, []);
+      // Hide while a read runs: nothing throws; showing it reads again.
       void viewPick({ left: "release-1.4", right: "prod" });
-      await vscode.commands.executeCommand("polylog.compare.removeView");
-      await settled("hidden", (x) => !x.open);
+      await vscode.commands.executeCommand("workbench.action.closePanel");
+      await until2("hidden", repos, (x) => !x.open);
       await vscode.commands.executeCommand("polylog.compareBranches");
-      s = await settled("shown and read again", (x) => x.open && x.roots.length === 2);
-      assert.strictEqual(s.pair?.left, "release-1.4", "the last pair is remembered");
+      const back = await until2("shown and read", repos, (x) => x.open && x.roots.length === 2);
+      assert.strictEqual(back.pair?.left, "release-1.4", "the last pair is remembered");
     });
 
-    it("a branch that moves is read again, its files too; Fetch All reads every repository again", async () => {
+    it("a branch that moves: the selected repository's files are read again; unticking it moves the selection", async () => {
       await viewPick({ left: "release-1.4", right: "prod" });
-      await settled("acme-web files", (x) => x.tree.includes("    billing.ts | +1 −0"), roots["acme-web"]);
+      await until2("listed", repos, (x) => x.roots.length === 2);
+      await select(roots["acme-web"]);
+      await until2("acme-web files", () => sideOf("left"), (x) => x.tree.join() === "billing.ts | +1 −0");
       const web = roots["acme-web"];
       const tip = git(web, ["rev-parse", "refs/heads/release-1.4"]);
       git(web, ["update-ref", "refs/heads/release-1.4", commitOn(web, tip, { "export.ts": "export {};\n" }, "feat: export CSV", T + 60)]);
       try {
         await vscode.commands.executeCommand("polylog.fetchAll");
-        await settled("read again after Fetch All", (x) => x.tree.includes("    export.ts | +1 −0"), web);
+        await until2("read again", () => sideOf("left"), (x) => x.tree.includes("export.ts | +1 −0"));
       } finally {
         git(web, ["update-ref", "refs/heads/release-1.4", tip]);
       }
+      const s0 = await snapshot();
+      await send({ type: "filter", filter: { ...ALL, repoIds: s0.repos.filter((r) => r.id !== web).map((r) => r.id) } });
+      await until2("selection moved", repos, (x) => x.selected === roots["acme-api"]);
+      await send({ type: "filter", filter: ALL });
+    });
+
+    it("a hidden side reads nothing; shown again, it reads the selected repository", async () => {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("listed", repos, (x) => x.roots.length === 2);
+      await vscode.commands.executeCommand("polylog.compareLeft.removeView");
+      await until2("left hidden", () => sideOf("left"), (x) => !x.open);
+      const before = (await snapshot()).spawnLog.length;
+      await select(roots["acme-web"]);
+      await sleep(400);
+      const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff").length;
+      // readFiles runs both sides' diffs in one call: 2 spawns for one side reading, 4 if both read.
+      assert.strictEqual(diffs, 2, "only the shown (right) side read its files");
+      await vscode.commands.executeCommand("polylog.compareLeft.focus");
+      await until2("left shown and read", () => sideOf("left"), (x) => x.open && x.tree.join() === "billing.ts | +1 −0");
     });
 
     it("a swap while the list is still being read reads what it lacks", async () => {

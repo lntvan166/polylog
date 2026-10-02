@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { validPair } from "./compareModel";
-import { CompareView, type CompareMode } from "./compareView";
+import { CompareRepos, CompareSelection, CompareSide, type CompareMode } from "./compareView";
 import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
@@ -42,7 +42,10 @@ export function activate(context: vscode.ExtensionContext): void {
     concurrency: () => Math.max(1, Math.min(4, vscode.workspace.getConfiguration("polylog").get<number>("maxConcurrency", 16))),
     repos: () => log.tickedRepos(),
   });
-  const compareView = new CompareView({ context, store: compare, log });
+  const selection = new CompareSelection();
+  const compareDeps = { context, store: compare, log, selection };
+  const compareRepos = new CompareRepos(compareDeps);
+  const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
@@ -78,16 +81,21 @@ export function activate(context: vscode.ExtensionContext): void {
     log.onDidChangeSync(() => uncommittedView.refresh()),
     log.onDidChangeScope(() => void compare.scopeChanged()),
     compare,
-    compareView,
-    vscode.window.registerFileDecorationProvider(compareView),
-    vscode.commands.registerCommand("polylog.compareBranches", () => compareView.open()),
-    vscode.commands.registerCommand("polylog.compareWith", () => (log.branchBox ? compareView.compareWith(log.branchBox) : compareView.pick())),
-    vscode.commands.registerCommand("polylog.comparePick", () => compareView.pick()),
-    vscode.commands.registerCommand("polylog.compareSwap", () => compareView.swap()),
-    vscode.commands.registerCommand("polylog.compareShowCommits", () => compareView.setMode("commits")),
-    vscode.commands.registerCommand("polylog.compareShowFiles", () => compareView.setMode("files")),
-    vscode.commands.registerCommand("polylog.compareRefresh", () => compareView.refresh()),
-    vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: unknown) => compareView.openFile(arg)),
+    selection,
+    compareRepos,
+    sides.left,
+    sides.right,
+    vscode.window.registerFileDecorationProvider(sides.left),
+    vscode.window.registerFileDecorationProvider(sides.right),
+    vscode.commands.registerCommand("polylog.compareBranches", () => compareRepos.open()),
+    vscode.commands.registerCommand("polylog.compareWith", () => (log.branchBox ? compareRepos.compareWith(log.branchBox) : compareRepos.pick())),
+    vscode.commands.registerCommand("polylog.comparePick", () => compareRepos.pick()),
+    vscode.commands.registerCommand("polylog.compareSwap", () => compareRepos.swap()),
+    vscode.commands.registerCommand("polylog.compareShowCommits", () => compareRepos.setMode("commits")),
+    vscode.commands.registerCommand("polylog.compareShowFiles", () => compareRepos.setMode("files")),
+    vscode.commands.registerCommand("polylog.compareRefresh", () => compareRepos.refresh()),
+    vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: { side?: unknown }) => (arg?.side === "left" || arg?.side === "right" ? sides[arg.side].openFile(arg) : undefined)),
+    vscode.commands.registerCommand("polylog.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,
     uncommittedView,
@@ -144,9 +152,11 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.comparePick", (p: unknown) => compare.setPair(p === null ? null : validPair(p) ? p : null).then(() => undefined)),
       vscode.commands.registerCommand("polylog._itest.compareRefresh", () => compare.refresh()),
       vscode.commands.registerCommand("polylog._itest.compareSwap", () => compare.swap()),
-      vscode.commands.registerCommand("polylog._itest.compare", (expandRepo?: string) => compareView.snapshot(expandRepo)),
-      vscode.commands.registerCommand("polylog._itest.compareView", (p: unknown) => (validPair(p) ? compareView.setPair(p) : undefined)),
-      vscode.commands.registerCommand("polylog._itest.compareMode", (m: CompareMode) => compareView.setMode(m)),
+      vscode.commands.registerCommand("polylog._itest.compare", () => compareRepos.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.compareSide", (s: "left" | "right") => sides[s].snapshot()),
+      vscode.commands.registerCommand("polylog._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
+      vscode.commands.registerCommand("polylog._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
+      vscode.commands.registerCommand("polylog._itest.compareSelect", (id: string) => compareRepos.select(id)),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
     );
