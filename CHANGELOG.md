@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.1] — 2026-10-02
+
+### Fixed
+
+- **Blame shows in repositories that use SHA-256 commit ids**, not only SHA-1 ones.
+- **Pull All names untracked files in the way as such.** When new files you have not
+  committed would be overwritten, the warning says "untracked files in the way", not
+  "local changes to the same files".
+- **Fetch and Pull All stops if `git.path` changes while it fetches**, instead of pulling
+  with ↓ marks read by the old git.
+- **Pull All says when the repositories behind are already being pulled** one by one, instead
+  of "no repository is behind".
+- **The single Pull recognizes a diverged branch whatever your system's language**: git's
+  message is read in English, as Pull All does.
+
 ## [1.0.0] — 2026-10-02
 
 ### Added
