@@ -2,7 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor, stat } from "./changesModel";
 import type { OpenDiffArgs } from "./changesTree";
-import { COMMIT_PAGE, pairDuplicates, pickerGroups, pushRecent, repoCounts, summaryLabel, tabTitle, validPair, type Pair, type PickerItem, type RepoCompare, type Side, type SideCommit } from "./compareModel";
+import { COMMIT_PAGE, pairDuplicates, pickerGroups, pushRecent, repoCounts, sidePage, summaryLabel, tabTitle, validPair, type Pair, type PickerItem, type RepoCompare, type Side, type SideCommit } from "./compareModel";
 import type { CompareStore } from "./compareStore";
 import { fileTree, type TreeNode } from "./fileTree";
 import type { LogView } from "./logView";
@@ -410,9 +410,12 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   readonly onDidChangeFileDecorations = this.decorationsChanged.event;
   private readonly decorations = new Map<string, vscode.FileDecoration>();
   /** The selected repository's detail, for the result it was read for (dropped when that moves). */
-  private detail: { repoId: string; key: string; mode: CompareMode; files?: FileChange[]; both?: Set<string>; commits?: SideCommit[] } | undefined;
+  private detail: { repoId: string; key: string; mode: CompareMode; limit: number; tip: string; files?: FileChange[]; both?: Set<string>; commits?: SideCommit[]; more?: boolean } | undefined;
   private limit = COMMIT_PAGE;
-  private seq = 0;
+  /** The read in flight, for what it was asked: asked again for the same, it is not started again. */
+  private reading: { ask: string; read: Promise<NonNullable<CompareSide["detail"]> | undefined> } | undefined;
+  /** What the tree last drew: a store change that leaves it the same redraws only the header. */
+  private drawn: string | undefined;
   private readonly disposables: vscode.Disposable[] = [];
 
   constructor(private readonly side: Side, private readonly deps: Deps) {
@@ -448,30 +451,60 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       : hit?.result.kind === "nobase" ? `${hit.repo.name}: the two branches share no history, so there is no split point.`
       : hit?.result.kind === "error" ? `${hit.repo.name}: git could not compare the branches: ${hit.result.reason}`
       : n === 0 ? "No changes on this side." : undefined;
+    const ask = this.ask();
+    if (ask === this.drawn) return;
+    this.drawn = ask;
     this.emitter.fire(undefined);
   }
 
+  /** What this side shows: the pair, the repository, its result, the mode and the page. */
+  private ask(): string {
+    const p = this.deps.store.pair;
+    const repoId = this.deps.selection.repoId ?? "";
+    return [p?.left, p?.right, repoId, repoId ? keyOf(this.deps.store, repoId) : "", this.mode, this.limit].join("\0");
+  }
+
   /** The selected repository's detail, read once per result and mode. */
-  private async read(): Promise<NonNullable<CompareSide["detail"]> | undefined> {
+  private read(): Promise<NonNullable<CompareSide["detail"]> | undefined> {
     const repoId = this.deps.selection.repoId;
-    if (!repoId || resultOf(this.deps.store, repoId)?.result.kind !== "differs") return undefined;
+    const hit = repoId ? resultOf(this.deps.store, repoId) : undefined;
+    if (!repoId || hit?.result.kind !== "differs") return Promise.resolve(undefined);
     const key = keyOf(this.deps.store, repoId);
     const mode = this.mode;
-    if (this.detail?.repoId === repoId && this.detail.key === key && this.detail.mode === mode) return this.detail;
-    const seq = ++this.seq;
-    let d: NonNullable<CompareSide["detail"]>;
-    if (mode === "files") {
-      const f = await this.deps.store.readFiles(repoId);
-      d = { repoId, key, mode, files: f[this.side], both: new Set(f.both) };
-    } else {
-      const cs = await this.deps.store.readCommits(repoId, this.side, this.limit + 1);
-      d = { repoId, key, mode, commits: cs.filter((c) => c.mark === "+") };
-    }
-    if (seq !== this.seq || repoId !== this.deps.selection.repoId) return undefined;
-    this.detail = d;
-    // The description and "no changes" message need the count: draw them, not the rows again.
-    queueMicrotask(() => this.renderHeader());
-    return d;
+    const limit = this.limit;
+    if (this.detail?.repoId === repoId && this.detail.key === key && this.detail.mode === mode && this.detail.limit === limit) return Promise.resolve(this.detail);
+    const ask = this.ask();
+    if (this.reading?.ask === ask) return this.reading.read;
+    const tip = this.side === "left" ? hit.result.leftSha : hit.result.rightSha;
+    const read = (async () => {
+      let d: NonNullable<CompareSide["detail"]>;
+      if (mode === "files") {
+        const f = await this.deps.store.readFiles(repoId);
+        d = { repoId, key, mode, limit, tip, files: f[this.side], both: new Set(f.both) };
+      } else {
+        const page = sidePage(await this.deps.store.readCommits(repoId, this.side, limit + 1), limit);
+        d = { repoId, key, mode, limit, tip, commits: page.rows, more: page.more };
+      }
+      // Asked for something else meanwhile (another repository, pair, mode or result): dropped.
+      if (this.ask() !== ask) return undefined;
+      this.detail = d;
+      this.newDecorations();
+      // The description and "no changes" message need the count: draw them, not the rows again.
+      queueMicrotask(() => this.renderHeader());
+      return d;
+    })();
+    this.reading = { ask, read };
+    void read.finally(() => {
+      if (this.reading?.read === read) this.reading = undefined;
+    }).catch(() => undefined);
+    return read;
+  }
+
+  /** A new detail: the badges are its own (VS Code asks again for the URIs it is told changed). */
+  private newDecorations(): void {
+    const old = [...this.decorations.keys()].map((u) => vscode.Uri.parse(u));
+    this.decorations.clear();
+    if (old.length > 0) this.decorationsChanged.fire(old);
   }
 
   private renderHeader(): void {
@@ -492,9 +525,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         const d = await this.read();
         if (!d) return [];
         if (d.mode === "files") return this.tree(fileTree(d.files ?? []), `${d.repoId}/${this.side}`, d.repoId, d.both ?? new Set(), "");
-        const shown = (d.commits ?? []).slice(0, this.limit);
-        const rows = shown.map((commit): SNode => ({ kind: "commit", id: `${d.repoId}/${this.side}/c:${commit.sha}`, repoId: d.repoId, commit }));
-        return (d.commits ?? []).length > this.limit ? [...rows, { kind: "more", id: "more" }] : rows;
+        const rows = (d.commits ?? []).map((commit): SNode => ({ kind: "commit", id: `${d.repoId}/${this.side}/c:${commit.sha}`, repoId: d.repoId, commit }));
+        return d.more ? [...rows, { kind: "more", id: "more" }] : rows;
       }
       if (node.kind === "folder") return node.children;
       if (node.kind === "commit") {
@@ -536,7 +568,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         item.tooltip = node.both ? `${node.file.path}: changed on both sides since the split — look at it before merging`
           : node.file.oldPath ? `${node.file.oldPath} → ${node.file.path}` : node.file.path;
         // A private scheme: the icon theme picks the icon from the name; nothing of today's working tree is painted on it.
-        item.resourceUri = vscode.Uri.from({ scheme: SCHEME, path: `/${node.file.path}`, query: `${this.side}:${node.commit?.sha ?? ""}:${node.repoId}` });
+        // The tip (Files) or commit (Commits) in the URI: another result is another URI, so its badge is asked for afresh.
+        item.resourceUri = vscode.Uri.from({ scheme: SCHEME, path: `/${node.file.path}`, query: `${this.side}:${node.commit?.sha ?? this.detail?.tip ?? ""}:${node.repoId}` });
         item.iconPath = vscode.ThemeIcon.File;
         const dec = decorationFor(node.file.status);
         if (dec) this.decorations.set(item.resourceUri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
@@ -587,19 +620,22 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       `${path.posix.basename(f.path)} (merge base ↔ ${short(pair[this.side])}) — ${hit.repo.name}`);
   }
 
-  async snapshot(): Promise<{ open: boolean; title: string; description: string; message: string | undefined; tree: string[] }> {
+  async snapshot(): Promise<{ open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] }> {
     const lines: string[] = [];
+    /** "<path> <resourceUri> <badge>" for every file row (test seam). */
+    const files: string[] = [];
     const walk = async (nodes: SNode[], depth: number): Promise<void> => {
       for (const n of nodes) {
         const kids = n.kind === "folder" || n.kind === "commit" ? await this.getChildren(n) : [];
         const item = this.getTreeItem(n);
         lines.push(`${"  ".repeat(depth)}${labelOf(item)} | ${item.description ?? ""}`);
+        if (n.kind === "file" && item.resourceUri) files.push(`${n.file.path} ${item.resourceUri.toString()} ${this.provideFileDecoration(item.resourceUri)?.badge ?? ""}`);
         await walk(kids, depth + 1);
       }
     };
     await walk(await this.getChildren(), 0);
     this.renderHeader();
-    return { open: this.view.visible, title: this.view.description?.split(" · ")[0] ?? "", description: this.view.description?.split(" · ").slice(1).join(" · ") ?? "", message: this.view.message, tree: lines };
+    return { open: this.view.visible, title: this.view.description?.split(" · ")[0] ?? "", description: this.view.description?.split(" · ").slice(1).join(" · ") ?? "", message: this.view.message, tree: lines, files };
   }
 
   dispose(): void {

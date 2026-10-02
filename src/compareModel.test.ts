@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import {
   bothPaths, COMMIT_PAGE, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
-  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
+  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, sidePage, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
 
@@ -121,3 +121,9 @@ assert.strictEqual(repoCounts({ ...rc, left: 0, sameLeft: 0, sameRight: 0, right
 assert.strictEqual(repoCounts({ ...rc, left: 0, right: 0, sameLeft: 3, sameRight: 3 }), "=3");
 assert.strictEqual(repoCounts({ kind: "nobase" }), "no common history");
 console.log("ok - a Repositories row counts each side's commits and the duplicates, zeros left out");
+
+// A side's page of commits: "Show more" whenever git returned more than the page, duplicates included.
+const sc = (sha: string, mark: "+" | "=") => ({ mark, sha, parents: [], time: 0, author: "dana", subject: sha });
+assert.deepStrictEqual(sidePage([sc("a", "+"), sc("b", "="), sc("c", "+")], 2), { rows: [sc("a", "+")], more: true }, "a duplicate in the page still leaves more to show");
+assert.deepStrictEqual(sidePage([sc("a", "+"), sc("c", "+")], 2), { rows: [sc("a", "+"), sc("c", "+")], more: false });
+console.log("ok - a side's commit page offers more whenever git returned more than the page");

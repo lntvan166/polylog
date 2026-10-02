@@ -196,3 +196,8 @@ export function repoCounts(c: RepoCompare): string {
   if (c.kind !== "differs") return repoDescription(c);
   return [c.left > 0 ? `${c.left} ◀` : "", c.right > 0 ? `${c.right} ▶` : "", c.sameLeft > 0 ? `=${c.sameLeft}` : ""].filter(Boolean).join(" · ");
 }
+
+/** A side's page of commits (git returned up to limit + 1, duplicates included): its own rows, and whether more exist. */
+export function sidePage(commits: readonly SideCommit[], limit: number): { rows: SideCommit[]; more: boolean } {
+  return { rows: commits.slice(0, limit).filter((c) => c.mark === "+"), more: commits.length > limit };
+}

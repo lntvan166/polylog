@@ -1282,7 +1282,7 @@ describe("Polylog panel", () => {
     });
 
     type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined };
-    type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[] };
+    type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] };
     const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
     const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
     const viewPick = (p: Pair) => vscode.commands.executeCommand("polylog._itest.compareView", p);
@@ -1384,6 +1384,46 @@ describe("Polylog panel", () => {
       await send({ type: "filter", filter: { ...ALL, repoIds: s0.repos.filter((r) => r.id !== web).map((r) => r.id) } });
       await until2("selection moved", repos, (x) => x.selected === roots["acme-api"]);
       await send({ type: "filter", filter: ALL });
+    });
+
+    it("both sides share one read of a repository's files, however often the list changes meanwhile", async () => {
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("listed", repos, (x) => x.roots.length === 2);
+      await select(roots["acme-api"]);
+      await until2("api left", () => sideOf("left"), (x) => x.tree.length > 0);
+      const web = roots["acme-web"];
+      const before = (await snapshot()).spawnLog.length;
+      await select(web);
+      // The list changes while web's files are read: no read starts again.
+      for (let i = 0; i < 4; i++) void vscode.commands.executeCommand("polylog._itest.compareRefresh");
+      await until2("web left", () => sideOf("left"), (x) => x.tree.join() === "billing.ts | +1 −0");
+      await until2("web right", () => sideOf("right"), (x) => x.message === "No changes on this side.");
+      await sleep(500);
+      const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff" && x.root === web).length;
+      assert.strictEqual(diffs, 2, "one readFiles (two git diff) for both sides");
+    });
+
+    it("a file's status badge follows the pair (no badge from another pair's same path)", async () => {
+      const api = roots["acme-api"];
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await until2("listed", repos, (x) => x.roots.length === 2);
+      await select(api);
+      const a = await until2("api left", () => sideOf("left"), (x) => x.files.some((f) => f.startsWith("limit.go ")));
+      const relTip = git(api, ["rev-parse", "refs/heads/release-1.4"]);
+      git(api, ["update-ref", "refs/heads/rel-mod", commitOn(api, relTip, { "limit.go": "package limit // changed\n" }, "feat: tune the limit", T + 90)]);
+      try {
+        await viewPick({ left: "rel-mod", right: "release-1.4" });
+        await until2("listed", repos, (x) => x.roots.some((r) => r.startsWith("acme-api")));
+        await select(api);
+        const b = await until2("rel-mod left", () => sideOf("left"), (x) => x.files.some((f) => f.startsWith("limit.go ")));
+        const ua = a.files.find((f) => f.startsWith("limit.go "))!;
+        const ub = b.files.find((f) => f.startsWith("limit.go "))!;
+        assert.match(ua, / A$/);
+        assert.match(ub, / M$/);
+        assert.notStrictEqual(ua.split(" ")[1], ub.split(" ")[1], "a different result is a different URI, so VS Code asks for its badge again");
+      } finally {
+        cp.spawnSync("git", ["update-ref", "-d", "refs/heads/rel-mod"], { cwd: api });
+      }
     });
 
     it("a hidden side reads nothing; shown again, it reads the selected repository", async () => {
