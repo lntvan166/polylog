@@ -107,6 +107,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   **All Files** (in its title bar) shows the commit's whole tree, like the Explorer: the
   folders holding changes open, each other folder read only when you open it, deleted files
   still listed, and unchanged files opening as they were at that commit.
+- **Blame in diffs.** Put the cursor on a line of any Polylog diff or revision to see who last
+  changed it, as of the commit shown (hover for the details). It uses the format of
+  `git.blame.editorDecoration.template`; turn it off with `polylog.blame`.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
@@ -203,6 +206,7 @@ skewed clock can place a commit out of order.
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
+| `polylog.blame` | `true` | Show who last changed the cursor's line in Polylog's diffs and revisions. |
 
 ---
 

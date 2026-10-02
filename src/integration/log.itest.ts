@@ -1067,6 +1067,33 @@ describe("Polylog panel", () => {
     await closeEditors();
   });
 
+  it("a diff side shows who last changed the cursor's line, as of that commit", async () => {
+    await closeEditors();
+    const c = bySubject(await snapshot(), "feat: add retry");
+    await vscode.commands.executeCommand("polylog.openDiff", args(c, "upload.go"));
+    const input = await diffTab();
+    const editor = await waitFor("the modified side focused", () => {
+      const e = vscode.window.activeTextEditor;
+      return e?.document.uri.toString() === input.modified.toString() ? e : undefined;
+    });
+    const blameOn = (line: number, re: RegExp) => {
+      editor.selection = new vscode.Selection(line, 0, line, 0);
+      return waitFor(`blame on line ${line + 1}`, async () => {
+        const b = await vscode.commands.executeCommand<{ line: number; text: string } | undefined>("polylog._itest.blame");
+        return b && b.line === line && re.test(b.text) ? b : undefined;
+      });
+    };
+    await blameOn(2, /^feat: add retry to uploader \(ACME-7\), rin \(.+ ago\)$/);
+    await blameOn(0, /^feat: scaffold api, dana /);
+    const config = vscode.workspace.getConfiguration("polylog");
+    await config.update("blame", false, vscode.ConfigurationTarget.Global);
+    try {
+      await waitFor("blame cleared when turned off", async () => ((await vscode.commands.executeCommand("polylog._itest.blame")) === undefined ? true : undefined));
+    } finally {
+      await config.update("blame", undefined, vscode.ConfigurationTarget.Global);
+    }
+  });
+
   it("shows an empty before side for a root commit", async () => {
     await closeEditors();
     const c = bySubject(await snapshot(), "feat: scaffold api");

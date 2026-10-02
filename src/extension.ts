@@ -12,6 +12,7 @@ import type { WebviewMessage } from "./protocol";
 import { RepoDiscovery } from "./repoDiscovery";
 import { RevisionProvider } from "./revisionProvider";
 import { SCHEME } from "./revisionUri";
+import { BlameView } from "./blameView";
 import { readSettings } from "./settings";
 import { UncommittedStore } from "./uncommittedStore";
 import { UncommittedView } from "./uncommittedView";
@@ -51,6 +52,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const compareDeps = { context, store: compare, log, selection };
   const compareRepos = new CompareRepos(compareDeps);
   const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
+  const blame = new BlameView((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root));
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
   // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
@@ -152,6 +154,7 @@ export function activate(context: vscode.ExtensionContext): void {
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root))),
+    blame,
     vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
     vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
     vscode.commands.registerCommand("polylog.openRevision", (arg?: unknown) => log.openRevision(arg)),
@@ -170,6 +173,7 @@ export function activate(context: vscode.ExtensionContext): void {
   if (process.env.POLYLOG_ITEST === "1") {
     context.subscriptions.push(
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.blame", () => blame.last),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
       vscode.commands.registerCommand("polylog._itest.uncommittedShown", () => context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false)),
