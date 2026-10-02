@@ -4,6 +4,8 @@ import { clear, h } from "../dom";
 /** The Branch picker: a search box over Recent pairs, Favorites, Local and Remote. Filters in the page. */
 export class BranchPicker {
   private names: { name: string; count: number }[] = [];
+  /** The names have arrived (possibly none): "Reading…" is not shown forever. */
+  private loaded = false;
   private favorites: string[] = [];
   private recent: Pair[] = [];
   private items: PickerItem[] = [];
@@ -33,8 +35,16 @@ export class BranchPicker {
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.close();
+      } else if (e.key === "Tab") {
+        // Leaving the search box leaves the picker.
+        this.root.hidden = true;
+        this.anchor?.setAttribute("aria-expanded", "false");
       }
     });
+    // A combobox: the search box owns the list and says which row is active.
+    input.setAttribute("role", "combobox");
+    input.setAttribute("aria-controls", list.id);
+    input.setAttribute("aria-autocomplete", "list");
     list.addEventListener("mousedown", (e) => e.preventDefault()); // keep focus in the search box
     list.addEventListener("click", (e) => {
       const star = (e.target as Element).closest<HTMLElement>("[data-star]");
@@ -54,7 +64,8 @@ export class BranchPicker {
     return !this.root.hidden;
   }
 
-  update(names: { name: string; count: number }[], favorites: string[], recent: Pair[]): void {
+  update(names: { name: string; count: number }[], favorites: string[], recent: Pair[], loaded = this.loaded): void {
+    this.loaded = loaded;
     this.names = names;
     this.favorites = favorites;
     this.recent = recent;
@@ -62,7 +73,9 @@ export class BranchPicker {
   }
 
   open(anchor: HTMLElement): void {
+    this.anchor?.setAttribute("aria-expanded", "false");
     this.anchor = anchor;
+    anchor.setAttribute("aria-expanded", "true");
     this.root.hidden = false;
     this.input.value = "";
     this.active = 0;
@@ -84,6 +97,7 @@ export class BranchPicker {
   close(): void {
     if (!this.isOpen) return;
     this.root.hidden = true;
+    this.anchor?.setAttribute("aria-expanded", "false");
     this.anchor?.focus();
   }
 
@@ -98,7 +112,7 @@ export class BranchPicker {
     this.items = groups.flatMap((g) => g.items);
     clear(this.list);
     if (this.items.length === 0) {
-      this.list.append(h("div", { class: "picker-empty" }, [this.names.length === 0 ? "Reading branch names…" : `No branch named "${q.trim()}" in any repository.`]));
+      this.list.append(h("div", { class: "picker-empty" }, [!this.loaded ? "Reading branch names…" : this.names.length === 0 ? "No branches in the ticked repositories." : `No branch named "${q.trim()}" in any repository.`]));
       return;
     }
     let i = 0;
@@ -126,7 +140,7 @@ export class BranchPicker {
     for (const el of this.list.querySelectorAll<HTMLElement>("[data-i]")) el.setAttribute("aria-selected", String(Number(el.dataset.i) === this.active));
     const on = this.list.querySelector<HTMLElement>(`[data-i="${this.active}"]`);
     if (on) {
-      this.list.setAttribute("aria-activedescendant", on.id);
+      this.input.setAttribute("aria-activedescendant", on.id);
       on.scrollIntoView({ block: "nearest" });
     }
   }

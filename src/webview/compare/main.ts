@@ -31,23 +31,32 @@ function choose(it: PickerItem): void {
   const next = pickingSide === "left" ? { left: it.name, right: other ?? "" } : { left: other ?? "", right: it.name };
   if (next.left && next.right) post({ type: "pick", pair: next });
   else {
-    // The other side is still empty: ask for it next.
+    // The other side is still empty: the host keeps the half pair (and its guidance); ask for the other side.
     pair = next;
-    renderState();
+    post({ type: "pending", pair: next });
     openPicker(pickingSide === "left" ? "right" : "left");
   }
 }
 
+/** Branch names are read when the picker first opens, and again after Refresh. */
+let namesWanted = false;
+
 function openPicker(side: Side): void {
   pickingSide = side;
-  post({ type: "wantBranches" });
+  if (!namesWanted) {
+    namesWanted = true;
+    post({ type: "wantBranches" });
+  }
   picker.open(byId(side === "left" ? "branch-left" : "branch-right"));
 }
 
 byId("branch-left").addEventListener("click", () => openPicker("left"));
 byId("branch-right").addEventListener("click", () => openPicker("right"));
 byId("swap").addEventListener("click", () => post({ type: "swap" }));
-byId("refresh").addEventListener("click", () => post({ type: "refresh" }));
+byId("refresh").addEventListener("click", () => {
+  namesWanted = false;
+  post({ type: "refresh" });
+});
 byId("mode-files").addEventListener("click", () => post({ type: "mode", mode: "files" }));
 byId("mode-commits").addEventListener("click", () => post({ type: "mode", mode: "commits" }));
 
@@ -67,6 +76,18 @@ list.addEventListener("click", (e) => {
   if (row) select(row.dataset.repo!);
 });
 list.addEventListener("keydown", (e) => {
+  // → / ← unfold and fold the selected repository's duplicates (the twisty, by keyboard).
+  if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && selected) {
+    const r = rows.find((x) => x.repoId === selected);
+    if (!r || r.status !== "differs" || r.same === 0) return;
+    e.preventDefault();
+    if (e.key === "ArrowRight" && !open.has(r.repoId)) {
+      open.set(r.repoId, undefined);
+      post({ type: "wantDups", repoId: r.repoId });
+    } else if (e.key === "ArrowLeft") open.delete(r.repoId);
+    renderRows();
+    return;
+  }
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
   e.preventDefault();
   const i = rows.findIndex((r) => r.repoId === selected);
@@ -101,7 +122,7 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
     case "branches":
       setRemoteNames(m.remotes);
       names = m.names;
-      picker.update(names, favorites, recent);
+      picker.update(names, favorites, recent, true);
       return;
     case "repos":
       rows = m.rows;
@@ -114,6 +135,8 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
       pairKey = m.pairKey;
       for (const id of [...open.keys()]) if (!rows.some((r) => r.repoId === id)) open.delete(id);
       byId("summary").textContent = m.summary;
+      // Announced once the read is done, not every 80 ms while it runs.
+      byId("summary").setAttribute("aria-busy", String(m.reading));
       renderState(m.message);
       renderMissing(m.missing);
       renderRows();
@@ -156,13 +179,14 @@ const cell = (n: number, cls: string, mark: string) => h("span", { class: `count
 
 function renderRows(): void {
   clear(list);
-  if (rows.length === 0 && empty) list.append(h("div", { class: "cempty" }, [empty]));
+  if (rows.length === 0 && empty) list.append(h("div", { class: "cempty", role: "presentation" }, [empty]));
   rows.forEach((r, i) => {
     const on = r.repoId === selected;
     const dups = r.status === "differs" && r.same > 0;
     const unfolded = open.has(r.repoId);
     list.append(h("div", {
       class: on ? "crepo selected" : "crepo", role: "option", id: `crepo-${i}`, "aria-selected": String(on), "data-repo": r.repoId,
+      "aria-expanded": dups ? String(unfolded) : undefined,
       title: r.status === "differs" ? `${r.name}: ${r.left} only on ${pair?.left}, ${r.right} only on ${pair?.right}, ${r.same} on both (merges not counted)` : r.reason ?? r.name,
       "data-vscode-context": JSON.stringify({ webviewSection: "compareRepo", repoId: r.repoId, behind: r.behind, preventDefaultContextMenuItems: true }),
     }, [
@@ -175,8 +199,9 @@ function renderRows(): void {
     ]));
     if (unfolded) {
       const items = open.get(r.repoId);
-      if (!items) list.append(h("div", { class: "dup" }, ["Reading…"]));
-      else for (const d of items) list.append(h("div", { class: "dup", title: "The same change committed on each side (cherry-picked)" }, [
+      // Not options of the listbox: presentation rows, read with their repository.
+      if (!items) list.append(h("div", { class: "dup", role: "presentation" }, ["Reading…"]));
+      else for (const d of items) list.append(h("div", { class: "dup", role: "presentation", title: "The same change committed on each side (cherry-picked)" }, [
         h("span", { class: "same" }, ["="]), h("span", { class: "dup-subject" }, [d.subject]),
         d.left ? h("span", { class: "left mono" }, [`◀ ${d.left.slice(0, 7)}`]) : null,
         d.right ? h("span", { class: "right mono" }, [`▶ ${d.right.slice(0, 7)}`]) : null,

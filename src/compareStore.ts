@@ -75,7 +75,8 @@ export class CompareStore implements vscode.Disposable {
     this.current = { left: this.current.right, right: this.current.left };
     for (const [id, c] of this.map) this.map.set(id, mirror(c));
     this.changed();
-    if (wasReading) void this.read(this.deps.repos().filter((r) => !this.map.has(r.id)));
+    // Unanswered repositories, and (a Refresh cut short) answers that may be old: read them again.
+    if (wasReading) void this.read(this.deps.repos().filter((r) => !this.map.has(r.id) || this.refreshing.has(r.id)));
   }
 
   /** The ticks changed: unticked repositories leave at once, newly ticked ones are read. */
@@ -91,8 +92,15 @@ export class CompareStore implements vscode.Disposable {
   async refresh(repoId?: string): Promise<void> {
     if (!this.current || this.current.left === this.current.right) return;
     const repos = this.deps.repos().filter((r) => repoId === undefined || r.id === repoId);
-    await this.read(repos);
+    for (const r of repos) this.refreshing.add(r.id);
+    try {
+      await this.read(repos);
+    } finally {
+      for (const r of repos) this.refreshing.delete(r.id);
+    }
   }
+  /** Repositories a Refresh is reading again (a swap meanwhile reads them once more). */
+  private readonly refreshing = new Set<string>();
 
   results(): { repo: Repo; result: RepoCompare }[] {
     return this.deps.repos().flatMap((repo) => {

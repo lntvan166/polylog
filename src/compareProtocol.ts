@@ -34,6 +34,8 @@ export type ReposHost =
 export type ReposWebview =
   | { type: "ready" }
   | { type: "pick"; pair: Pair }
+  /** One side picked, the other still empty: the host keeps it (guidance, sides cleared). */
+  | { type: "pending"; pair: Pair }
   | { type: "swap" }
   | { type: "mode"; mode: CompareMode }
   | { type: "refresh" }

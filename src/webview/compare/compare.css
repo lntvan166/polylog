@@ -68,3 +68,6 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 @media (max-width: 560px) {
   .cbar-pair { flex-basis: 100%; }
 }
+
+/* High contrast leaves list hover backgrounds unset: a dashed outline, as the icon buttons have. */
+body.vscode-high-contrast .crepo:hover, body.vscode-high-contrast .picker-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

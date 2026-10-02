@@ -94,7 +94,15 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     void this.deps.store.setPair(null);
   }
 
-  private async start(): Promise<void> {
+  private starting: Promise<void> | undefined;
+
+  /** Visibility and the page's "ready" both start it: one read, not two. */
+  private start(): Promise<void> {
+    this.starting ??= this.doStart().finally(() => (this.starting = undefined));
+    return this.starting;
+  }
+
+  private async doStart(): Promise<void> {
     // At startup the Log's first page comes first (3 s at most when the Log is hidden).
     await Promise.race([this.deps.log.firstPage, new Promise((r) => setTimeout(r, 3000))]);
     if (this.deps.store.pair || !this.view?.visible) return;
@@ -118,10 +126,19 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
   /** Compare with…: the Log's Branch box name on the left; the picker opens on the right. */
   async compareWith(left: string): Promise<void> {
     if (!validPair({ left, right: "x" })) return this.pick();
-    this.pending = { left, right: "" };
+    await this.beginPending({ left, right: "" });
     await this.show();
     this.postState();
     this.openPicker("right");
+  }
+
+  /** One side known, the other not: the old comparison leaves the sides; the guidance says what to pick. */
+  private async beginPending(p: Pair): Promise<void> {
+    this.pending = p;
+    this.deps.selection.set(undefined);
+    await this.deps.store.setPair(null);
+    this.postState();
+    this.changed();
   }
 
   private openPicker(side: "left" | "right"): void {
@@ -190,7 +207,6 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
 
   private async setContext(): Promise<void> {
     await vscode.commands.executeCommand("setContext", "polylog.compareMode", this.mode);
-    await vscode.commands.executeCommand("setContext", "polylog.comparePair", this.deps.store.pair !== null || this.pending !== null);
   }
 
   private pairShown(): Pair | null {
@@ -247,7 +263,7 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     const sel = this.deps.selection.repoId;
     if (pair && pair.left !== pair.right && (!this.chosen || !sel || !listed.some((x) => x.repo.id === sel))) {
       if (sel && !listed.some((x) => x.repo.id === sel)) this.chosen = false;
-      this.deps.selection.set(listed[0]?.repo.id);
+      this.deps.selection.set(listed[0]?.repo.id, true);
     }
     if (this.view) this.view.description = tabTitle(this.pairShown());
     const rows = this.rows();
@@ -280,6 +296,12 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         case "pick":
           if (validPair(m.pair)) await this.setPair(m.pair);
           return;
+        case "pending": {
+          const p = m.pair as Partial<Pair> | undefined;
+          const ok = (n: unknown) => n === "" || validPair({ left: n, right: "x" });
+          if (p && typeof p.left === "string" && typeof p.right === "string" && ok(p.left) && ok(p.right) && (p.left === "") !== (p.right === "")) await this.beginPending({ left: p.left, right: p.right });
+          return;
+        }
         case "swap":
           return this.swap();
         case "mode":
@@ -312,7 +334,10 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
           let items: ReturnType<typeof pairDuplicates> = [];
           if (resultOf(this.deps.store, repoId)) {
             try {
-              const [l, r] = await Promise.all([this.deps.store.readCommits(repoId, "left", COMMIT_PAGE), this.deps.store.readCommits(repoId, "right", COMMIT_PAGE)]);
+              // Every commit of each side (only + on both): the list matches the = count git reports.
+              const c = resultOf(this.deps.store, repoId)!.result;
+              const [nl, nr] = c.kind === "differs" ? [c.left + c.sameLeft, c.right + c.sameRight] : [COMMIT_PAGE, COMMIT_PAGE];
+              const [l, r] = await Promise.all([this.deps.store.readCommits(repoId, "left", Math.max(1, nl)), this.deps.store.readCommits(repoId, "right", Math.max(1, nr))]);
               items = pairDuplicates(l.filter((c) => c.mark === "="), r.filter((c) => c.mark === "="));
             } catch {
               items = [];

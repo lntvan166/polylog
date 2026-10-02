@@ -26,9 +26,12 @@ const labelOf = (item: vscode.TreeItem) => (typeof item.label === "string" ? ite
 /** Which repository the side views show. One emitter: both sides follow it. */
 export class CompareSelection implements vscode.Disposable {
   repoId: string | undefined;
+  /** Chosen for the user (the first listed repository), not by them: it may still move while the list is read. */
+  auto = false;
   private readonly emitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.emitter.event;
-  set(id: string | undefined): void {
+  set(id: string | undefined, auto = false): void {
+    this.auto = auto;
     if (id === this.repoId) return;
     this.repoId = id;
     this.emitter.fire();
@@ -125,14 +128,19 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   private ask(): string {
     const p = this.deps.store.pair;
     const repoId = this.deps.selection.repoId ?? "";
-    return [p?.left, p?.right, repoId, repoId ? keyOf(this.deps.store, repoId) : "", this.mode, this.limit].join("\0");
+    return [p?.left, p?.right, repoId, repoId ? keyOf(this.deps.store, repoId) : "", this.mode, this.limit, this.waiting()].join("\0");
+  }
+
+  /** The selection was made for the user while the list is still read: it may move, so wait for the list. */
+  private waiting(): boolean {
+    return this.deps.selection.auto && this.deps.store.reading;
   }
 
   /** The selected repository's detail, read once per result and mode. */
   private read(): Promise<NonNullable<CompareSide["detail"]> | undefined> {
     const repoId = this.deps.selection.repoId;
     const hit = repoId ? resultOf(this.deps.store, repoId) : undefined;
-    if (!repoId || hit?.result.kind !== "differs") return Promise.resolve(undefined);
+    if (!repoId || hit?.result.kind !== "differs" || this.waiting()) return Promise.resolve(undefined);
     const key = keyOf(this.deps.store, repoId);
     const mode = this.mode;
     const limit = this.limit;

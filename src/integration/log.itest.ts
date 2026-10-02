@@ -606,7 +606,7 @@ describe("Polylog panel", () => {
     const spawns = (await snapshot()).spawnLog.length;
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.from({ scheme: "polylog", ...encodeRevision({ root: "/not/a/repo", ref: c.sha, path: "x.ts" }) }));
     assert.strictEqual(doc.getText(), "");
-    assert.strictEqual((await snapshot()).spawnLog.length, spawns, "no git for a foreign root");
+    assert.ok(!(await snapshot()).spawnLog.slice(spawns).some((x) => x.root === "/not/a/repo"), "no git for a foreign root");
     assert.strictEqual((await snapshot()).rows.length, 6, "the Log is unharmed");
   });
 
@@ -1558,6 +1558,35 @@ describe("Polylog panel", () => {
       }
       await waitFor("ticked again", async () => ((await posted()).repos?.message === undefined && ((await posted()).repos?.rows.length ?? 0) > 0 ? true : undefined));
       assert.ok(s0.repos.length > 0);
+    });
+
+    it("Compare minors: one read per show, Compare with… clears the sides, a half pair keeps its guidance, no wasted side reads", async () => {
+      type Posted = { repos?: { message?: string }; state?: { pair: Pair | null } };
+      const posted = () => vscode.commands.executeCommand<Posted>("polylog._itest.comparePosted");
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      await viewPick({ left: "release-1.4", right: "prod" });
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("listed", repos, (x) => x.open && x.roots.length === 2);
+      // Hide and show again: each ticked repository's branches are resolved once, not twice.
+      await vscode.commands.executeCommand("workbench.action.terminal.toggleTerminal");
+      await until2("hidden", repos, (x) => !x.open);
+      const before = (await snapshot()).spawnLog.length;
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("read again", repos, (x) => x.open && x.roots.length === 2);
+      await sleep(300);
+      const log = (await snapshot()).spawnLog.slice(before);
+      const ticked = (await snapshot()).repos.length;
+      assert.strictEqual(log.filter((x) => x.cmd === "rev-parse").length, ticked, "one rev-parse per repository");
+      // While the list was being read, the selection moved on its own: the sides read once, for the final one.
+      assert.ok(log.filter((x) => x.cmd === "diff").length <= 2, `side reads wait for the list (${log.filter((x) => x.cmd === "diff").length} diffs)`);
+      // A half pair from the page: the host keeps it and its guidance.
+      await rsend({ type: "pending", pair: { left: "release-1.4", right: "" } });
+      await waitFor("guidance", async () => ((await posted()).repos?.message === "Pick the branch release-1.4 goes into (▶)." ? true : undefined));
+      assert.strictEqual((await sideOf("left")).tree.length, 0, "the old pair's files leave the sides");
+      await rsend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      await until2("picked", repos, (x) => x.roots.length === 2);
+      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON;
+      assert.ok(!JSON.stringify(pkg.contributes.menus).includes("polylog.comparePair"));
     });
 
     it("the picked repository survives a panel tab switch; duplicates are always answered", async () => {
