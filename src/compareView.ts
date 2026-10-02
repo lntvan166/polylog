@@ -62,7 +62,8 @@ export const keyOf = (store: CompareStore, repoId: string): string => {
 
 type SNode =
   | { kind: "folder"; id: string; name: string; path: string; count: number; children: SNode[] }
-  | { kind: "file"; id: string; repoId: string; name: string; file: FileChange; both: boolean; commit?: { sha: string; parent: string | null } }
+  /** side and path: a right-click hands the row itself to the command. */
+  | { kind: "file"; id: string; repoId: string; side: Side; path: string; name: string; file: FileChange; both: boolean; commit?: { sha: string; parent: string | null } }
   | { kind: "commit"; id: string; repoId: string; commit: SideCommit }
   | { kind: "more"; id: string };
 
@@ -203,7 +204,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       if (node.kind === "folder") return node.children;
       if (node.kind === "commit") {
         const files = await this.deps.store.readCommitFiles(node.repoId, node.commit.sha);
-        return files.map((file): SNode => ({ kind: "file", id: `${node.id}/f:${file.path}`, repoId: node.repoId, name: file.path, file, both: false, commit: { sha: node.commit.sha, parent: node.commit.parents[0] ?? null } }));
+        return files.map((file): SNode => ({ kind: "file", id: `${node.id}/f:${file.path}`, repoId: node.repoId, side: this.side, path: file.path, name: file.path, file, both: false, commit: { sha: node.commit.sha, parent: node.commit.parents[0] ?? null } }));
       }
       return [];
     } catch (e) {
@@ -218,7 +219,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         const p = parent ? `${parent}/${n.name}` : n.name;
         return { kind: "folder", id: `${base}/d:${p}`, name: n.name, path: p, count: n.count, children: this.tree(n.children, base, repoId, both, p) };
       }
-      return { kind: "file", id: `${base}/f:${n.file.path}`, repoId, name: n.name, file: n.file, both: both.has(n.file.path) };
+      return { kind: "file", id: `${base}/f:${n.file.path}`, repoId, side: this.side, path: n.file.path, name: n.name, file: n.file, both: both.has(n.file.path) };
     });
   }
 
@@ -248,6 +249,8 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         item.command = node.commit
           ? { command: "polylog.openDiff", title: "Open Diff", arguments: [{ repoId: node.repoId, sha: node.commit.sha, parent: node.commit.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status } satisfies OpenDiffArgs] }
           : { command: "polylog.compareOpenFile", title: "Open Diff", arguments: [{ side: this.side, repoId: node.repoId, path: node.file.path }] };
+        // Files mode: right-click offers Changes since the split.
+        if (!node.commit) item.contextValue = "compareFile";
         return item;
       }
       case "commit": {
@@ -279,17 +282,39 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   }
 
   /** A Files-mode file: the merge base ↔ this side's tip. Only a file of the repository shown here opens. */
+  /**
+   * A Files-mode file, as the two branches have it now: the right branch (the target) in the
+   * left pane, the left branch in the right one — the same from either side view.
+   */
   async openFile(arg: unknown): Promise<void> {
+    const t = this.fileTarget(arg);
+    if (!t) return;
+    const { f, hit, pair } = t;
+    // Each tip's own copy of the file (an absent one is an empty side).
+    await this.deps.log.openDiff({ repoId: hit.repo.id, sha: hit.result.leftSha, parent: hit.result.rightSha, path: f.path}, false,
+      `${path.posix.basename(f.path)} (${short(pair.right)} ↔ ${short(pair.left)}) — ${hit.repo.name}`);
+  }
+
+  /** Right-click → Changes since the split: merge base ↔ this side's tip (what the merge brings). */
+  async openSinceSplit(arg: unknown): Promise<void> {
+    const t = this.fileTarget(arg);
+    if (!t) return;
+    const { f, hit, pair } = t;
+    const tip = this.side === "left" ? hit.result.leftSha : hit.result.rightSha;
+    await this.deps.log.openDiff({ repoId: hit.repo.id, sha: tip, parent: hit.result.base, path: f.path, oldPath: f.oldPath, status: f.status }, false,
+      `${path.posix.basename(f.path)} (merge base ↔ ${short(pair[this.side])}) — ${hit.repo.name}`);
+  }
+
+  /** Only a file of the repository whose files are shown here. */
+  private fileTarget(arg: unknown) {
     const a = arg as { repoId?: unknown; path?: unknown } | undefined;
     const d = this.detail;
-    if (!d || d.mode !== "files" || a?.repoId !== d.repoId || typeof a.path !== "string") return;
+    if (!d || d.mode !== "files" || a?.repoId !== d.repoId || typeof a.path !== "string") return undefined;
     const f = d.files?.find((x) => x.path === a.path);
     const hit = resultOf(this.deps.store, d.repoId);
     const pair = this.deps.store.pair;
-    if (!f || hit?.result.kind !== "differs" || !pair) return;
-    const tip = this.side === "left" ? hit.result.leftSha : hit.result.rightSha;
-    await this.deps.log.openDiff({ repoId: d.repoId, sha: tip, parent: hit.result.base, path: f.path, oldPath: f.oldPath, status: f.status }, false,
-      `${path.posix.basename(f.path)} (merge base ↔ ${short(pair[this.side])}) — ${hit.repo.name}`);
+    if (!f || !hit || hit.result.kind !== "differs" || !pair) return undefined;
+    return { f, hit: { repo: hit.repo, result: hit.result }, pair };
   }
 
   async snapshot(): Promise<{ open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] }> {

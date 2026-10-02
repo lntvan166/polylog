@@ -107,6 +107,11 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.compareShowFiles", () => compareRepos.setMode("files")),
     vscode.commands.registerCommand("polylog.compareRefresh", () => compareRepos.refresh()),
     vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: { side?: unknown }) => (arg?.side === "left" || arg?.side === "right" ? sides[arg.side].openFile(arg) : undefined)),
+    vscode.commands.registerCommand("polylog.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {
+      // From the tree's right-click the argument is the row; from a test, { side, repoId, path }.
+      const side = arg?.side === "left" || arg?.side === "right" ? arg.side : undefined;
+      return side ? sides[side].openSinceSplit(arg) : undefined;
+    }),
     vscode.commands.registerCommand("polylog.compareMore", (side?: unknown) => (side === "left" || side === "right" ? sides[side].more() : undefined)),
     vscode.workspace.onDidSaveTextDocument((doc) => doc.uri.scheme === "file" && uncommitted.touch(doc.uri.fsPath)),
     uncommitted,

@@ -369,6 +369,11 @@
         "title": "Hide Polylog Compare",
         "category": "Polylog",
         "icon": "$(git-compare)"
+      },
+      {
+        "command": "polylog.compareOpenSinceSplit",
+        "title": "Changes since the Split",
+        "category": "Polylog"
       }
     ],
     "menus": {
@@ -467,6 +472,11 @@
           "command": "polylog.fileHistory",
           "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.readonly)?$/",
           "group": "3_history@1"
+        },
+        {
+          "command": "polylog.compareOpenSinceSplit",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && viewItem == compareFile",
+          "group": "1_open@1"
         }
       ],
       "commandPalette": [
@@ -601,6 +611,10 @@
         {
           "command": "polylog.uncommittedClose",
           "when": "polylog.uncommittedShown"
+        },
+        {
+          "command": "polylog.compareOpenSinceSplit",
+          "when": "false"
         }
       ],
       "view/title": [

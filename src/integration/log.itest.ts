@@ -34,7 +34,7 @@ const until = (what: string, ok: (s: LogSnapshot) => boolean) =>
 const diffTab = () =>
   waitFor("a diff editor", () => {
     const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-    return input instanceof vscode.TabInputTextDiff && input.modified.scheme === "polylog" ? input : undefined;
+    return input instanceof vscode.TabInputTextDiff && (input.modified.scheme === "git" || input.modified.scheme === "polylog") ? input : undefined;
   });
 const tabCount = () => vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
 const closeEditors = () => vscode.commands.executeCommand("workbench.action.closeAllEditors");
@@ -439,7 +439,7 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.openRevision", { repoId: libs.id, sha, path: "package.json" });
       const doc = await waitFor("package.json at that commit", () => {
         const d = vscode.window.activeTextEditor?.document;
-        return d?.uri.scheme === "polylog" && d.uri.path.endsWith("package.json") ? d : undefined;
+        return (d?.uri.scheme === "git" || d?.uri.scheme === "polylog") && d.uri.path.endsWith("package.json") ? d : undefined;
       });
       assert.strictEqual(doc.getText(), git("show", `${sha}:package.json`) + "\n", "the file as it was at that commit");
 
@@ -1153,7 +1153,7 @@ describe("Polylog panel", () => {
     await send({ type: "select", repoId: older.repoId, sha: older.sha });
     const input = await waitFor("the older revision's diff", () => {
       const tab = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-      return tab instanceof vscode.TabInputTextDiff && tab.modified.scheme === "polylog" && tab.modified.query.includes(older.sha) ? tab : undefined;
+      return tab instanceof vscode.TabInputTextDiff && (tab.modified.scheme === "git" || tab.modified.scheme === "polylog") && tab.modified.query.includes(older.sha) ? tab : undefined;
     });
     assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n");
     await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go" && x.changes.items[0]?.startsWith("feat: scaffold api") === true);
@@ -1524,8 +1524,30 @@ describe("Polylog panel", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
         return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
       });
-      assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package timeout\n");
-      assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "");
+      // A click: the file as the two branches have it now — left pane the right branch (prod), right pane the left one.
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "package timeout\n", "prod has timeout.go");
+      assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "", "release-1.4 does not");
+      assert.match(vscode.window.tabGroups.activeTabGroup.activeTab!.label, /\(prod ↔ release-1\.4\)/);
+      // limit.go, changed on both sides: both halves in one diff.
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "limit.go" });
+      const both = await waitFor("limit.go between branches", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+        return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
+      });
+      assert.strictEqual((await vscode.workspace.openTextDocument(both.original)).getText(), "package limit // prod\n");
+      assert.strictEqual((await vscode.workspace.openTextDocument(both.modified)).getText(), "package limit\n");
+      // Right-click → Changes since the split: merge base ↔ that side (what the merge brings).
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      await vscode.commands.executeCommand("polylog.compareOpenSinceSplit", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
+      const since = await waitFor("since the split", () => {
+        const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+        return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
+      });
+      assert.strictEqual((await vscode.workspace.openTextDocument(since.original)).getText(), "");
+      assert.strictEqual((await vscode.workspace.openTextDocument(since.modified)).getText(), "package timeout\n");
+      const items = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus["view/item/context"] as { command: string; when: string }[];
+      assert.ok(items.some((m) => m.command === "polylog.compareOpenSinceSplit" && m.when.includes("viewItem == compareFile")));
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
       // Another repository: both sides follow; a file of the old one no longer opens.
       await select(roots["acme-web"]);
