@@ -110,8 +110,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **The Uncommitted view** (in the Polylog side bar, like Source Control: the Log toolbar's
-    **Open Uncommitted View** shows it, × hides it again): one
+  - **The Uncommitted view** (in the Polylog side bar, like Source Control: the side-bar button
+    in the Log toolbar shows it, and, filled, hides it again): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
     files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
     first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
@@ -122,8 +122,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     the Changes tree.
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
-- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
-  Compare** panel tab (hidden until then; × in its title hides it again): three views side by side. It compares two branches in every ticked
+- **Compare Branches** (the panel button in the Log toolbar, or the Command Palette) opens the
+  **Polylog Compare** panel tab, hidden until then; the same button, now filled, hides it again
+  (or × in its title): three views side by side. It compares two branches in every ticked
   repository, for example `origin/release-1.4` (◀ left, what you merge from) and
   `origin/main` (▶ right, where it goes).
   - **Repositories** lists the repositories whose files differ, each with its Repo List color and `3 ◀ · 1 ▶ · =1`:

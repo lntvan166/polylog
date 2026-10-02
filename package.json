@@ -343,6 +343,30 @@
         "title": "Close Uncommitted View",
         "category": "Polylog",
         "icon": "$(close)"
+      },
+      {
+        "command": "polylog.uncommittedShow",
+        "title": "Show Uncommitted View",
+        "category": "Polylog",
+        "icon": "$(layout-sidebar-left-off)"
+      },
+      {
+        "command": "polylog.uncommittedHide",
+        "title": "Hide Uncommitted View",
+        "category": "Polylog",
+        "icon": "$(layout-sidebar-left)"
+      },
+      {
+        "command": "polylog.compareShow",
+        "title": "Show Polylog Compare (Compare Branches)",
+        "category": "Polylog",
+        "icon": "$(layout-panel-off)"
+      },
+      {
+        "command": "polylog.compareHide",
+        "title": "Hide Polylog Compare",
+        "category": "Polylog",
+        "icon": "$(layout-panel)"
       }
     ],
     "menus": {
@@ -580,6 +604,22 @@
         {
           "command": "polylog.compareMore",
           "when": "false"
+        },
+        {
+          "command": "polylog.uncommittedShow",
+          "when": "false"
+        },
+        {
+          "command": "polylog.uncommittedHide",
+          "when": "false"
+        },
+        {
+          "command": "polylog.compareShow",
+          "when": "false"
+        },
+        {
+          "command": "polylog.compareHide",
+          "when": "false"
         }
       ],
       "view/title": [
@@ -594,13 +634,23 @@
           "group": "navigation"
         },
         {
-          "command": "polylog.focusUncommitted",
-          "when": "view == polylog.log",
+          "command": "polylog.uncommittedShow",
+          "when": "view == polylog.log && !polylog.uncommittedShown",
           "group": "navigation@1"
         },
         {
-          "command": "polylog.compareBranches",
-          "when": "view == polylog.log",
+          "command": "polylog.uncommittedHide",
+          "when": "view == polylog.log && polylog.uncommittedShown",
+          "group": "navigation@1"
+        },
+        {
+          "command": "polylog.compareShow",
+          "when": "view == polylog.log && !polylog.compareShown",
+          "group": "navigation@1"
+        },
+        {
+          "command": "polylog.compareHide",
+          "when": "view == polylog.log && polylog.compareShown",
           "group": "navigation@1"
         },
         {

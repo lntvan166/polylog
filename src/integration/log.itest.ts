@@ -1361,7 +1361,6 @@ describe("Polylog panel", () => {
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       assert.strictEqual((pkg.views["polylog-side"] as { when?: string }[])[0].when, "polylog.uncommittedShown");
       const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
-      assert.ok(titles.some((m) => m.command === "polylog.focusUncommitted" && m.when === "view == polylog.log" && m.group.startsWith("navigation")), "a Log toolbar button");
       assert.ok(titles.some((m) => m.command === "polylog.uncommittedClose" && m.when.includes("view == polylog.uncommitted")));
       const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
       await vscode.commands.executeCommand("polylog.uncommittedClose");
@@ -1369,6 +1368,28 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.focusUncommitted");
       assert.strictEqual(await shown(), true);
       await waitFor("the view on screen", async () => ((await vscode.commands.executeCommand<{ visible: boolean }>("polylog._itest.uncommitted")).visible ? true : undefined));
+    });
+
+    it("the Log toolbar's two toggles: click to show, click again to hide; the icon says which", async () => {
+      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+      const icon = (cmd: string) => (pkg.commands as { command: string; icon?: string }[]).find((c) => c.command === cmd)?.icon;
+      const log = (pkg.menus["view/title"] as { command: string; when: string }[]).filter((m) => m.when.startsWith("view == polylog.log"));
+      const at = (cmd: string) => log.find((m) => m.command === cmd)?.when;
+      assert.deepStrictEqual([icon("polylog.uncommittedShow"), at("polylog.uncommittedShow")], ["$(layout-sidebar-left-off)", "view == polylog.log && !polylog.uncommittedShown"]);
+      assert.deepStrictEqual([icon("polylog.uncommittedHide"), at("polylog.uncommittedHide")], ["$(layout-sidebar-left)", "view == polylog.log && polylog.uncommittedShown"]);
+      assert.deepStrictEqual([icon("polylog.compareShow"), at("polylog.compareShow")], ["$(layout-panel-off)", "view == polylog.log && !polylog.compareShown"]);
+      assert.deepStrictEqual([icon("polylog.compareHide"), at("polylog.compareHide")], ["$(layout-panel)", "view == polylog.log && polylog.compareShown"]);
+      const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
+      await vscode.commands.executeCommand("polylog.uncommittedShow");
+      assert.strictEqual(await shown(), true);
+      await vscode.commands.executeCommand("polylog.uncommittedHide");
+      assert.strictEqual(await shown(), false);
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("compare shown", repos, (x) => x.open);
+      await vscode.commands.executeCommand("polylog.compareHide");
+      await until2("compare hidden", repos, (x) => !x.open);
+      await vscode.commands.executeCommand("polylog.compareShow");
+      await until2("compare shown again", repos, (x) => x.open);
     });
 
     it("Commits mode, swap, a new pair, and hiding the tab mid-read", async () => {
