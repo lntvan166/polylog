@@ -57,6 +57,18 @@
           "id": "polylog",
           "title": "Polylog",
           "icon": "media/polylog.svg"
+        },
+        {
+          "id": "polylog-compare",
+          "title": "Polylog Compare",
+          "icon": "media/compare.svg"
+        }
+      ],
+      "activitybar": [
+        {
+          "id": "polylog-side",
+          "title": "Polylog",
+          "icon": "media/polylog.svg"
         }
       ]
     },
@@ -74,20 +86,31 @@
           "name": "Changes",
           "initialSize": 450,
           "icon": "$(diff)"
+        }
+      ],
+      "polylog-compare": [
+        {
+          "id": "polylog.compare",
+          "name": "Repositories",
+          "icon": "$(repo)"
         },
+        {
+          "id": "polylog.compareLeft",
+          "name": "Left",
+          "icon": "$(arrow-left)"
+        },
+        {
+          "id": "polylog.compareRight",
+          "name": "Right",
+          "icon": "$(arrow-right)"
+        }
+      ],
+      "polylog-side": [
         {
           "id": "polylog.uncommitted",
           "name": "Uncommitted",
           "initialSize": 450,
-          "visibility": "collapsed",
           "icon": "$(diff-modified)"
-        },
-        {
-          "id": "polylog.compare",
-          "name": "Compare",
-          "initialSize": 700,
-          "visibility": "collapsed",
-          "icon": "$(git-compare)"
         }
       ]
     },

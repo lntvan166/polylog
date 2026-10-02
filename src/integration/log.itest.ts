@@ -1299,11 +1299,16 @@ describe("Polylog panel", () => {
       assert.strictEqual(s.mode, "files");
       assert.deepStrictEqual(s.roots, ["acme-api | =1", "acme-web | "], "only the repositories whose files differ");
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
-      const views = pkg.views.polylog as { id: string; icon?: string; type?: string }[];
-      assert.deepStrictEqual(views.map((v) => [v.id, v.icon]), [
-        ["polylog.log", "$(history)"], ["polylog.changes", "$(diff)"], ["polylog.uncommitted", "$(diff-modified)"], ["polylog.compare", "$(git-compare)"],
-      ], "each view has its own icon (a collapsed view shows only that)");
-      assert.strictEqual(views.find((v) => v.id === "polylog.compare")!.type, undefined, "a native tree: the user's file icon theme applies");
+      const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
+      assert.deepStrictEqual(pkg.viewsContainers, {
+        panel: [{ id: "polylog", title: "Polylog", icon: "media/polylog.svg" }, { id: "polylog-compare", title: "Polylog Compare", icon: "media/compare.svg" }],
+        activitybar: [{ id: "polylog-side", title: "Polylog", icon: "media/polylog.svg" }],
+      });
+      assert.deepStrictEqual(Object.fromEntries(Object.entries(views).map(([c, vs]) => [c, vs.map((v) => [v.id, v.icon])])), {
+        polylog: [["polylog.log", "$(history)"], ["polylog.changes", "$(diff)"]],
+        "polylog-compare": [["polylog.compare", "$(repo)"], ["polylog.compareLeft", "$(arrow-left)"], ["polylog.compareRight", "$(arrow-right)"]],
+        "polylog-side": [["polylog.uncommitted", "$(diff-modified)"]],
+      }, "Layout D: Log + Changes; the Compare tab; Uncommitted in the side bar");
       const menus = pkg.menus["view/item/context"] as { command: string; when: string }[];
       for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
         assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.compare")), `${c} on a Compare repository row`);
