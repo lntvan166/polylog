@@ -1,3 +1,4 @@
+@import "./accents.css";
 /*
  * Every color and font below is a --vscode-* variable, so the panel follows the
  * user's theme — light, dark and high-contrast (CLAUDE.md constraint 2).
@@ -146,9 +147,6 @@ body.vscode-high-contrast .suggest-row[aria-selected="true"] { background: trans
 .path-filter { flex: 1 1 130px; min-width: 100px; }
 /* File History already filters to one file. */
 .app.history .path-filter { display: none; }
-/* Review Uncommitted: uncommitted work has no message, author, branch or date to filter on. */
-.app.review :is(#search, .author-field, #branch, #date, #custom-range) { display: none; }
-.app.review .footer .note { display: none; }
 .filters input[aria-invalid="true"] { border-color: var(--vscode-inputValidation-errorBorder); }
 /* The focus outline would hide the error while typing: it takes the error color too. */
 .filters input[aria-invalid="true"]:focus-visible { outline-color: var(--vscode-inputValidation-errorBorder); }
@@ -202,9 +200,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
   align-items: center; column-gap: 10px; padding: 0 var(--pad-x); cursor: default;
 }
 .row:hover { background: var(--vscode-list-hoverBackground); }
-/* A repository's uncommitted changes, pinned above its commits. */
-.row.uncommitted .subject { font-style: italic; }
-.pending-dot { margin-right: 6px; font-style: normal; color: var(--vscode-gitDecoration-modifiedResourceForeground, var(--vscode-descriptionForeground)); }
 .row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
 .list:focus .row[aria-selected="true"] {
   background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground);
@@ -226,13 +221,6 @@ button.link:hover { background: transparent; color: var(--vscode-textLink-active
 /* 16% of a hue is pale on a white panel: light themes get a stronger tint. The text stays the
    theme foreground, so contrast still does not depend on the hue. */
 body.vscode-light .chip { background: color-mix(in srgb, var(--accent) 24%, transparent); }
-.accent-0 { --accent: var(--vscode-charts-red); }
-.accent-1 { --accent: var(--vscode-charts-blue); }
-.accent-2 { --accent: var(--vscode-charts-yellow); }
-.accent-3 { --accent: var(--vscode-charts-green); }
-.accent-4 { --accent: var(--vscode-charts-purple); }
-/* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
-.accent-5 { --accent: var(--vscode-terminal-ansiCyan); }
 
 .skeleton .bar { display: inline-block; width: 70%; height: 0.75em; border-radius: 2px; background: var(--vscode-descriptionForeground); opacity: 0.2; }
 .skeleton .bar.short { width: 50%; }
@@ -264,3 +252,37 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
   .row { grid-template-columns: minmax(80px, min(var(--repo-col, 14ch), 30%)) minmax(0, 1fr) 8ch; }
   .row .author { display: none; }
 }
+
+/* The Log's Commits | Uncommitted switch (VS Code's segmented look, theme colors only). */
+.logswitch { display: flex; align-items: center; gap: 10px; padding: 6px var(--pad-x) 0; min-width: 0; }
+.switch { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--vscode-input-border, var(--vscode-widget-border, transparent)); border-radius: 6px; background: var(--vscode-input-background); }
+.switch-tab { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border: 0; border-radius: 4px; background: transparent; color: var(--vscode-descriptionForeground); font: inherit; cursor: pointer; }
+.switch-tab:hover { color: var(--vscode-foreground); }
+.switch-tab[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-contrastActiveBorder, transparent); }
+.switch-tab:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+.work-count { min-width: 16px; padding: 0 5px; border-radius: 8px; background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); font-size: 11px; line-height: 16px; text-align: center; }
+.work-totals { margin-left: auto; color: var(--vscode-descriptionForeground); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The Uncommitted side: uncommitted work has no message, author, branch or date to filter on. */
+.app.work :is(#search, .author-field, #branch, #date, #custom-range) { display: none; }
+.app.work :is(#more, .footer .note, #count) { display: none; }
+.app.work #list { display: none; }
+.worklist { overflow-y: auto; height: 100%; outline: none; }
+.work-row { display: grid; grid-template-columns: minmax(72px, min(var(--repo-col, 15ch), 25%)) minmax(0, 1fr) auto 12ch; align-items: center; column-gap: 12px; padding: 5px var(--pad-x); cursor: default; border-bottom: 1px solid var(--vscode-widget-border, transparent); }
+.work-row:hover { background: var(--vscode-list-hoverBackground); }
+.work-row[aria-selected="true"] { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground); }
+.worklist:focus .work-row[aria-selected="true"] { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline); outline-offset: -1px; }
+.work-what { display: grid; gap: 4px; min-width: 0; }
+.work-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.meter { display: flex; gap: 1px; width: 160px; max-width: 100%; height: 4px; border-radius: 2px; overflow: hidden; background: var(--vscode-widget-border, var(--vscode-input-border, transparent)); }
+.meter .added { background: var(--vscode-gitDecoration-addedResourceForeground); }
+.meter .modified { background: var(--vscode-gitDecoration-modifiedResourceForeground); }
+.meter .deleted { background: var(--vscode-gitDecoration-deletedResourceForeground); }
+.work-tags { display: flex; gap: 6px; }
+.work-tag { padding: 0 7px; border: 1px solid currentColor; border-radius: 9px; color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 16px; white-space: nowrap; }
+.work-tag.staged { border-color: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-gitDecoration-addedResourceForeground); }
+.work-row[aria-selected="true"] .work-tag:not(.staged), .work-row[aria-selected="true"] .work-edited { color: inherit; }
+.work-edited { color: var(--vscode-descriptionForeground); text-align: right; white-space: nowrap; font-size: 12px; }
+
+/* High contrast leaves the list backgrounds unset: the Uncommitted side's rows get outlines, like commit rows. */
+body.vscode-high-contrast .work-row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .work-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

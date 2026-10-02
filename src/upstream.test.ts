@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, syncLabel } from "./upstream";
+import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, syncLabel } from "./upstream";
 
 {
   assert.deepStrictEqual(aheadBehindArgs(), ["rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"], "local refs only: no fetch");
@@ -23,4 +23,23 @@ import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, syncLabel } 
   assert.deepStrictEqual(behindRepos(["/ws/acme-web", "/ws/acme-api", "/ws/acme-libs"], sync), ["/ws/acme-web", "/ws/acme-api"], "behind only (not merely ahead), in repo order");
   assert.deepStrictEqual(behindRepos(["/ws/acme-web"], {}), []);
   console.log("ok - Fetch All's arguments; the repositories behind their upstream");
+}
+{
+  assert.strictEqual(fetchProgress(23, 68), "fetching 23/68…", "after the progress title, Polylog");
+  assert.strictEqual(fetchSummary(68, 3), "Polylog: fetched 68 repositories · 3 behind their upstream");
+  assert.strictEqual(fetchSummary(68, 1), "Polylog: fetched 68 repositories · 1 behind its upstream");
+  assert.strictEqual(fetchSummary(1, 0), "Polylog: fetched 1 repository · nothing to pull");
+  console.log("ok - Fetch All says how far it is, and what it found");
+}
+{
+  assert.deepStrictEqual(pullArgs(), ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"],
+    "what the last fetch brought: never a merge commit; autostash off, or it would merge local changes in and write conflict markers");
+  const sync = { a: { ahead: 0, behind: 3 }, b: { ahead: 2, behind: 0 }, c: { ahead: 1, behind: 4 }, d: { ahead: 0, behind: 1 } };
+  assert.deepStrictEqual(pullPlan(["d", "c", "b", "a", "e"], sync), { pull: ["d", "a"], diverged: ["c"] }, "behind and not ahead: a fast-forward; both: diverged, left alone");
+  assert.strictEqual(pullReason("error: Your local changes to the following files would be overwritten by merge:\n\tx.go"), "local changes to the same files");
+  assert.strictEqual(pullReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream");
+  assert.strictEqual(pullReason("fatal: something else"), "fatal: something else");
+  assert.strictEqual(pullSummary(14), "Polylog: pulled 14 repositories");
+  assert.strictEqual(pullSummary(1), "Polylog: pulled 1 repository");
+  console.log("ok - Pull All Behind: fast-forwards only, and says why it left one alone");
 }

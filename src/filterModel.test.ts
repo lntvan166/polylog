@@ -149,10 +149,11 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.strictEqual(a[1], HISTORY_FORMAT);
   assert.ok(a.includes("--grep=fix") && a.includes("--skip=5"));
   assert.ok(!a.includes("--follow"), "no --follow: it cannot page with --skip, and a filtered-out rename would cut the history");
-  assert.deepStrictEqual(a.slice(-6), ["--name-status", "-z", "-M", "--", "src/client.ts", "src/old.ts"], "the paths are always after --");
+  assert.deepStrictEqual(a.slice(-6), ["--name-status", "-z", "-M", "--", ":(literal)src/client.ts", ":(literal)src/old.ts"], "the paths are always after --, and literal: [id] is a folder, not a glob");
   const inj = historyArgs(ALL, { pageSize: 1, now: NOW, paths: ["--output=/tmp/x"] });
-  assert.deepStrictEqual(inj.slice(-2), ["--", "--output=/tmp/x"], "a path can never be read as an option");
-  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", "src/client.ts"]);
+  assert.deepStrictEqual(inj.slice(-2), ["--", ":(literal)--output=/tmp/x"], "a path can never be read as an option");
+  assert.deepStrictEqual(historyPathsArgs("src/client.ts", "origin/prod"), ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", "--end-of-options", "origin/prod", "--", ":(literal)src/client.ts"]);
+  assert.deepStrictEqual(historyPathsArgs("app/[id]/page.tsx").slice(-1), [":(literal)app/[id]/page.tsx"], "a route folder like [id] is not a glob");
   assert.deepStrictEqual(parseHistoryPaths("\x1e\x00\nM\x00new.ts\x00\x1e\x00\nR100\x00old.ts\x00new.ts\x00\x1e\x00\nA\x00old.ts\x00", "new.ts"), ["new.ts", "old.ts"]);
   assert.deepStrictEqual(parseHistoryPaths("", "a.ts"), ["a.ts"], "an untracked file still has its own path");
   console.log("ok - history first learns every name the file had, then asks for all of them");
@@ -173,7 +174,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   const a = logArgs(ALL, { pageSize: 5, now: NOW, ref: "origin/prod" });
   assert.deepStrictEqual(a.slice(-3), ["--end-of-options", "origin/prod", "--"], "the ref comes after --end-of-options and before --, so a same-named folder is never ambiguous");
   const h = historyArgs({ ...ALL, text: "fix" }, { pageSize: 5, now: NOW, paths: ["b.ts", "a.ts"], ref: "origin/prod" });
-  assert.deepStrictEqual(h.slice(-8), ["--name-status", "-z", "-M", "--end-of-options", "origin/prod", "--", "b.ts", "a.ts"], "history options stay before the ref; every name the file had is a pathspec");
+  assert.deepStrictEqual(h.slice(-8), ["--name-status", "-z", "-M", "--end-of-options", "origin/prod", "--", ":(literal)b.ts", ":(literal)a.ts"], "history options stay before the ref; every name the file had is a pathspec");
   assert.ok(!logArgs(ALL, { pageSize: 5, now: NOW }).includes("--end-of-options"), "current branch: no ref at all");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "--output=/tmp/x" }).branch, "", "an invalid persisted branch is dropped");
   assert.strictEqual(sanitizeFilter({ ...ALL, branch: "origin/prod" }).branch, "origin/prod");
@@ -199,7 +200,7 @@ const localEnd = (day: string) => Math.floor(new Date(`${day}T23:59:59`).getTime
   assert.deepStrictEqual(a.slice(a.indexOf("--")), ["--", ":(literal)src/checkout"], "after --, so it can never be read as an option or a revision");
   assert.deepStrictEqual(args({ ...ALL, path: ":(top)evil" }).slice(-1), ["--"], "an unsafe path adds nothing");
   const h = historyArgs({ ...ALL, path: "src" }, { pageSize: 200, now: 0, paths: ["upload.go"] });
-  assert.deepStrictEqual(h.slice(h.indexOf("--")), ["--", "upload.go"], "File History ignores the path filter: it has its own file");
+  assert.deepStrictEqual(h.slice(h.indexOf("--")), ["--", ":(literal)upload.go"], "File History ignores the path filter: it has its own file");
   assert.strictEqual(sanitizeFilter({ ...ALL, path: " src/ " }).path, "src");
   assert.ok(!("path" in sanitizeFilter({ ...ALL, path: "../x" })), "a bad saved path is dropped");
   assert.ok(sameExceptText({ ...ALL, path: "sr" }, { ...ALL, path: "src" }), "typing a path is debounced like search");

@@ -20,8 +20,6 @@ export interface Commit {
   parents: string[];
   /** Branch mode: the ref this row was read from ("current branch" when the repo lacks it). */
   ref?: string;
-  /** Uncommitted changes only (sha === UNCOMMITTED): how many files differ from the last commit. */
-  uncommitted?: number;
   /** File history only: the file as it was in this commit (it may have been renamed since). */
   file?: { path: string; oldPath?: string; status?: ChangeStatus };
 }
@@ -41,6 +39,8 @@ export interface FileChange {
   staged?: boolean;
   /** Uncommitted changes only: a new file git does not track yet. */
   untracked?: boolean;
+  /** Staged uncommitted changes only: the index's blob id. */
+  blob?: string;
 }
 
 export interface RepoFailure {

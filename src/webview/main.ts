@@ -2,7 +2,7 @@ import "./styles.css";
 // Registers <vscode-checkbox> (VS Code Elements, MIT): the Repositories pane's boxes.
 import "@vscode-elements/elements/dist/vscode-checkbox/index.js";
 import { DEFAULT_FILTER, type FilterState } from "../filterModel";
-import type { HostMessage, WebviewMessage } from "../protocol";
+import type { HostMessage, WebviewMessage, WorkRow } from "../protocol";
 import { commitKey, type Commit, type Repo, type RepoFailure } from "../types";
 import { byId } from "./dom";
 import { EmptyView } from "./empty";
@@ -12,7 +12,8 @@ import { NoticeBar } from "./notices";
 import { RepoPane } from "./repoPane";
 import { attachSplitter } from "./splitter";
 import { PaneWidth } from "./repoPaneModel";
-import { assignAccents, branchUseLabel, reviewLabel, repoColumnChars, countLabel, emptyState, reselect, withPinned, type EmptyAction } from "./view";
+import { assignAccents, branchUseLabel, repoColumnChars, countLabel, emptyState, escapeTarget, reselect, switchCount, totalsLabel, type EmptyAction } from "./view";
+import { WorkList } from "./workList";
 
 const vscode = acquireVsCodeApi();
 const post = (m: WebviewMessage): void => vscode.postMessage(m);
@@ -24,7 +25,6 @@ const state = {
   repos: [] as Repo[],
   filter: DEFAULT_FILTER as FilterState,
   history: null as { repoName: string; path: string } | null,
-  review: null as { files: number; repos: number } | null,
   rows: [] as Commit[],
   failures: [] as RepoFailure[],
   dismissed: false,
@@ -49,16 +49,46 @@ const empty = new EmptyView(byId("empty"), runEmptyAction);
 const filters = new FilterBar(setFilter, () => post({ type: "refresh" }), (kind) => post({ type: "wantSuggestions", kind }));
 const repoPane = new RepoPane((repoIds) => setFilter({ ...state.filter, repoIds }));
 const appEl = byId("app");
+/** The Log's switch: Commits (the Commit list) or Uncommitted (one row per repository with work). */
+let mode: "commits" | "uncommitted" = "commits";
+let work = { known: false, totals: { files: 0, repos: 0, added: 0, deleted: 0 }, rows: [] as WorkRow[] };
+const tabs = { commits: byId<HTMLButtonElement>("mode-commits"), uncommitted: byId<HTMLButtonElement>("mode-work") };
+const workCount = byId("work-count");
+const workTotals = byId("work-totals");
+const workEl = byId("worklist");
+const workList = new WorkList(workEl, (repoId) => post({ type: "selectWork", repoId }));
+
+function setMode(next: "commits" | "uncommitted", focus = false): void {
+  if (next !== mode) {
+    mode = next;
+    post({ type: "logMode", mode: next });
+  }
+  for (const [k, el] of Object.entries(tabs)) {
+    const on = k === mode;
+    el.setAttribute("aria-selected", String(on));
+    el.tabIndex = on ? 0 : -1;
+  }
+  if (focus) tabs[mode].focus();
+  appEl.classList.toggle("work", mode === "uncommitted");
+  workEl.hidden = mode !== "uncommitted";
+  render();
+}
+tabs.commits.addEventListener("click", () => setMode("commits"));
+tabs.uncommitted.addEventListener("click", () => setMode("uncommitted"));
+// A tablist: ←/→ move between the two tabs.
+for (const el of Object.values(tabs)) {
+  el.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    setMode(mode === "commits" ? "uncommitted" : "commits", true);
+  });
+}
 const modebar = byId("modebar");
 const historyPath = byId("history-path");
 const modeHistory = byId("mode-history");
-const modeReview = byId("mode-review");
-const reviewSummary = byId("review-summary");
 const exitHistory = () => post({ type: "exitHistory" });
-const exitReview = () => post({ type: "exitReview" });
-byId("mode-all").addEventListener("click", () => (state.review ? exitReview() : exitHistory()));
+byId("mode-all").addEventListener("click", exitHistory);
 byId("history-close").addEventListener("click", exitHistory);
-byId("review-close").addEventListener("click", exitReview);
 const splitter = byId("splitter");
 const paneWidth = new PaneWidth();
 
@@ -98,16 +128,19 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
+      // Only when the host changed the switch: a late init must not undo the user's click.
+      if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
       state.history = m.history;
-      state.review = m.review;
-      modebar.hidden = !m.history && !m.review;
+      modebar.hidden = !m.history;
       modeHistory.hidden = !m.history;
-      modeReview.hidden = !m.review;
       appEl.classList.toggle("history", !!m.history);
-      appEl.classList.toggle("review", !!m.review);
-      reviewSummary.textContent = m.review ? reviewLabel(m.review) : "";
+      // Locked during File History: out of the keyboard order too, not only the mouse's.
+      byId("repo-pane").toggleAttribute("inert", !!m.history);
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
+      break;
+    case "uncommitted":
+      work = { known: m.known, totals: m.totals, rows: m.rows };
       break;
     case "sync":
       repoPane.setSync(m.byRepo);
@@ -139,13 +172,6 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
         state.failures = m.failures;
         state.dismissed = false;
         replaceRows(m.rows);
-      }
-      break;
-    case "pinned":
-      replaceRows(withPinned(state.rows, m.rows));
-      if (m.review && state.review) {
-        state.review = m.review;
-        reviewSummary.textContent = reviewLabel(m.review);
       }
       break;
   }
@@ -226,19 +252,27 @@ function runEmptyAction(action: EmptyAction): void {
 
 function render(): void {
   const names = new Map(state.repos.map((r) => [r.id, r.name]));
+  const count = switchCount(work.known, work.totals.files);
+  workCount.textContent = count;
+  workCount.hidden = count === "";
+  tabs.uncommitted.setAttribute("aria-label", count ? `Uncommitted, ${count} ${count === "1" ? "file" : "files"}` : "Uncommitted");
+  workTotals.textContent = mode === "uncommitted" ? totalsLabel(work.totals) : "";
+  if (mode === "uncommitted") {
+    workList.update(work.rows, names, accents, behind);
+    empty.render(work.rows.length === 0 ? { title: "Nothing uncommitted", body: "Nothing uncommitted in the ticked repositories." } : null);
+    return;
+  }
   list.update({
     rows: state.rows, repoNames: names, accents, behind,
     historyPath: state.history?.path,
     selected: state.selected, now: state.now,
     skeleton: state.skeleton && state.rows.length === 0,
   });
-  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path, review: state.review !== null }) : null);
+  empty.render(!state.loading && state.rows.length === 0 ? emptyState({ repoCount: state.repos.length, filter: state.filter, history: state.history?.path }) : null);
   notices.render(state.dismissed ? [] : state.failures);
   moreEl.hidden = state.done || state.rows.length === 0;
   moreEl.disabled = state.loading;
-  // Pinned uncommitted rows are not commits; in Review Uncommitted the mode bar says it all.
-  const commits = state.rows.filter((r) => r.uncommitted === undefined).length;
-  countEl.textContent = state.review === null && commits > 0 ? countLabel(commits) : "";
+  countEl.textContent = state.rows.length > 0 ? countLabel(state.rows.length) : "";
 }
 
 document.addEventListener("keydown", (e) => {
@@ -247,8 +281,10 @@ document.addEventListener("keydown", (e) => {
   const find = e.key.toLowerCase() === "f" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey;
   if (find || (e.key === "/" && !typing)) {
     e.preventDefault();
-    searchEl.focus();
-    searchEl.select();
+    // The search box is hidden on the Uncommitted side; the Path box filters both.
+    const box = mode === "uncommitted" ? byId<HTMLInputElement>("path") : searchEl;
+    box.focus();
+    box.select();
     return;
   }
   if (e.key !== "Escape") return;
@@ -275,7 +311,7 @@ document.addEventListener("keydown", (e) => {
     setFilter({ ...state.filter, branch: "" });
     return;
   }
-  listEl.focus();
+  byId(escapeTarget(mode)).focus();
 });
 
 render();

@@ -1,3 +1,4 @@
+import { promises as fs, realpathSync } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
@@ -8,13 +9,28 @@ import type { Repo } from "./types";
 // The slice of vscode.git's API that Polylog uses: discovery, and which git binary it found. Its
 // Repository.log() cannot express --grep, so it is deliberately not used.
 interface GitBranch { name?: string; commit?: string; upstream?: { remote?: string; name?: string }; ahead?: number; behind?: number }
-interface GitRepository { rootUri: vscode.Uri; state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> }; status?(): Promise<void> }
+interface GitRepository {
+  rootUri: vscode.Uri;
+  state?: { HEAD?: GitBranch; onDidChange?: vscode.Event<void> };
+  status?(): Promise<void>;
+  // Absolute file paths; in vscode.git's API v1 since before 1.85.
+  add?(paths: string[]): Promise<void>;
+  revert?(paths: string[]): Promise<void>;
+  clean?(paths: string[]): Promise<void>;
+  commit?(message: string, opts?: { all?: boolean | "tracked" }): Promise<void>;
+  inputBox?: { value: string };
+}
 
 /** A repository's state change in vscode.git. */
 export interface RepoStateChange {
   root: string;
   /** Its HEAD commit, branch, upstream or ahead/behind differ from the last report (or from when it was first seen). */
   headMoved: boolean;
+  /**
+   * vscode.git is still opening repositories (its first reports of each, before its list
+   * settled): nothing changed, it only learned the state.
+   */
+  initial: boolean;
 }
 
 /** Two folder paths are one: normalized, no trailing separator, case-insensitive where the file system is. */
@@ -23,7 +39,23 @@ function sameRoot(a: string, b: string): boolean {
     const n = path.normalize(p).replace(/[\\/]+$/, "");
     return process.platform === "win32" || process.platform === "darwin" ? n.toLowerCase() : n;
   };
-  return norm(a) === norm(b);
+  // A symlinked workspace folder is vscode.git's real path: compare where both lead too.
+  return norm(a) === norm(b) || norm(real(a)) === norm(real(b));
+}
+
+/** A folder's real path (symlinks resolved), once per folder: the same answer every time it is asked. */
+const realPaths = new Map<string, string>();
+function real(p: string): string {
+  let r = realPaths.get(p);
+  if (r === undefined) {
+    try {
+      r = realpathSync.native(p);
+    } catch {
+      r = p;
+    }
+    realPaths.set(p, r);
+  }
+  return r;
 }
 
 const headKey = (h: GitBranch | undefined) =>
@@ -76,6 +108,60 @@ export class RepoDiscovery implements vscode.Disposable {
    * Its view of the repository can lag a change made in a terminal (a remote just added, an
    * upstream just set): it reads the repository again first.
    */
+  /**
+   * The repository as VS Code's Git has it, read again first (its view can lag a change made in
+   * a terminal). Stage, Unstage, Discard and Commit go through it, so Source Control stays in step.
+   */
+  private async gitRepoFor(root: string): Promise<GitRepository> {
+    const repo = this.vsCodeGitRepo(root);
+    if (!repo) throw new Error("VS Code's Git does not have this repository open");
+    await repo.status?.();
+    return repo;
+  }
+
+  private abs(root: string, paths: readonly string[]): string[] {
+    return paths.map((p) => path.join(root, ...p.split("/")));
+  }
+
+  /** git add, through VS Code's Git. Paths are repository-relative, as git prints them. */
+  async stage(root: string, paths: string[]): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.add!(this.abs(root, paths));
+  }
+
+  /** Unstage (git restore --staged), through VS Code's Git. */
+  async unstage(root: string, paths: string[]): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.revert!(this.abs(root, paths));
+  }
+
+  /** Discard working-tree changes (untracked files are deleted), through VS Code's Git. */
+  /**
+   * Discard, through VS Code's Git (its paths spelled from its own root: it matches them as URIs).
+   * New files it does not list (git.untrackedChanges "hidden") it skips without a word: the user
+   * confirmed them, so they are deleted here.
+   */
+  async discard(root: string, paths: string[], untracked: readonly string[] = []): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    await r.clean!(this.abs(r.rootUri.fsPath, paths));
+    for (const p of untracked) await fs.rm(path.join(r.rootUri.fsPath, ...p.split("/")), { force: true });
+  }
+
+  /**
+   * Commit the staged files (or, with `all`, every change; "tracked": tracked files only, as
+   * git.smartCommitChanges says), through VS Code's Git. A draft in Source Control's message
+   * box is kept: vscode.git clears it after any commit.
+   */
+  async commit(root: string, message: string, all: boolean | "tracked"): Promise<void> {
+    const r = await this.gitRepoFor(root);
+    const draft = r.inputBox?.value;
+    try {
+      await r.commit!(message, all ? { all } : undefined);
+    } finally {
+      if (r.inputBox && draft !== undefined) r.inputBox.value = draft;
+    }
+  }
+
   async pullWithVsCodeGit(root: string): Promise<void> {
     const repo = this.vsCodeGitRepo(root);
     if (!repo) throw new Error("VS Code's Git does not have this repository open");
@@ -85,13 +171,22 @@ export class RepoDiscovery implements vscode.Disposable {
 
   /** Roots vscode.git reports state changes for. */
   private readonly watched = new Set<string>();
+  private readonly watchedChanged = new vscode.EventEmitter<void>();
+  private watchedTimer: ReturnType<typeof setTimeout> | undefined;
+  /** vscode.git opens repositories in a burst (68 at startup): one redraw, not one per repository. */
+  private watchedChangedSoon(): void {
+    clearTimeout(this.watchedTimer);
+    this.watchedTimer = setTimeout(() => this.watchedChanged.fire(), 100);
+  }
+  /** vscode.git opened or closed a repository: which ones can stage has changed. */
+  readonly onDidChangeWatched = this.watchedChanged.event;
 
   /**
    * Whether VS Code's Git reports this repository's changes (it opened the repository, and
    * git.autorefresh is on). Repositories it does not watch get no events at all.
    */
   reportsChanges(root: string): boolean {
-    return this.watched.has(root) && vscode.workspace.getConfiguration("git").get<boolean>("autorefresh", true) !== false;
+    return [...this.watched].some((w) => sameRoot(w, root)) && vscode.workspace.getConfiguration("git", vscode.Uri.file(root)).get<boolean>("autorefresh", true) !== false;
   }
 
   /** The git binary VS Code's Git extension uses, once it has activated. */
@@ -142,19 +237,22 @@ export class RepoDiscovery implements vscode.Disposable {
       let head = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
       const d = r.state?.onDidChange?.(() => {
         const now = r.state?.HEAD ? headKey(r.state.HEAD) : undefined;
+        const initial = (head === undefined && now !== undefined) || this.ready === undefined;
         const headMoved = head !== undefined && now !== undefined && now !== head;
         if (now !== undefined) head = now;
-        this.repoStateChanged.fire({ root, headMoved });
+        this.repoStateChanged.fire({ root, headMoved, initial });
       });
       if (d) {
         watching.set(r, d);
         this.watched.add(root);
+        this.watchedChangedSoon();
       }
     };
     const unwatch = (r: GitRepository) => {
       watching.get(r)?.dispose();
       watching.delete(r);
       this.watched.delete(r.rootUri.fsPath);
+      this.watchedChangedSoon();
     };
     api.repositories.forEach(watch);
     this.disposables.push(api.onDidOpenRepository(watch), api.onDidCloseRepository(unwatch), {
@@ -184,6 +282,8 @@ export class RepoDiscovery implements vscode.Disposable {
   dispose(): void {
     this.gitFound.dispose();
     this.repoStateChanged.dispose();
+    clearTimeout(this.watchedTimer);
+    this.watchedChanged.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

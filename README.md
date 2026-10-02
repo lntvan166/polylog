@@ -94,6 +94,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     Right-click a repository showing ↓ to **Pull** it: through VS Code's own Git (your
     pull settings, its credential prompts, conflicts in Source Control), or
     `git pull --ff-only` for a repository VS Code's Git does not have open.
+    **Pull All Repositories Behind** (the Log's `…` menu, or right-click a repository) brings
+    every repository with ↓ up to what the last fetch brought, fast-forward only and without
+    fetching again; **Fetch and Pull All** fetches first. A repository that diverged, or whose
+    local changes touch the incoming files, is left as it was and named.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
@@ -101,20 +105,51 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Right-click a commit** in the Log: Copy Commit ID, Copy Message (the whole message),
   or Open on Remote, its page on GitHub, GitLab, Bitbucket or Azure DevOps (from the
   repository's `origin`; credentials in the URL are never opened).
-- **Native Changes tree.** Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
+- **Native Changes tree.** Its title says what it shows (`acme-api · 3f9a2c1 · 2 files`, or
+  `… · uncommitted · …`). Git status colors and `A`/`M`/`D`/`R` badges. Click a file to
   open its diff in the editor area. Right-click the commit to copy its SHA or message.
+  **All Files** (in its title bar) shows the commit's whole tree, like the Explorer: the
+  folders holding changes open, each other folder read only when you open it, deleted files
+  still listed, and unchanged files opening as they were at that commit.
+- **Blame in diffs.** Put the cursor on a line of any Polylog diff or revision to see who last
+  changed it, as of the commit shown (hover for the details). It uses the format of
+  `git.blame.editorDecoration.template`; turn it off with `polylog.blame`.
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **Show Uncommitted Changes** (the eye in the Log's toolbar) pins one row per repository
-    with uncommitted work above its commits.
-  - **Review Uncommitted Changes** (the checklist) lists every repository with uncommitted
-    work; click one to see its files in the Changes tree, for a last look before you
-    commit.
-  - Staged and unstaged changes are both compared with the last commit; staged files are
-    marked "staged" and new files "new". A file opens with your real, editable file on the
-    right.
-  - Both follow your saves and git actions.
+  - **The Uncommitted view** (in the Polylog side bar, like Source Control: its button in the
+    Log toolbar shows it, and hides it again): one
+    row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
+    files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
+    first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
+    Control stays in step. Each file opens the diff Source Control would.
+  - **Commits | Uncommitted**, the switch at the top of the Log: its badge counts your
+    uncommitted files. The Uncommitted side lists the repositories with work (files, a
+    change meter, staged and new tags, when last edited); click one to review its files in
+    the Changes tree.
+  - Read once in the background after the Log's first page, then kept current by your
+    saves and VS Code's Git, one repository at a time.
+- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
+  Compare** panel tab, hidden until then; ⇄ again (or × in its title) hides it: three views
+  side by side. It compares two branches in every ticked
+  repository, for example `origin/release-1.4` (◀ left, what you merge from) and
+  `origin/main` (▶ right, where it goes).
+  - **Repositories** lists the repositories whose files differ, in their Repo List colors (commit
+    counts are in each row's tooltip; they mislead when the same change travels by cherry-pick).
+    A ▸ unfolds the changes committed on both sides (cherry-picks). Repositories that lack a
+    branch are listed at the bottom.
+    At the top: **◀ left ▾ ⇄ ▶ right ▾**, each box opening a searchable branch list (recent
+    pairs, ★ favorites, local, remote), then **Files | Commits** and **Refresh**.
+  - **Left** and **Right** show the selected repository's two sides:
+    - **Files** (the default): what each side changed since the branches split, as a folder
+      tree with your file icons. A file changed on both sides is marked **both**. One the two
+      branches now have the same (a cherry-pick: nothing to merge) is hidden, and counted in the
+      title; **Show Files Already on Both** (the filter in the title bar) lists it, dimmed.
+    - **Commits**: each side's commits, each expanding to its files.
+
+    Click a file to open it as the two branches have it now (the target branch on the left);
+    right-click → **Changes since the Split** shows only what that side changed (what the merge
+    brings in).
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.
@@ -129,6 +164,11 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 | `Esc` | Clear the search, then return to the list |
 
 ---
+
+**Where things are:** the **Polylog** panel tab holds the Log and the Changes view; the
+**Polylog Compare** tab holds Compare; the Uncommitted view is in the Polylog side bar. Drag
+any view elsewhere and VS Code keeps it there (views you moved yourself stay put after an
+update).
 
 ## How It Works
 
@@ -172,8 +212,7 @@ skewed clock can place a commit out of order.
 | `polylog.maxConcurrency` | `16` | Maximum number of `git` processes running at once. |
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
-| `polylog.showUncommitted` | `false` | Pin each repository's uncommitted changes above its commits. Toggle it from the Log's toolbar. |
-| `polylog.keepViewsExpanded` | `true` | Expand the Log or Changes again when a header click collapses it. Hiding a view again right after is respected until reload. |
+| `polylog.blame` | `true` | Show who last changed the cursor's line in Polylog's diffs and revisions. |
 
 ---
 
@@ -184,7 +223,7 @@ skewed clock can place a commit out of order.
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
 | Git | The same git as VS Code: your `git.path` setting, then the git VS Code's Git extension found, then `git` on `PATH`. Changing `git.path` takes effect at once |
 
-Polylog only reads history. It never runs a command that changes a repository.
+Polylog only reads history, except when you ask it to fetch or pull.
 
 ---
 

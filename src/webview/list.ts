@@ -141,33 +141,25 @@ export class CommitList {
   private renderRow(c: Commit, i: number): HTMLElement {
     const accent = accentOf(this.props.accents, c.repoId);
     const name = this.props.repoNames.get(c.repoId) ?? c.repoId;
-    const pending = c.uncommitted !== undefined;
     return h("div", {
-      class: pending ? "row uncommitted" : "row",
+      class: "row",
       role: "row",
       id: `row-${i}`,
       "aria-rowindex": String(i + 1),
       "aria-selected": String(i === this.props.selected),
       "data-index": String(i),
-      // Right-click: the repository's menu (package.json webview/context), not Cut/Copy/Paste.
-      // Right-click: the commit's and its repository's menu (package.json webview/context). File
-      // History is one file of one repository, so the repo filter items do not apply there;
-      // an uncommitted row is no commit, so the commit items do not.
-      "data-vscode-context": JSON.stringify(pending
-        ? { webviewSection: "uncommitted", repoId: c.repoId, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }
-        : { webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }),
+      // Right-click: the commit's and its repository's menu (package.json webview/context), not
+      // Cut/Copy/Paste. File History is one file of one repository: no repo filter items there.
+      "data-vscode-context": JSON.stringify({ webviewSection: this.props.historyPath ? "historyCommit" : "commit", repoId: c.repoId, sha: c.sha, behind: this.props.behind?.has(c.repoId) === true, preventDefaultContextMenuItems: true }),
     }, [
       h("span", { class: `chip accent-${accent}`, role: "gridcell", title: c.ref ? `${name} — ${c.ref}` : name, "aria-label": c.ref ? `${name} — ${c.ref}` : name, "data-name": name }, [name]),
-      h("span", { class: "subject", role: "gridcell", title: pending ? "Changes since the last commit, staged or not" : c.subject }, pending ? [
-        h("span", { class: "pending-dot", "aria-hidden": "true" }, ["●"]),
-        `${c.subject} · ${c.uncommitted} ${c.uncommitted === 1 ? "file" : "files"}`,
-      ] : [
+      h("span", { class: "subject", role: "gridcell", title: c.subject }, [
         c.subject,
         // File history: the file had another name in this commit.
         this.props.historyPath && c.file && c.file.path !== this.props.historyPath ? h("span", { class: "was-path" }, [` — ${c.file.path}`]) : null,
       ]),
       h("span", { class: "author", role: "gridcell" }, [c.author]),
-      h("span", { class: "date", role: "gridcell", title: pending ? "Not committed yet" : absoluteTime(c.time) }, [pending ? "now" : relativeTime(this.props.now, c.time)]),
+      h("span", { class: "date", role: "gridcell", title: absoluteTime(c.time) }, [relativeTime(this.props.now, c.time)]),
     ]);
   }
 

@@ -141,12 +141,6 @@ export function chipsThatFit(widths: readonly number[], room: number, plusWidth:
   return widths.length;
 }
 
-/** The mode bar in Review Uncommitted: "4 files in 2 repositories". */
-export function reviewLabel(r: { files: number; repos: number }): string {
-  if (r.files === 0) return "nothing to review";
-  return `${r.files} ${r.files === 1 ? "file" : "files"} in ${r.repos} ${r.repos === 1 ? "repository" : "repositories"}`;
-}
-
 const repoNoun = (n: number) => (n === 1 ? "repository" : "repositories");
 
 export function repoButtonLabel(repoIds: readonly string[] | null, repos: readonly { id: string; name: string }[]): string {
@@ -178,7 +172,7 @@ export interface EmptyState {
   action?: { label: string; id: EmptyAction };
 }
 
-export function emptyState(o: { repoCount: number; filter: FilterState; history?: string; review?: boolean }): EmptyState {
+export function emptyState(o: { repoCount: number; filter: FilterState; history?: string }): EmptyState {
   const f = o.filter;
   if (o.history !== undefined) {
     const p = o.history;
@@ -192,13 +186,6 @@ export function emptyState(o: { repoCount: number; filter: FilterState; history?
       title: "No git repositories found",
       body: "Polylog lists the repositories that VS Code's Git extension reports. If yours sit deeper in the folder tree, raise git.repositoryScanMaxDepth or polylog.scanDepth.",
       action: { label: "Open Settings", id: "settings" },
-    };
-  }
-  if (o.review) {
-    const p = o.filter.path;
-    return {
-      title: "No uncommitted changes",
-      body: p ? `Nothing uncommitted touches “${p}” in the selected repositories.` : "Every repository is clean: nothing is waiting to be committed.",
     };
   }
   if (f.repoIds !== null && f.repoIds.length === 0) {
@@ -266,10 +253,26 @@ export function reselect(prevKey: string | null, rows: readonly { repoId: string
   return i < 0 ? 0 : i;
 }
 
-/**
- * The rows after a "pinned" message: its uncommitted rows replace the pinned ones at the top,
- * and the commits already loaded stay as they are.
- */
-export function withPinned<T extends { uncommitted?: number }>(rows: readonly T[], pinned: readonly T[]): T[] {
-  return [...pinned, ...rows.filter((r) => r.uncommitted === undefined)];
+
+/** The number on the Log's Uncommitted switch: only once known, and never "0". */
+export function switchCount(known: boolean, files: number): string {
+  return known && files > 0 ? String(files) : "";
+}
+
+/** "3 repositories · +24 −5", beside the switch on its Uncommitted side. */
+export function totalsLabel(t: { files: number; repos: number; added: number; deleted: number }): string {
+  if (t.files === 0) return "";
+  return `${t.repos} ${t.repos === 1 ? "repository" : "repositories"} · +${t.added} −${t.deleted}`;
+}
+
+/** An Uncommitted row's change meter: each kind's share of the files, empty kinds left out. */
+export function meterParts(m: { added: number; modified: number; deleted: number }): { kind: "added" | "modified" | "deleted"; share: number }[] {
+  const total = m.added + m.modified + m.deleted;
+  if (total === 0) return [];
+  return (["added", "modified", "deleted"] as const).filter((k) => m[k] > 0).map((kind) => ({ kind, share: m[kind] / total }));
+}
+
+/** Escape returns focus to the list the Log shows (never to a hidden one). */
+export function escapeTarget(mode: "commits" | "uncommitted"): "list" | "worklist" {
+  return mode === "uncommitted" ? "worklist" : "list";
 }

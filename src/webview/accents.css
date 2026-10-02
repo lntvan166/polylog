@@ -1,0 +1,8 @@
+/* Each repository's accent (its chip and stripe), shared by the Log and the Compare tab. */
+.accent-0 { --accent: var(--vscode-charts-red); }
+.accent-1 { --accent: var(--vscode-charts-blue); }
+.accent-2 { --accent: var(--vscode-charts-yellow); }
+.accent-3 { --accent: var(--vscode-charts-green); }
+.accent-4 { --accent: var(--vscode-charts-purple); }
+/* Not charts-orange: it aliases a translucent minimap color and is unset in high contrast. */
+.accent-5 { --accent: var(--vscode-terminal-ansiCyan); }

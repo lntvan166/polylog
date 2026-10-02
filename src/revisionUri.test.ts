@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import * as nodePath from "path";
-import { decodeRevision, encodeRevision, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
+import { decodeRevision, encodeRevision, INDEX, SCHEME, workingFile, type RevisionRef } from "./revisionUri";
 
 const SHA = "a".repeat(40);
 
@@ -36,4 +36,22 @@ const SHA = "a".repeat(40);
   assert.strictEqual(workingFile({ ...ref, path: "..notes.md" }, [root]), nodePath.join(root, "..notes.md"), "a file whose name starts with .. is still inside");
   assert.strictEqual(workingFile({ ...ref, path: "a.ts" }, [nodePath.resolve("/ws/acme-api")]), undefined, "only a repository of this workspace");
   console.log("ok - Open File maps a revision to its working-tree file, inside a workspace repository only");
+}
+{
+  const root = nodePath.resolve("/ws/acme-web");
+  const r: RevisionRef = { root, ref: INDEX, path: "src/app.ts" };
+  const e = encodeRevision(r);
+  assert.deepStrictEqual(decodeRevision(e.path, e.query), r, "the index (staged version) round-trips");
+  assert.throws(() => decodeRevision("/a", JSON.stringify({ root, ref: ":evil" })), "only the bare index marker");
+  assert.strictEqual(workingFile(r, [root]), nodePath.join(root, "src", "app.ts"), "Open File works from a staged diff too");
+  console.log("ok - an index revision (the staged version) is a polylog: URI like any other");
+}
+{
+  const root = nodePath.resolve("/ws/acme-web");
+  const a = encodeRevision({ root, ref: INDEX, path: "src/app.ts", blob: "a".repeat(40) });
+  const b = encodeRevision({ root, ref: INDEX, path: "src/app.ts", blob: "b".repeat(40) });
+  assert.notStrictEqual(a.query, b.query, "a new staged version is a new URI: VS Code never shows a stale index document");
+  assert.deepStrictEqual(decodeRevision(a.path, a.query), { root, ref: INDEX, path: "src/app.ts", blob: "a".repeat(40) });
+  assert.throws(() => decodeRevision("/x", JSON.stringify({ root, ref: INDEX, blob: "not-a-sha" })), "only an object id");
+  console.log("ok - the staged version's URI names its blob");
 }
