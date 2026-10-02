@@ -1370,6 +1370,8 @@ describe("Polylog panel", () => {
     it("the Polylog side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       assert.strictEqual((pkg.views["polylog-side"] as { when?: string }[])[0].when, "polylog.uncommittedShown");
+      // The remembered side bar and Compare tab need their context keys after a reload, before any Polylog view opens.
+      assert.ok((vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.activationEvents as string[]).includes("onStartupFinished"));
       const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
       assert.ok(titles.some((m) => m.command === "polylog.uncommittedClose" && m.when.includes("view == polylog.uncommitted")));
       const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
