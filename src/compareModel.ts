@@ -190,3 +190,9 @@ export function repoDescription(c: RepoCompare): string {
     default: return "";
   }
 }
+
+/** A Repositories row's description: each side's commits (merges not counted) and the duplicates. */
+export function repoCounts(c: RepoCompare): string {
+  if (c.kind !== "differs") return repoDescription(c);
+  return [c.left > 0 ? `${c.left} ◀` : "", c.right > 0 ? `${c.right} ▶` : "", c.sameLeft > 0 ? `=${c.sameLeft}` : ""].filter(Boolean).join(" · ");
+}

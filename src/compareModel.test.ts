@@ -1,7 +1,7 @@
 import * as assert from "assert";
 import {
   bothPaths, COMMIT_PAGE, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
-  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
+  parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
 
@@ -112,3 +112,12 @@ assert.strictEqual(repoDescription({ ...row, sameLeft: 0, sameRight: 0 }), "");
 assert.strictEqual(repoDescription({ kind: "nobase" }), "no common history");
 assert.strictEqual(repoDescription({ kind: "error", reason: "bad object" }), "git error");
 console.log("ok - a repository row shows = only when there is one, or why it cannot be compared");
+
+// A Repositories row: where the work is, without expanding (merges are not counted).
+const rc = { kind: "differs" as const, leftSha: A, rightSha: B, base: C, left: 3, right: 1, sameLeft: 1, sameRight: 1 };
+assert.strictEqual(repoCounts(rc), "3 ◀ · 1 ▶ · =1");
+assert.strictEqual(repoCounts({ ...rc, right: 0, sameLeft: 0, sameRight: 0 }), "3 ◀");
+assert.strictEqual(repoCounts({ ...rc, left: 0, sameLeft: 0, sameRight: 0, right: 2 }), "2 ▶");
+assert.strictEqual(repoCounts({ ...rc, left: 0, right: 0, sameLeft: 3, sameRight: 3 }), "=3");
+assert.strictEqual(repoCounts({ kind: "nobase" }), "no common history");
+console.log("ok - a Repositories row counts each side's commits and the duplicates, zeros left out");
