@@ -68,3 +68,11 @@ const OUT = [
   assert.strictEqual(formatBlame("${subject}", long, now), `${"x".repeat(49)}…`, "long subjects are cut like VS Code's");
   console.log("ok - formatBlame fills VS Code's template variables and leaves unknown ones");
 }
+
+{
+  const H = "c".repeat(64);
+  const b = parseBlame([`${H} 1 1 1`, "author noor", "author-mail <noor@example.com>", "author-time 5", "summary feat: sha-256 repo", "filename a.go", ""].join("\n"));
+  assert.strictEqual(blameAt(b, 1)?.hash, H);
+  assert.strictEqual(blameAt(b, 1)?.authorName, "noor");
+  console.log("ok - parseBlame reads SHA-256 commit ids too");
+}

@@ -85,6 +85,7 @@ export function pullPlan(repoIds: readonly string[], sync: Readonly<Record<strin
 
 /** Why git refused a fast-forward, in a few words. */
 export function pullReason(message: string): string {
+  if (/untracked working tree files would be overwritten/i.test(message)) return "untracked files in the way";
   if (/would be overwritten/i.test(message)) return "local changes to the same files";
   if (/fast-forward/i.test(message)) return "it has diverged from its upstream";
   return message.trim();

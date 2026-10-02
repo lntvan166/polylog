@@ -16,8 +16,8 @@ button, input { font: inherit; }
 .branch-box .branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-box .caret { margin-left: auto; color: var(--vscode-descriptionForeground); }
 /* Only the ◀ ▶ marks and the counts are colored: a branch name stays the input's text color (contrast). */
-.branch-box.left .side-mark, .count.left, .mono.left, .picker .side-mark.left { color: var(--vscode-charts-blue); }
-.branch-box.right .side-mark, .count.right, .mono.right, .picker .side-mark.right { color: var(--vscode-charts-yellow); }
+.branch-box.left .side-mark, .mono.left, .picker .side-mark.left { color: var(--vscode-charts-blue); }
+.branch-box.right .side-mark, .mono.right, .picker .side-mark.right { color: var(--vscode-charts-yellow); }
 .same { color: var(--vscode-charts-green); }
 .error { color: var(--vscode-errorForeground); }
 .icon-button { background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 3px; padding: 1px 6px; cursor: pointer; }
@@ -33,16 +33,14 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .cempty { padding: 12px; color: var(--vscode-descriptionForeground); }
 
 .repo-list { flex: 1; overflow: auto; outline: none; }
-/* Name, then three aligned count columns (◀ ▶ =), like the Log's columns. */
+/* Twisty, color dot, name, then a note ("no common history", "git error"). */
 .crepo { display: grid; grid-template-columns: 14px 8px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 0 8px; line-height: 22px; cursor: pointer; white-space: nowrap; }
 .crepo:hover { background: var(--vscode-list-hoverBackground); }
 .crepo.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
 .repo-list:focus .crepo.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
-.repo-list:focus .crepo.selected .count { color: inherit; }
 .twisty { color: var(--vscode-descriptionForeground); text-align: center; }
 .repo-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
-.count { text-align: right; font-variant-numeric: tabular-nums; }
 .row-note { text-align: right; color: var(--vscode-descriptionForeground); }
 .dup { display: flex; gap: 8px; padding: 0 8px 0 36px; line-height: 20px; white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .dup-subject { overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); }
