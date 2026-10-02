@@ -590,6 +590,36 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("Commit with the Path box set says how many files the commit really takes, and stops if you decline", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const git = (...args: string[]) => cp.execFileSync("git", args, { cwd: web.root }).toString().trim();
+    const head = git("rev-parse", "HEAD");
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 7;\n");
+      fs.writeFileSync(path.join(web.root, "outside.md"), "x\n");
+      git("add", "client.ts", "outside.md");
+      await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
+      await waitFor("only client.ts shown", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
+      await vscode.commands.executeCommand("polylog._itest.answer", "Cancel");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(await vscode.commands.executeCommand("polylog._itest.lastWarning"), "The commit takes 2 files in acme-web, not 1.");
+      assert.strictEqual(git("rev-parse", "HEAD"), head, "declined: nothing committed");
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await send({ type: "filter", filter: ALL });
+      git("reset", "-q");
+      fs.rmSync(path.join(web.root, "outside.md"), { force: true });
+      git("checkout", "--", ".");
+    }
+    await send({ type: "refresh" });
+  });
+
   it("the switch and File History, a re-created webview, the old setting, the Repo menu in the Uncommitted view", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");

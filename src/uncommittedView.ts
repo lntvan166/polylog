@@ -31,6 +31,8 @@ export class Ask {
   private readonly testing = process.env.POLYLOG_ITEST === "1";
   /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
   beforeAnswer: (() => Promise<void>) | undefined;
+  /** Test seam: the last warning asked. */
+  lastWarning: string | undefined;
 
   queue(value: string | undefined): void {
     if (value === undefined) this.answers.length = 0;
@@ -42,6 +44,7 @@ export class Ask {
       const hook = this.beforeAnswer;
       this.beforeAnswer = undefined;
       if (hook) await hook();
+      this.lastWarning = message;
       return this.answers.shift() === button;
     }
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
@@ -229,6 +232,13 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     const scope = vscode.workspace.getConfiguration("git").get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
     const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
     const n = all ? commitCount(work, scope) : work.staged.length;
+    // The Path box hides part of the repository; a commit takes all of it. Say so, with the true numbers.
+    if (this.deps.store.filtered) {
+      const w = await this.deps.store.whole(work.repoId);
+      const real = !w ? n : !all ? w.staged : scope === "tracked" ? w.tracked : w.changes;
+      if (real > n && !(await this.ask.warning(`The commit takes ${plural(real, "file")} in ${work.name}, not ${n}.`,
+        `The Path box shows only part of the repository; ${plural(real - n, "file")} outside it would be committed too.`, `Commit ${plural(real, "File")}`))) return;
+    }
     const message = await this.ask.input(`Commit message for ${work.name}`, `Message (${plural(n, "file")} ${all ? "to commit" : "staged"})`);
     if (!message || message.trim() === "") return;
     try {
