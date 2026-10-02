@@ -135,7 +135,7 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const page = await fetchPage(req({ run, history: { repoId: API.id, path: "upload.go" } }));
     assert.deepStrictEqual(calls.map((c) => c[0]), [API.root, API.root], "history asks only the file's repository");
     assert.ok(calls[0].includes("--follow"), "first: every name the file has had");
-    assert.ok(!calls[1].includes("--follow") && calls[1].slice(-3).join() === "--,upload.go,up.go", "then: all those names, without --follow");
+    assert.ok(!calls[1].includes("--follow") && calls[1].slice(-3).join() === "--,:(literal)upload.go,:(literal)up.go", "then: all those names, without --follow");
     assert.deepStrictEqual(page.rows.map((c) => c.file), [{ path: "upload.go", status: "M" }]);
     assert.strictEqual(page.done, true);
     console.log("ok - file history queries one repository with --follow and keeps each commit's path");

@@ -141,12 +141,13 @@ export function pathspecOf(path: string): string {
  * it stops following when the rename commit itself is filtered out.
  */
 export function historyArgs(f: FilterState, o: ArgOptions & { paths: readonly string[] }): string[] {
-  return buildArgs(HISTORY_FORMAT, f, o, ["--name-status", "-z", "-M"], o.paths);
+  // Literal: a route folder like app/[id]/ is a name, not a glob matching app/i/.
+  return buildArgs(HISTORY_FORMAT, f, o, ["--name-status", "-z", "-M"], o.paths.map((p) => `:(literal)${p}`));
 }
 
 /** Unfiltered, unpaged --follow walk that only collects the names a file has had. */
 export function historyPathsArgs(path: string, ref?: string): string[] {
-  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...(ref ? ["--end-of-options", ref] : []), "--", path];
+  return ["log", "--follow", "--name-status", "-z", "-M", "--format=%x1e", ...(ref ? ["--end-of-options", ref] : []), "--", `:(literal)${path}`];
 }
 
 /** The file's names, newest first; always starts with its current path. */
