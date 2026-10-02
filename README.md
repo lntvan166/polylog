@@ -110,7 +110,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **The Uncommitted view** (under the **Polylog** icon in the Activity Bar, like Source Control): one
+  - **The Uncommitted view** (in the Polylog side bar, like Source Control: the Log toolbar's
+    **Open Uncommitted View** shows it, × hides it again): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
     files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
     first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source

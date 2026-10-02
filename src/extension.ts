@@ -15,7 +15,10 @@ import { UncommittedStore } from "./uncommittedStore";
 import { UncommittedView } from "./uncommittedView";
 import { assignAccents } from "./webview/view";
 
+const UNCOMMITTED_SHOWN = "polylog.uncommitted.shown";
+
 export function activate(context: vscode.ExtensionContext): void {
+  void vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false));
   const discovery = new RepoDiscovery();
   // All Files reads one folder at a time, through the Log's counted runner (the spawn log sees it).
   const ALL_FILES_KEY = "polylog.changesAllFiles";
@@ -101,7 +104,16 @@ export function activate(context: vscode.ExtensionContext): void {
     uncommitted,
     uncommittedView,
     vscode.window.registerFileDecorationProvider(uncommittedView),
-    vscode.commands.registerCommand("polylog.focusUncommitted", () => vscode.commands.executeCommand("polylog.uncommitted.focus")),
+    // The Polylog side bar (Uncommitted) is hidden until the user asks for it (remembered per workspace).
+    vscode.commands.registerCommand("polylog.focusUncommitted", async () => {
+      await context.workspaceState.update(UNCOMMITTED_SHOWN, true);
+      await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", true);
+      await vscode.commands.executeCommand("polylog.uncommitted.focus");
+    }),
+    vscode.commands.registerCommand("polylog.uncommittedClose", async () => {
+      await context.workspaceState.update(UNCOMMITTED_SHOWN, false);
+      await vscode.commands.executeCommand("setContext", "polylog.uncommittedShown", false);
+    }),
     vscode.commands.registerCommand("polylog.refreshUncommitted", () => uncommitted.readAll(true)),
     vscode.commands.registerCommand("polylog.stage", (arg?: unknown) => uncommittedView.stage(arg)),
     vscode.commands.registerCommand("polylog.unstage", (arg?: unknown) => uncommittedView.unstage(arg)),
@@ -147,6 +159,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.snapshot", () => log.snapshot()),
       vscode.commands.registerCommand("polylog._itest.send", (m: WebviewMessage) => log.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.uncommitted", () => uncommittedView.snapshot()),
+      vscode.commands.registerCommand("polylog._itest.uncommittedShown", () => context.workspaceState.get<boolean>(UNCOMMITTED_SHOWN, false)),
       vscode.commands.registerCommand("polylog._itest.compareStore", () => ({
         pair: compare.pair, reading: compare.reading, rows: compare.results().map((x) => rowLabel(x.repo.name, x.result)),
       })),

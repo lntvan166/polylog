@@ -1357,6 +1357,20 @@ describe("Polylog panel", () => {
       await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
     });
 
+    it("the Polylog side bar is hidden until the Log's Uncommitted button, and × hides it again", async () => {
+      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+      assert.strictEqual((pkg.views["polylog-side"] as { when?: string }[])[0].when, "polylog.uncommittedShown");
+      const titles = pkg.menus["view/title"] as { command: string; when: string; group: string }[];
+      assert.ok(titles.some((m) => m.command === "polylog.focusUncommitted" && m.when === "view == polylog.log" && m.group.startsWith("navigation")), "a Log toolbar button");
+      assert.ok(titles.some((m) => m.command === "polylog.uncommittedClose" && m.when.includes("view == polylog.uncommitted")));
+      const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
+      await vscode.commands.executeCommand("polylog.uncommittedClose");
+      assert.strictEqual(await shown(), false);
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      assert.strictEqual(await shown(), true);
+      await waitFor("the view on screen", async () => ((await vscode.commands.executeCommand<{ visible: boolean }>("polylog._itest.uncommitted")).visible ? true : undefined));
+    });
+
     it("Commits mode, swap, a new pair, and hiding the tab mid-read", async () => {
       await select(roots["acme-api"]);
       await vscode.commands.executeCommand("polylog._itest.compareMode", "commits");

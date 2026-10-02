@@ -113,7 +113,8 @@
           "id": "polylog.uncommitted",
           "name": "Uncommitted",
           "initialSize": 450,
-          "icon": "$(diff-modified)"
+          "icon": "$(diff-modified)",
+          "when": "polylog.uncommittedShown"
         }
       ]
     },
@@ -224,8 +225,9 @@
       },
       {
         "command": "polylog.focusUncommitted",
-        "title": "Focus Uncommitted",
-        "category": "Polylog"
+        "title": "Open Uncommitted View",
+        "category": "Polylog",
+        "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.refreshUncommitted",
@@ -333,6 +335,12 @@
       {
         "command": "polylog.compareClose",
         "title": "Close Polylog Compare",
+        "category": "Polylog",
+        "icon": "$(close)"
+      },
+      {
+        "command": "polylog.uncommittedClose",
+        "title": "Close Uncommitted View",
         "category": "Polylog",
         "icon": "$(close)"
       }
@@ -586,6 +594,11 @@
           "group": "navigation"
         },
         {
+          "command": "polylog.focusUncommitted",
+          "when": "view == polylog.log",
+          "group": "navigation@1"
+        },
+        {
           "command": "polylog.compareBranches",
           "when": "view == polylog.log",
           "group": "navigation@1"
@@ -653,6 +666,11 @@
         {
           "command": "polylog.compareClose",
           "when": "view == polylog.compare",
+          "group": "navigation@9"
+        },
+        {
+          "command": "polylog.uncommittedClose",
+          "when": "view == polylog.uncommitted",
           "group": "navigation@9"
         }
       ],
