@@ -29,6 +29,8 @@ const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 export class Ask {
   private readonly answers: (string | undefined)[] = [];
   private readonly testing = process.env.POLYLOG_ITEST === "1";
+  /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
+  beforeAnswer: (() => Promise<void>) | undefined;
 
   queue(value: string | undefined): void {
     if (value === undefined) this.answers.length = 0;
@@ -36,7 +38,12 @@ export class Ask {
   }
 
   async warning(message: string, detail: string, button: string): Promise<boolean> {
-    if (this.testing && this.answers.length > 0) return this.answers.shift() === button;
+    if (this.testing && this.answers.length > 0) {
+      const hook = this.beforeAnswer;
+      this.beforeAnswer = undefined;
+      if (hook) await hook();
+      return this.answers.shift() === button;
+    }
     return (await vscode.window.showWarningMessage(message, { modal: true, detail }, button)) === button;
   }
 
@@ -180,8 +187,9 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     return { work, group, files, one: files.length === 1 && files[0].path === t.path };
   }
 
-  private async act(arg: unknown, verb: string, run: (root: string, paths: string[]) => Promise<void>): Promise<void> {
-    const r = this.resolve(arg);
+  private async act(arg: unknown, verb: string, run: (root: string, paths: string[]) => Promise<void>, resolved?: ReturnType<UncommittedView["resolve"]>): Promise<void> {
+    // A confirmed action runs on the files the prompt listed, not on what is there after it closed.
+    const r = resolved ?? this.resolve(arg);
     if (!r || r.files.length === 0 || !r.work.canStage) return;
     try {
       await run(r.work.root, [...new Set(r.files.flatMap((f) => (f.oldPath ? [f.path, f.oldPath] : [f.path])))]);
@@ -204,7 +212,8 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     if (!r || r.files.length === 0 || !r.work.canStage) return;
     const p = discardPrompt(r.work.name, r.files, r.one);
     if (!(await this.ask.warning(p.message, p.detail, p.button))) return;
-    await this.act(arg, "discard", (root, paths) => this.deps.discovery.discard(root, paths));
+    const untracked = r.files.filter((f) => f.untracked).map((f) => f.path);
+    await this.act(arg, "discard", (root, paths) => this.deps.discovery.discard(root, paths, untracked), r);
   }
 
   /** ✓ on a repository: its staged files, or (nothing staged) as VS Code's own commit does. */

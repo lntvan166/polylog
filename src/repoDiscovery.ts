@@ -1,3 +1,4 @@
+import { promises as fs } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
@@ -119,9 +120,15 @@ export class RepoDiscovery implements vscode.Disposable {
   }
 
   /** Discard working-tree changes (untracked files are deleted), through VS Code's Git. */
-  async discard(root: string, paths: string[]): Promise<void> {
+  /**
+   * Discard, through VS Code's Git (its paths spelled from its own root: it matches them as URIs).
+   * New files it does not list (git.untrackedChanges "hidden") it skips without a word: the user
+   * confirmed them, so they are deleted here.
+   */
+  async discard(root: string, paths: string[], untracked: readonly string[] = []): Promise<void> {
     const r = await this.gitRepoFor(root);
-    await r.clean!(this.abs(root, paths));
+    await r.clean!(this.abs(r.rootUri.fsPath, paths));
+    for (const p of untracked) await fs.rm(path.join(r.rootUri.fsPath, ...p.split("/")), { force: true });
   }
 
   /**

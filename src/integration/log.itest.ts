@@ -546,6 +546,50 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6);
   });
 
+  it("Discard deletes exactly what its prompt listed, and also new files VS Code's Git hides", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const view = () => vscode.commands.executeCommand<{ items: string[] }>("polylog._itest.uncommitted");
+    const seen = (what: string, ok: (items: string[]) => boolean) => waitFor(what, async () => { const v = await view(); return ok(v.items) ? v.items : undefined; });
+    const at = (f: string) => path.join(web.root, f);
+    const cfg = vscode.workspace.getConfiguration("git");
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      fs.writeFileSync(at("listed.md"), "1\n");
+      await send({ type: "refresh" });
+      await seen("listed.md", (i) => i.some((l) => l.includes("listed.md")));
+      // While the confirmation is open, a build writes another new file: it was not in the prompt.
+      await vscode.commands.executeCommand("polylog._itest.beforeAnswer", async () => {
+        fs.writeFileSync(at("late.md"), "2\n");
+        await vscode.commands.executeCommand("polylog.refreshUncommitted");
+        await seen("late.md read", (i) => i.some((l) => l.includes("late.md")));
+      });
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard All");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes" });
+      await waitFor("listed.md gone", () => (fs.existsSync(at("listed.md")) ? undefined : true));
+      assert.ok(fs.existsSync(at("late.md")), "a file that appeared while the prompt was open is kept");
+      // git.untrackedChanges hidden: VS Code's Git does not list new files, Polylog still deletes the one confirmed.
+      fs.rmSync(at("late.md"));
+      await cfg.update("untrackedChanges", "hidden", vscode.ConfigurationTarget.Global);
+      fs.writeFileSync(at("hidden-new.md"), "3\n");
+      await vscode.commands.executeCommand("polylog.refreshUncommitted");
+      await seen("hidden-new.md", (i) => i.some((l) => l.includes("hidden-new.md")));
+      await vscode.commands.executeCommand("polylog._itest.answer", "Discard File");
+      await vscode.commands.executeCommand("polylog.discard", { repoId: web.id, group: "changes", path: "hidden-new.md" });
+      await waitFor("hidden-new.md deleted", () => (fs.existsSync(at("hidden-new.md")) ? undefined : true));
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.beforeAnswer", undefined);
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      await cfg.update("untrackedChanges", undefined, vscode.ConfigurationTarget.Global);
+      for (const f of ["listed.md", "late.md", "hidden-new.md"]) fs.rmSync(at(f), { force: true });
+      cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
+    }
+    await send({ type: "refresh" });
+  });
+
   it("the switch and File History, a re-created webview, the old setting, the Repo menu in the Uncommitted view", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
