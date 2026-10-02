@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-  bothPaths, COMMIT_PAGE, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
+  bothPaths, COMMIT_PAGE, sameNow, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
   parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, sidePage, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
@@ -52,6 +52,12 @@ console.log("ok - Files reads each changed file with its status, rename and coun
 const other = parseFiles(["1\t1\tsrc/new.go", "2\t0\tREADME.md", ""].join("\0"));
 assert.deepStrictEqual([...bothPaths(files, other)], ["src/new.go"]);
 console.log("ok - a file changed on both sides is matched on its new path");
+
+assert.deepStrictEqual(tipsDiffArgs(A, B), ["diff", "--name-only", "-z", "--no-renames", A, B]);
+// A cherry-pick on both sides leaves the file the same at both tips; a later change on one does not.
+assert.deepStrictEqual([...sameNow(new Set(["retry.go", "limit.go", "a b/c.go"]), ["limit.go", "other.go", ""].join("\0"))].sort(), ["a b/c.go", "retry.go"]);
+assert.deepStrictEqual([...sameNow(new Set(["x.go"]), "")], ["x.go"]);
+console.log("ok - a file changed on both sides but not between the tips is the same now");
 
 assert.deepStrictEqual(logArgs("left", A, B, COMMIT_PAGE), [
   "log", "--left-only", "--cherry-mark", "--no-merges", "--max-count=500", "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${A}...${B}`,

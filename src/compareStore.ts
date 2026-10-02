@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { parseShow, showArgs } from "./commitDetail";
 import {
-  bothPaths, filesArgs, logArgs, mergeBaseArgs, mirror, parseFiles, parseRevParse, parseSideCount, parseSideLog,
+  bothPaths, filesArgs, sameNow, tipsDiffArgs, logArgs, mergeBaseArgs, mirror, parseFiles, parseRevParse, parseSideCount, parseSideLog,
   revParseArgs, setRemoteNames, sideCountArgs, type Pair, type RepoCompare, type Side, type SideCommit,
 } from "./compareModel";
 import { GitError } from "./git";
@@ -9,6 +9,9 @@ import type { RunGit } from "./logQuery";
 import { isAbortError, runPool } from "./pool";
 import { branchSuggestions } from "./repos";
 import type { FileChange, Repo } from "./types";
+
+/** Files mode for one repository. both: changed on both sides; same: of those, the same at both tips. */
+export interface FilesRead { left: FileChange[]; right: FileChange[]; both: string[]; same: string[] }
 
 export interface CompareDeps {
   run: RunGit;
@@ -166,29 +169,32 @@ export class CompareStore implements vscode.Disposable {
     return repo && c?.kind === "differs" ? { repo, c } : undefined;
   }
 
-  /** Files mode for one repository: each side's changes since the split, and the paths both changed. */
   /**
    * Files mode for one repository: each side's changes since the split, and the paths both
-   * changed. Both side views ask for it: they share the read for the same tips and base (the
+   * changed (and of those, the ones the two tips now have the same). Both side views ask for it: they share the read for the same tips and base (the
    * answer for the repository on screen, dropped when its branches move).
    */
-  readFiles(repoId: string): Promise<{ left: FileChange[]; right: FileChange[]; both: string[] }> {
+  readFiles(repoId: string): Promise<FilesRead> {
     const d = this.differs(repoId);
-    if (!d) return Promise.resolve({ left: [], right: [], both: [] });
+    if (!d) return Promise.resolve({ left: [], right: [], both: [], same: [] });
     const key = `${repoId}\0${d.c.leftSha} ${d.c.rightSha} ${d.c.base}\0${this.gen}`;
     if (this.files?.key === key) return this.files.read;
     const signal = this.ctl.signal;
     const read = Promise.all([
       this.deps.run(d.repo.root, filesArgs(d.c.base, d.c.leftSha), signal).then(parseFiles),
       this.deps.run(d.repo.root, filesArgs(d.c.base, d.c.rightSha), signal).then(parseFiles),
-    ]).then(([left, right]) => ({ left, right, both: [...bothPaths(left, right)] }));
+      this.deps.run(d.repo.root, tipsDiffArgs(d.c.leftSha, d.c.rightSha), signal),
+    ]).then(([left, right, tips]) => {
+      const both = bothPaths(left, right);
+      return { left, right, both: [...both], same: [...sameNow(both, tips)] };
+    });
     this.files = { key, read };
     read.catch(() => {
       if (this.files?.read === read) this.files = undefined; // a failed or aborted read is not kept
     });
     return read;
   }
-  private files: { key: string; read: Promise<{ left: FileChange[]; right: FileChange[]; both: string[] }> } | undefined;
+  private files: { key: string; read: Promise<FilesRead> } | undefined;
 
   /** Commits mode for one side of one repository, newest first. */
   async readCommits(repoId: string, side: Side, max: number): Promise<SideCommit[]> {

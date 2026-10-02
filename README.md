@@ -138,7 +138,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     pairs, ★ favorites, local, remote), then **Files | Commits** and **Refresh**.
   - **Left** and **Right** show the selected repository's two sides:
     - **Files** (the default): what each side changed since the branches split, as a folder
-      tree with your file icons. A file changed on both sides is marked **both**.
+      tree with your file icons. A file changed on both sides is marked **both**, or dimmed and
+      marked **same now** when the two branches have the same content (a cherry-pick: nothing to
+      merge).
     - **Commits**: each side's commits, each expanding to its files.
 
     Click a file to open it as the two branches have it now (the target branch on the left);

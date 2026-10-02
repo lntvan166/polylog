@@ -1490,7 +1490,7 @@ describe("Polylog panel", () => {
     });
 
     type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; accents: number[] };
-    type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] };
+    type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[]; dimmed: string[] };
     const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
     const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
     const viewPick = (p: Pair) => vscode.commands.executeCommand("polylog._itest.compareView", p);
@@ -1542,10 +1542,13 @@ describe("Polylog panel", () => {
       const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0);
       assert.strictEqual(left.title, "release-1.4 only");
       assert.strictEqual(left.description, "acme-api · 2 files");
-      assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · both"]);
+      // retry.go, cherry-picked to both: the same at both tips now, so dimmed; limit.go still differs.
+      assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · same now"]);
+      assert.deepStrictEqual(left.dimmed, ["retry.go"]);
       const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0);
       assert.strictEqual(right.title, "prod only");
-      assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · both", "timeout.go | +1 −0"]);
+      assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · same now", "timeout.go | +1 −0"]);
+      assert.deepStrictEqual(right.dimmed, ["retry.go"]);
       await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       const tab = await waitFor("a diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;
@@ -1627,7 +1630,7 @@ describe("Polylog panel", () => {
       const ticked = (await snapshot()).repos.length;
       assert.strictEqual(log.filter((x) => x.cmd === "rev-parse").length, ticked, "one rev-parse per repository");
       // While the list was being read, the selection moved on its own: the sides read once, for the final one.
-      assert.ok(log.filter((x) => x.cmd === "diff").length <= 2, `side reads wait for the list (${log.filter((x) => x.cmd === "diff").length} diffs)`);
+      assert.ok(log.filter((x) => x.cmd === "diff").length <= 3, `side reads wait for the list (${log.filter((x) => x.cmd === "diff").length} diffs)`);
       // A half pair from the page: the host keeps it and its guidance.
       await rsend({ type: "pending", pair: { left: "release-1.4", right: "" } });
       await waitFor("guidance", async () => ((await posted()).repos?.message === "Pick the branch release-1.4 goes into (▶)." ? true : undefined));
@@ -1782,7 +1785,7 @@ describe("Polylog panel", () => {
       await until2("web right", () => sideOf("right"), (x) => x.message === "No changes on this side.");
       await sleep(500);
       const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff" && x.root === web).length;
-      assert.strictEqual(diffs, 2, "one readFiles (two git diff) for both sides");
+      assert.strictEqual(diffs, 3, "one readFiles (each side's git diff, and the tips') for both sides");
     });
 
     it("a file's status badge follows the pair (no badge from another pair's same path)", async () => {
@@ -1817,8 +1820,8 @@ describe("Polylog panel", () => {
       await select(roots["acme-web"]);
       await sleep(400);
       const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff").length;
-      // readFiles runs both sides' diffs in one call: 2 spawns for one side reading, 4 if both read.
-      assert.strictEqual(diffs, 2, "only the shown (right) side read its files");
+      // readFiles runs both sides' diffs and the tips' in one call: 3 spawns for one side reading, 6 if both read.
+      assert.strictEqual(diffs, 3, "only the shown (right) side read its files");
       await vscode.commands.executeCommand("polylog.compareLeft.focus");
       await until2("left shown and read", () => sideOf("left"), (x) => x.open && x.tree.join() === "billing.ts | +1 −0");
     });

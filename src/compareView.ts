@@ -63,7 +63,7 @@ export const keyOf = (store: CompareStore, repoId: string): string => {
 type SNode =
   | { kind: "folder"; id: string; name: string; path: string; count: number; children: SNode[] }
   /** side and path: a right-click hands the row itself to the command. */
-  | { kind: "file"; id: string; repoId: string; side: Side; path: string; name: string; file: FileChange; both: boolean; commit?: { sha: string; parent: string | null } }
+  | { kind: "file"; id: string; repoId: string; side: Side; path: string; name: string; file: FileChange; both: boolean; same?: boolean; commit?: { sha: string; parent: string | null } }
   | { kind: "commit"; id: string; repoId: string; commit: SideCommit }
   | { kind: "more"; id: string };
 
@@ -76,7 +76,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   readonly onDidChangeFileDecorations = this.decorationsChanged.event;
   private readonly decorations = new Map<string, vscode.FileDecoration>();
   /** The selected repository's detail, for the result it was read for (dropped when that moves). */
-  private detail: { repoId: string; key: string; mode: CompareMode; limit: number; tip: string; files?: FileChange[]; both?: Set<string>; commits?: SideCommit[]; more?: boolean } | undefined;
+  private detail: { repoId: string; key: string; mode: CompareMode; limit: number; tip: string; files?: FileChange[]; both?: Set<string>; same?: Set<string>; commits?: SideCommit[]; more?: boolean } | undefined;
   private limit = COMMIT_PAGE;
   /** The read in flight, for what it was asked: asked again for the same, it is not started again. */
   private reading: { ask: string; read: Promise<NonNullable<CompareSide["detail"]> | undefined> } | undefined;
@@ -153,7 +153,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       let d: NonNullable<CompareSide["detail"]>;
       if (mode === "files") {
         const f = await this.deps.store.readFiles(repoId);
-        d = { repoId, key, mode, limit, tip, files: f[this.side], both: new Set(f.both) };
+        d = { repoId, key, mode, limit, tip, files: f[this.side], both: new Set(f.both), same: new Set(f.same) };
       } else {
         const page = sidePage(await this.deps.store.readCommits(repoId, this.side, limit + 1), limit);
         d = { repoId, key, mode, limit, tip, commits: page.rows, more: page.more };
@@ -197,7 +197,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         if (!this.view.visible) return [];
         const d = await this.read();
         if (!d) return [];
-        if (d.mode === "files") return this.tree(fileTree(d.files ?? []), `${d.repoId}/${this.side}`, d.repoId, d.both ?? new Set(), "");
+        if (d.mode === "files") return this.tree(fileTree(d.files ?? []), `${d.repoId}/${this.side}`, d.repoId, d.both ?? new Set(), "", d.same ?? new Set());
         const rows = (d.commits ?? []).map((commit): SNode => ({ kind: "commit", id: `${d.repoId}/${this.side}/c:${commit.sha}`, repoId: d.repoId, commit }));
         return d.more ? [...rows, { kind: "more", id: "more" }] : rows;
       }
@@ -213,13 +213,13 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     }
   }
 
-  private tree(nodes: readonly TreeNode[], base: string, repoId: string, both: ReadonlySet<string>, parent: string): SNode[] {
+  private tree(nodes: readonly TreeNode[], base: string, repoId: string, both: ReadonlySet<string>, parent: string, same: ReadonlySet<string>): SNode[] {
     return nodes.map((n): SNode => {
       if (n.kind === "folder") {
         const p = parent ? `${parent}/${n.name}` : n.name;
-        return { kind: "folder", id: `${base}/d:${p}`, name: n.name, path: p, count: n.count, children: this.tree(n.children, base, repoId, both, p) };
+        return { kind: "folder", id: `${base}/d:${p}`, name: n.name, path: p, count: n.count, children: this.tree(n.children, base, repoId, both, p, same) };
       }
-      return { kind: "file", id: `${base}/f:${n.file.path}`, repoId, side: this.side, path: n.file.path, name: n.name, file: n.file, both: both.has(n.file.path) };
+      return { kind: "file", id: `${base}/f:${n.file.path}`, repoId, side: this.side, path: n.file.path, name: n.name, file: n.file, both: both.has(n.file.path), same: same.has(n.file.path) };
     });
   }
 
@@ -237,15 +237,17 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       case "file": {
         const item = new vscode.TreeItem(node.name, C.None);
         item.id = node.id;
-        item.description = node.both ? `${stat(node.file)} · both` : stat(node.file);
-        item.tooltip = node.both ? `${node.file.path}: changed on both sides since the split — look at it before merging`
+        item.description = node.same ? `${stat(node.file)} · same now` : node.both ? `${stat(node.file)} · both` : stat(node.file);
+        item.tooltip = node.same ? `${node.file.path}: changed on both sides since the split, and the two branches now have the same content — nothing to merge`
+          : node.both ? `${node.file.path}: changed on both sides since the split — look at it before merging`
           : node.file.oldPath ? `${node.file.oldPath} → ${node.file.path}` : node.file.path;
         // A private scheme: the icon theme picks the icon from the name; nothing of today's working tree is painted on it.
         // The tip (Files) or commit (Commits) in the URI: another result is another URI, so its badge is asked for afresh.
         item.resourceUri = vscode.Uri.from({ scheme: SCHEME, path: `/${node.file.path}`, query: `${this.side}:${node.commit?.sha ?? this.detail?.tip ?? ""}:${node.repoId}` });
         item.iconPath = vscode.ThemeIcon.File;
         const dec = decorationFor(node.file.status);
-        if (dec) this.decorations.set(item.resourceUri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(dec.color)));
+        // Dimmed: the same at both tips, so it brings nothing to the merge.
+        if (dec) this.decorations.set(item.resourceUri.toString(), new vscode.FileDecoration(dec.badge, dec.tooltip, new vscode.ThemeColor(node.same ? "disabledForeground" : dec.color)));
         item.command = node.commit
           ? { command: "polylog.openDiff", title: "Open Diff", arguments: [{ repoId: node.repoId, sha: node.commit.sha, parent: node.commit.parent, path: node.file.path, oldPath: node.file.oldPath, status: node.file.status } satisfies OpenDiffArgs] }
           : { command: "polylog.compareOpenFile", title: "Open Diff", arguments: [{ side: this.side, repoId: node.repoId, path: node.file.path }] };
@@ -317,22 +319,28 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     return { f, hit: { repo: hit.repo, result: hit.result }, pair };
   }
 
-  async snapshot(): Promise<{ open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] }> {
+  async snapshot(): Promise<{ open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[]; dimmed: string[] }> {
     const lines: string[] = [];
     /** "<path> <resourceUri> <badge>" for every file row (test seam). */
     const files: string[] = [];
+    /** File rows drawn dimmed (the same at both tips). */
+    const dimmed: string[] = [];
     const walk = async (nodes: SNode[], depth: number): Promise<void> => {
       for (const n of nodes) {
         const kids = n.kind === "folder" || n.kind === "commit" ? await this.getChildren(n) : [];
         const item = this.getTreeItem(n);
         lines.push(`${"  ".repeat(depth)}${labelOf(item)} | ${item.description ?? ""}`);
-        if (n.kind === "file" && item.resourceUri) files.push(`${n.file.path} ${item.resourceUri.toString()} ${this.provideFileDecoration(item.resourceUri)?.badge ?? ""}`);
+        if (n.kind === "file" && item.resourceUri) {
+          const dec = this.provideFileDecoration(item.resourceUri);
+          files.push(`${n.file.path} ${item.resourceUri.toString()} ${dec?.badge ?? ""}`);
+          if (dec?.color && (dec.color as { id?: string }).id === "disabledForeground") dimmed.push(n.file.path);
+        }
         await walk(kids, depth + 1);
       }
     };
     await walk(await this.getChildren(), 0);
     this.renderHeader();
-    return { open: this.view.visible, title: this.view.description?.split(" · ")[0] ?? "", description: this.view.description?.split(" · ").slice(1).join(" · ") ?? "", message: this.view.message, tree: lines, files };
+    return { open: this.view.visible, title: this.view.description?.split(" · ")[0] ?? "", description: this.view.description?.split(" · ").slice(1).join(" · ") ?? "", message: this.view.message, tree: lines, files, dimmed };
   }
 
   dispose(): void {

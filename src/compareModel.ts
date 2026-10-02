@@ -99,6 +99,17 @@ export function bothPaths(a: readonly FileChange[], b: readonly FileChange[]): S
   return new Set(a.map((f) => f.path).filter((p) => other.has(p)));
 }
 
+/** The paths that differ between the two tips now; no renames, so each side's path is listed. */
+export function tipsDiffArgs(l: string, r: string): string[] {
+  return ["diff", "--name-only", "-z", "--no-renames", l, r];
+}
+
+/** Changed on both sides since the split, yet the same at both tips (a cherry-pick, the same fix twice). */
+export function sameNow(both: ReadonlySet<string>, tipsDiff: string): Set<string> {
+  const differ = new Set(tipsDiff.split("\0").filter(Boolean));
+  return new Set([...both].filter((p) => !differ.has(p)));
+}
+
 /** Duplicates for display: a left and a right one with the same subject share a row. Counts come from git. */
 export function pairDuplicates(left: readonly SideCommit[], right: readonly SideCommit[]): Duplicate[] {
   const rights = [...right];
