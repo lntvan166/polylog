@@ -8,13 +8,14 @@ export function lsTreeArgs(sha: string, dir: string): string[] {
 }
 
 /** `git ls-tree -z`: "<mode> <type> <oid>\t<path>". Submodules (commit) are shown as files. */
-export function parseLsTree(stdout: string): { path: string; kind: "folder" | "file" }[] {
-  const out: { path: string; kind: "folder" | "file" }[] = [];
+export function parseLsTree(stdout: string): { path: string; kind: "folder" | "file"; submodule?: true }[] {
+  const out: { path: string; kind: "folder" | "file"; submodule?: true }[] = [];
   for (const t of stdout.split("\0")) {
     const tab = t.indexOf("\t");
     if (tab < 0) continue;
     const type = t.slice(0, tab).split(" ")[1];
-    out.push({ path: t.slice(tab + 1), kind: type === "tree" ? "folder" : "file" });
+    // A submodule (gitlink) is shown as a file, marked: it has no text to open.
+    out.push(type === "commit" ? { path: t.slice(tab + 1), kind: "file", submodule: true } : { path: t.slice(tab + 1), kind: type === "tree" ? "folder" : "file" });
   }
   return out;
 }
@@ -27,17 +28,17 @@ const byName = (a: { name: string }, b: { name: string }) => (a.name < b.name ? 
  * Files the commit deleted are no longer in the tree; they come back where they were, and so do
  * folders it emptied. Each folder counts the changed files under it.
  */
-export function mergeLevel(dir: string, listed: readonly { path: string; kind: "folder" | "file" }[], changed: readonly FileChange[]): {
+export function mergeLevel(dir: string, listed: readonly { path: string; kind: "folder" | "file"; submodule?: true }[], changed: readonly FileChange[]): {
   folders: { path: string; name: string; changedCount: number }[];
-  files: { path: string; name: string; change?: FileChange }[];
+  files: { path: string; name: string; change?: FileChange; submodule?: true }[];
 } {
   const prefix = dir === "" ? "" : `${dir}/`;
   const changes = new Map(changed.map((f) => [f.path, f]));
   const folders = new Map<string, { path: string; name: string; changedCount: number }>();
-  const files = new Map<string, { path: string; name: string; change?: FileChange }>();
+  const files = new Map<string, { path: string; name: string; change?: FileChange; submodule?: true }>();
   for (const e of listed) {
     if (e.kind === "folder") folders.set(e.path, { path: e.path, name: nameOf(e.path), changedCount: 0 });
-    else files.set(e.path, { path: e.path, name: nameOf(e.path), change: changes.get(e.path) });
+    else files.set(e.path, { path: e.path, name: nameOf(e.path), change: changes.get(e.path), ...(e.submodule ? { submodule: true as const } : {}) });
   }
   for (const f of changed) {
     if (!f.path.startsWith(prefix)) continue;

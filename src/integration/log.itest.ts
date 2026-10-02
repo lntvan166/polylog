@@ -590,6 +590,26 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("bad input is ignored, not thrown: a null message, a malformed File History URI, a ../ diff path, a foreign revision", async () => {
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const c = bySubject(s0, "feat: add retry");
+    // A null message from the webview, and a malformed polylog: URI for File History.
+    await send(null as unknown as WebviewMessage);
+    await vscode.commands.executeCommand("polylog.fileHistory", vscode.Uri.parse("polylog:/%E0%A4%A?x=%"));
+    // A diff of a path that climbs out of the repository: refused, nothing opened.
+    const before = vscode.window.tabGroups.all.flatMap((g) => g.tabs).length;
+    const opened = await vscode.commands.executeCommand("polylog.openDiff", { repoId: c.repoId, sha: c.sha, parent: c.parents[0], path: "../../etc/passwd" });
+    assert.strictEqual(opened, undefined);
+    assert.strictEqual(vscode.window.tabGroups.all.flatMap((g) => g.tabs).length, before);
+    // A revision document for a folder that is not one of the repositories: empty, no git run.
+    const { encodeRevision } = require("../revisionUri") as typeof import("../revisionUri");
+    const spawns = (await snapshot()).spawnLog.length;
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.from({ scheme: "polylog", ...encodeRevision({ root: "/not/a/repo", ref: c.sha, path: "x.ts" }) }));
+    assert.strictEqual(doc.getText(), "");
+    assert.strictEqual((await snapshot()).spawnLog.length, spawns, "no git for a foreign root");
+    assert.strictEqual((await snapshot()).rows.length, 6, "the Log is unharmed");
+  });
+
   it("on the Uncommitted side, a refresh or a commit selection leaves its files in the Changes view", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");

@@ -128,11 +128,14 @@ window.addEventListener("message", (e: MessageEvent<HostMessage>) => {
       filters.update(m.filter);
       repoPane.update(m.repos, m.filter.repoIds);
       appEl.classList.toggle("no-repos", !m.layout.groupByRepo);
-      if (m.logMode !== mode) setMode(m.logMode);
+      // Only when the host changed the switch: a late init must not undo the user's click.
+      if (m.logMode !== undefined && m.logMode !== mode) setMode(m.logMode);
       state.history = m.history;
       modebar.hidden = !m.history;
       modeHistory.hidden = !m.history;
       appEl.classList.toggle("history", !!m.history);
+      // Locked during File History: out of the keyboard order too, not only the mouse's.
+      byId("repo-pane").toggleAttribute("inert", !!m.history);
       historyPath.textContent = m.history ? `${m.history.path} · ${m.history.repoName}` : "";
       applyPaneWidth(m.layout.repoPaneWidth);
       break;

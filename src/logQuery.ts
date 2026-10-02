@@ -135,7 +135,8 @@ export async function fetchPage(req: PageRequest): Promise<PageResult> {
         p.pending.push(...commits);
         if (records < req.pageSize) p.exhausted = true;
       } else {
-        progress.delete(repo.id);
+        // Stop reading it, but keep the commits already fetched for it: they are still true.
+        p.exhausted = true;
         failures.push({ repoId: repo.id, name: repo.name, reason: result.reason instanceof Error ? result.reason.message : String(result.reason) });
       }
     });

@@ -282,3 +282,7 @@ body.vscode-high-contrast .author-chip { background: transparent; color: var(--v
 .work-tag.staged { border-color: var(--vscode-gitDecoration-addedResourceForeground); color: var(--vscode-gitDecoration-addedResourceForeground); }
 .work-row[aria-selected="true"] .work-tag:not(.staged), .work-row[aria-selected="true"] .work-edited { color: inherit; }
 .work-edited { color: var(--vscode-descriptionForeground); text-align: right; white-space: nowrap; font-size: 12px; }
+
+/* High contrast leaves the list backgrounds unset: the Uncommitted side's rows get outlines, like commit rows. */
+body.vscode-high-contrast .work-row[aria-selected="true"] { outline: 1px solid var(--vscode-contrastActiveBorder); outline-offset: -1px; }
+body.vscode-high-contrast .work-row:hover { outline: 1px dashed var(--vscode-contrastActiveBorder); outline-offset: -1px; }

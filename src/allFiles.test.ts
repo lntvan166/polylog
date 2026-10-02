@@ -7,7 +7,7 @@ const H = "e".repeat(40);
   assert.deepStrictEqual(lsTreeArgs(H, ""), ["ls-tree", "-z", H, "--", "."]);
   assert.deepStrictEqual(lsTreeArgs(H, "src/checkout"), ["ls-tree", "-z", H, "--", "src/checkout/"]);
   const out = `040000 tree ${H}\tsrc\x00100644 blob ${H}\tREADME.md\x00160000 commit ${H}\tvendor/lib\x00100755 blob ${H}\tbin/run sh\x00`;
-  assert.deepStrictEqual(parseLsTree(out), [{ path: "src", kind: "folder" }, { path: "README.md", kind: "file" }, { path: "vendor/lib", kind: "file" }, { path: "bin/run sh", kind: "file" }], "folders, files, submodules as files, spaces kept");
+  assert.deepStrictEqual(parseLsTree(out), [{ path: "src", kind: "folder" }, { path: "README.md", kind: "file" }, { path: "vendor/lib", kind: "file", submodule: true }, { path: "bin/run sh", kind: "file" }], "folders, files, submodules as files, spaces kept");
   assert.deepStrictEqual(parseLsTree(""), []);
   console.log("ok - git ls-tree: one folder's entries");
 }
@@ -47,3 +47,10 @@ const H = "e".repeat(40);
     console.log("ok - All Files reads folders a few at a time, each once");
   })().catch((e) => { console.error(e); process.exit(1); });
 }
+
+// A submodule (gitlink) is listed as a file, marked: it has no text to open.
+assert.deepStrictEqual(parseLsTree("160000 commit " + "a".repeat(40) + "\tvendor/lib\x00100644 blob " + "b".repeat(40) + "\tREADME.md\x00"), [
+  { path: "vendor/lib", kind: "file", submodule: true },
+  { path: "README.md", kind: "file" },
+]);
+console.log("ok - a submodule is listed as a file, marked so it is not opened as text");

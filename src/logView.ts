@@ -172,16 +172,18 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       scriptUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.js")).toString(),
       styleUri: view.webview.asWebviewUri(vscode.Uri.joinPath(out, "webview.css")).toString(),
     });
-    this.disposables.push(
+    for (const d of this.viewDisposables) d.dispose();
+    this.viewDisposables = [
       view.webview.onDidReceiveMessage((m: WebviewMessage) => void this.onMessage(m)),
       view.onDidDispose(() => {
         if (this.webviewView === view) this.webviewView = undefined;
       }),
-    );
+    ];
   }
 
 
   async onMessage(m: WebviewMessage): Promise<void> {
+    if (!m || typeof m !== "object") return; // webview input is untrusted
     switch (m.type) {
       case "ready":
         this.readyCount++;
@@ -192,7 +194,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
         else await this.loadRepos();
         // A new webview starts on Commits: the host follows it rather than disagree.
         this.setLogMode("commits");
-        this.postInit();
+        this.postInit(true);
         // A re-created webview lost the suggestions it had: send them again (only then).
         if (this.branches.length > 0 || this.authors.length > 0) this.post({ type: "suggestions", branches: this.branches, authors: this.authors });
         if (this.sync.size > 0) this.postSync();
@@ -264,10 +266,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     };
   }
 
-  private postInit(): void {
+  /** forceMode: the host changed the switch (File History, a new webview); otherwise the page's choice stands. */
+  private postInit(forceMode = false): void {
     const repo = this.history && this.repos.find((r) => r.id === this.history!.repoId);
     const history = this.history && repo ? { repoName: repo.name, path: this.history.path } : null;
-    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, logMode: this.logMode });
+    this.post({ type: "init", repos: this.repos, filter: this.filter, hasMe: this.meByRepo.size > 0, layout: this.layout(), history, ...(forceMode ? { logMode: this.logMode } : {}) });
   }
 
   /**
@@ -284,9 +287,14 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } else {
       const uri = arg instanceof vscode.Uri ? arg : vscode.window.activeTextEditor?.document.uri;
       if (uri?.scheme === SCHEME) {
-        const rev = decodeRevision(uri.path, uri.query);
-        const repo = this.repos.find((r) => r.root === rev.root);
-        if (repo) target = { repoId: repo.id, path: rev.path };
+        let rev: RevisionRef | undefined;
+        try {
+          rev = decodeRevision(uri.path, uri.query);
+        } catch {
+          rev = undefined; // a malformed URI: nothing to show
+        }
+        const repo = rev && this.repos.find((r) => r.root === rev!.root);
+        if (repo && rev) target = { repoId: repo.id, path: rev.path };
       } else if (uri?.scheme === "file") {
         target = this.locate(uri.fsPath);
       }
@@ -418,7 +426,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     // File History is a list of commits: the switch goes back to Commits to show it.
     if (history) this.setLogMode("commits");
     this.persistFilter();
-    this.postInit();
+    this.postInit(history !== null);
     await this.reload();
   }
 
@@ -506,7 +514,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async loadAuthors(): Promise<void> {
     const repos = [...this.repos];
     const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.run(r.root, ["log", "--no-merges", "--max-count=300", "--format=%aN%x1f%aE"], signal), new AbortController().signal);
+      (r, signal) => this.run(r.root, ["log", "--no-merges", "--max-count=300", "--format=%aN%x1f%aE"], signal), this.background.signal);
     this.authors = authorSuggestions(settled.map((s) => (s.status === "fulfilled" ? s.value : "")));
     this.post({ type: "suggestions", authors: this.authors });
   }
@@ -515,7 +523,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async loadBranches(): Promise<void> {
     const repos = [...this.repos];
     const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), new AbortController().signal);
+      (r, signal) => this.run(r.root, ["for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"], signal), this.background.signal);
     const lists = settled.map((s) => s.status === "fulfilled"
       ? s.value.split("\n").map((l) => l.trim().replace(/^refs\/(heads|remotes)\//, "")).filter(Boolean)
       : []);
@@ -539,7 +547,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const repos = [...this.repos];
     this.meFor = repos.map((r) => r.id).join("\0");
     const settled = await runPool(repos, this.settings().maxConcurrency,
-      (r, signal) => this.run(r.root, ["config", "user.email"], signal), new AbortController().signal);
+      (r, signal) => this.run(r.root, ["config", "user.email"], signal), this.background.signal);
     const me = new Map<string, string>();
     settled.forEach((s, i) => {
       if (s.status === "fulfilled" && s.value.trim()) me.set(repos[i].id, s.value.trim());
@@ -575,6 +583,10 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Each repository's distance from its upstream, for the Repositories pane's ↓/↑ badge. */
   private sync = new Map<string, AheadBehind>();
+  /** Background reads (Me, ↓/↑, suggestions): stopped when Polylog is. */
+  private readonly background = new AbortController();
+  /** The current webview's listeners: a re-created webview drops the old one's. */
+  private viewDisposables: vscode.Disposable[] = [];
 
   private readonly scopeChanged = new vscode.EventEmitter<void>();
   /** The ticked repositories changed (the Compare tab reads what it lacks). */
@@ -599,7 +611,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
    */
   private async readSync(only?: ReadonlySet<string>): Promise<void> {
     const repos = only ? this.repos.filter((r) => only.has(r.id)) : [...this.repos];
-    const settled = await runPool(repos, this.settings().maxConcurrency, (r, signal) => this.run(r.root, aheadBehindArgs(), signal), new AbortController().signal);
+    const settled = await runPool(repos, this.settings().maxConcurrency, (r, signal) => this.run(r.root, aheadBehindArgs(), signal), this.background.signal);
     const next = new Map(only ? this.sync : []);
     settled.forEach((s, i) => {
       const ab = s.status === "fulfilled" ? parseAheadBehind(s.value) : null;
@@ -801,7 +813,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const c = this.contextCommit(arg);
     if (!c) return;
     try {
-      const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], new AbortController().signal);
+      const message = await this.run(c.repo.root, ["show", "-s", "--format=%B", c.sha, "--"], this.background.signal);
       await vscode.env.clipboard.writeText(message.trim());
     } catch (e) {
       void vscode.window.showErrorMessage(`Polylog could not read the commit message: ${messageOf(e)}`);
@@ -926,6 +938,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   private async reload(): Promise<void> {
     this.stats.reloads++;
     this.query.abort();
+    this.queryState = null; // Load More waits for this reload's first page
     const ctl = (this.query = new AbortController());
     const s = this.settings();
     this.post({ type: "loading" });
@@ -965,13 +978,15 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     if (this.loadingMore || this.done || !this.queryState) return;
     this.loadingMore = true;
     const ctl = this.query; // a filter change aborts this too
+    const prev = this.queryState;
     const s = this.settings();
     try {
       const page = await fetchPage({
         repos: this.repos, filter: this.filter, pageSize: s.pageSize, concurrency: s.maxConcurrency,
         now: nowSec(), prev: this.queryState, run: this.run, signal: ctl.signal, me: this.meByRepo, history: this.history,
       });
-      if (ctl.signal.aborted) return;
+      // A reload (from the host) started meanwhile: its first page owns the list, not this one.
+      if (ctl.signal.aborted || this.queryState !== prev) return;
       this.rows = this.rows.concat(page.rows);
       this.failures = this.failures.concat(page.failures);
       this.done = page.done;
@@ -1113,7 +1128,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   async openDiff(a: OpenDiffArgs, preserveFocus = false, title?: string): Promise<string | undefined> {
     const repo = this.repos.find((r) => r.id === a?.repoId);
     // Refs come from the webview or a command argument: validate before they reach git.
-    if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || typeof a.path !== "string") return;
+    const safe = (p: unknown) => typeof p === "string" && p !== "" && !p.startsWith("/") && !p.split("/").includes("..");
+    if (!repo || !isSha(a.sha) || !(a.parent === null || isSha(a.parent)) || !safe(a.path) || (a.oldPath !== undefined && !safe(a.oldPath))) return;
     if (a.sha === UNCOMMITTED) return this.openWorkingDiff(repo, a, preserveFocus);
     const status = typeof a.status === "string" ? a.status : undefined;
     const { before, after } = diffSides(repo.root, { sha: a.sha, parents: a.parent ? [a.parent] : [] }, { path: a.path, oldPath: a.oldPath, status });
@@ -1219,6 +1235,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
   }
 
   dispose(): void {
+    this.background.abort();
     this.query.abort();
     this.detail.abort();
     this.fetchCtl.abort();
@@ -1227,6 +1244,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     this.reposChangedSoon.cancel();
     this.scopeChanged.dispose();
     this.refsChanged.dispose();
+    this.syncChanged.dispose();
+    for (const d of this.viewDisposables) d.dispose();
     for (const d of this.disposables) d.dispose();
   }
 }

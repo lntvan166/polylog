@@ -146,7 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
     log,
     // Retained: switching the panel to Terminal and back must keep selection and scroll.
     vscode.window.registerWebviewViewProvider(LogView.id, log, { webviewOptions: { retainContextWhenHidden: true } }),
-    vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider(git.run)),
+    vscode.workspace.registerTextDocumentContentProvider(SCHEME, new RevisionProvider((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root))),
     vscode.commands.registerCommand("polylog.open", () => vscode.commands.executeCommand(`${LogView.id}.focus`)),
     vscode.commands.registerCommand("polylog.openDiff", (a: OpenDiffArgs) => log.openDiff(a)),
     vscode.commands.registerCommand("polylog.openRevision", (arg?: unknown) => log.openRevision(arg)),

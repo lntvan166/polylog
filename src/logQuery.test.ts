@@ -54,6 +54,24 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
 
 (async () => {
   {
+    // A repository that fails on a later page keeps the rows already fetched for it.
+    const data = { [WEB.root]: [mk(WEB, 40), mk(WEB, 30), mk(WEB, 10)], [API.root]: [mk(API, 35), mk(API, 5), mk(API, 1)] };
+    const p1 = await fetchPage(req({ repos: [WEB, API], pageSize: 2, run: fakeRun(data) }));
+    assert.ok(!p1.rows.some((c) => c.subject === "acme-api@5"), "held back: older than what acme-web has fetched");
+    const p2 = await fetchPage(req({ repos: [WEB, API], pageSize: 2, prev: p1.state, run: fakeRun(data, [], new Set([API.root])) }));
+    assert.deepStrictEqual(p2.failures.map((f) => f.name), ["acme-api"]);
+    let rows = p2.rows.map((c) => c.subject);
+    let prev = p2.state;
+    for (let i = 0; i < 5 && !rows.includes("acme-api@5"); i++) {
+      const p = await fetchPage(req({ repos: [WEB, API], pageSize: 2, prev, run: fakeRun(data, [], new Set([API.root])) }));
+      rows = rows.concat(p.rows.map((c) => c.subject));
+      prev = p.state;
+      if (p.done) break;
+    }
+    assert.ok(rows.includes("acme-api@5"), `acme-api@5 was already fetched: it is still shown (${rows.join(", ")})`);
+    console.log("ok - a repository failing on a later page keeps the commits already fetched for it");
+  }
+  {
     const data = { [WEB.root]: [mk(WEB, 30), mk(WEB, 10)], [API.root]: [mk(API, 20)], [LIBS.root]: [mk(LIBS, 40)] };
     const page = await fetchPage(req({ run: fakeRun(data) }));
     assert.deepStrictEqual(page.rows.map((c) => c.subject), ["acme-libs@40", "acme-web@30", "acme-api@20", "acme-web@10"]);
@@ -66,7 +84,7 @@ const req = (over: Partial<Parameters<typeof fetchPage>[0]>) => ({
     const page = await fetchPage(req({ run: fakeRun(data, [], new Set([LIBS.root])) }));
     assert.deepStrictEqual(page.rows.map((c) => c.repoId), [WEB.id, API.id]);
     assert.deepStrictEqual(page.failures, [{ repoId: LIBS.id, name: "acme-libs", reason: "shallow clone: history is incomplete" }]);
-    assert.ok(!page.state.progress.has(LIBS.id), "a failed repo is not retried by Load More");
+    assert.ok(page.state.progress.get(LIBS.id)?.exhausted !== false, "a failed repo is not retried by Load More");
     console.log("ok - one failing repository is reported and excluded, not fatal");
   }
   {

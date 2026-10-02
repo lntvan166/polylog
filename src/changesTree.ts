@@ -93,10 +93,16 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       ...merged.folders.map((f): NodeDesc => ({ kind: "folder", id: `${base}/d:${f.path}`, label: f.name, description: f.changedCount > 0 ? String(f.changedCount) : "", tooltip: f.path, path: f.path, children: [], changedCount: f.changedCount })),
       ...merged.files.map((f): NodeDesc => f.change
         ? { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: stat(f.change), tooltip: f.change.oldPath ? `${f.change.oldPath} → ${f.path}` : f.path, path: f.path, file: f.change, openable: f.change.added !== null, owner }
-        : { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: "", tooltip: f.path, path: f.path, file: { path: f.path, added: 0, deleted: 0 }, openable: true, owner, unchanged: true }),
+        : { kind: "file", id: `${base}/f:${f.path}`, label: f.name, description: f.submodule ? "submodule" : "", tooltip: f.path, path: f.path, file: { path: f.path, added: 0, deleted: 0 }, openable: !f.submodule, owner, unchanged: !f.submodule }),
     ];
     for (const r of rows) this.parents.set(r, parent);
     this.loaded.set(dir, rows);
+    // File History in All Files: the file is found once its folder is read.
+    const focus = rows.find((r) => r.kind === "file" && r.path === s.focusPath);
+    if (focus) {
+      this.focused = focus;
+      if (this.view.visible) setTimeout(() => void this.view.reveal(focus, { select: true, focus: false }).then(undefined, () => undefined), 0);
+    }
     return rows;
   }
 

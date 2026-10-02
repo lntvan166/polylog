@@ -4,11 +4,18 @@ import { decodeRevision, INDEX } from "./revisionUri";
 
 /** Serves `polylog:` URIs: the content of <ref>:<path> in one repository. */
 export class RevisionProvider implements vscode.TextDocumentContentProvider {
-  constructor(private readonly run: RunGit) {}
+  constructor(private readonly run: RunGit, private readonly roots: () => readonly string[] = () => []) {}
 
   async provideTextDocumentContent(uri: vscode.Uri, token: vscode.CancellationToken): Promise<string> {
-    const rev = decodeRevision(uri.path, uri.query);
+    let rev: ReturnType<typeof decodeRevision>;
+    try {
+      rev = decodeRevision(uri.path, uri.query);
+    } catch {
+      return ""; // a malformed URI
+    }
     if (rev.ref === null) return ""; // a root commit's "before" side
+    // Only the workspace's repositories, and paths inside them (":/text" is git's commit search).
+    if (!this.roots().includes(rev.root) || rev.path.startsWith("/") || rev.path.split("/").includes("..")) return "";
     const ctl = new AbortController();
     const sub = token.onCancellationRequested(() => ctl.abort());
     // The index is `:<path>` (or its blob, when known); a commit is `<sha>:<path>`.

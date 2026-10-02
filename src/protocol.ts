@@ -35,7 +35,7 @@ export interface WorkRow {
 
 /** Extension host → webview. */
 export type HostMessage =
-  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode: "commits" | "uncommitted" }
+  | { type: "init"; repos: Repo[]; filter: FilterState; hasMe: boolean; layout: Layout; history: { repoName: string; path: string } | null; logMode?: "commits" | "uncommitted" }
   | { type: "loading" }
   /** The uncommitted work behind the Log's switch. `known`: every repository was read (the badge shows a number). */
   | { type: "uncommitted"; known: boolean; totals: { files: number; repos: number; added: number; deleted: number }; rows: WorkRow[] }
