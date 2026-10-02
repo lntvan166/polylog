@@ -273,8 +273,9 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
         case "ready":
           this.postState();
           this.changed();
-          await this.start();
+          // Pick Branches… asked before the page was ready: open the picker now, not after the read.
           if (this.wantPicker) this.post({ type: "openPicker", side: this.wantPicker });
+          await this.start();
           return;
         case "pick":
           if (validPair(m.pair)) await this.setPair(m.pair);

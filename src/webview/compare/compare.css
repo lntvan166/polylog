@@ -15,8 +15,9 @@ button, input { font: inherit; }
 .branch-box { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); border: 1px solid var(--vscode-input-border, var(--vscode-panel-border)); border-radius: 2px; cursor: pointer; }
 .branch-box .branch-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-box .caret { margin-left: auto; color: var(--vscode-descriptionForeground); }
-.branch-box.left .side-mark, .left { color: var(--vscode-charts-blue); }
-.branch-box.right .side-mark, .right { color: var(--vscode-charts-yellow); }
+/* Only the ◀ ▶ marks and the counts are colored: a branch name stays the input's text color (contrast). */
+.branch-box.left .side-mark, .count.left, .mono.left, .picker .side-mark.left { color: var(--vscode-charts-blue); }
+.branch-box.right .side-mark, .count.right, .mono.right, .picker .side-mark.right { color: var(--vscode-charts-yellow); }
 .same { color: var(--vscode-charts-green); }
 .error { color: var(--vscode-errorForeground); }
 .icon-button { background: transparent; color: var(--vscode-foreground); border: 1px solid transparent; border-radius: 3px; padding: 1px 6px; cursor: pointer; }

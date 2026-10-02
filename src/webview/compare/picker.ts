@@ -64,12 +64,21 @@ export class BranchPicker {
   open(anchor: HTMLElement): void {
     this.anchor = anchor;
     this.root.hidden = false;
-    this.root.style.left = `${anchor.offsetLeft}px`;
-    this.root.style.top = `${anchor.offsetTop + anchor.offsetHeight + 2}px`;
     this.input.value = "";
     this.active = 0;
     this.render();
+    this.place(anchor);
     this.input.focus();
+  }
+
+  /** Under its box, but inside the view: a narrow or short panel never clips it. */
+  private place(anchor: HTMLElement): void {
+    const top = anchor.offsetTop + anchor.offsetHeight + 2;
+    const width = this.root.offsetWidth;
+    this.root.style.left = `${Math.max(4, Math.min(anchor.offsetLeft, window.innerWidth - width - 4))}px`;
+    this.root.style.top = `${top}px`;
+    // The list scrolls inside what is left below the box.
+    this.list.style.maxHeight = `${Math.max(80, window.innerHeight - top - this.input.offsetHeight - 24)}px`;
   }
 
   close(): void {

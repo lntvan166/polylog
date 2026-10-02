@@ -75,10 +75,15 @@ list.addEventListener("keydown", (e) => {
   if (r) select(r.repoId);
 });
 
+/** Selections sent and not yet echoed back by the host: an older echo must not undo a newer pick. */
+let pendingSelects = 0;
+
 function select(repoId: string): void {
   if (repoId === selected) return;
   selected = repoId;
+  pendingSelects++;
   renderRows();
+  byId(`crepo-${rows.findIndex((r) => r.repoId === repoId)}`).scrollIntoView({ block: "nearest" });
   post({ type: "select", repoId });
 }
 
@@ -100,7 +105,9 @@ window.addEventListener("message", (e: MessageEvent<ReposHost>) => {
       return;
     case "repos":
       rows = m.rows;
-      selected = m.selected;
+      // Our own picks come back one echo each; until the last one does, the page's choice stands.
+      if (pendingSelects > 0 && m.selected !== undefined && rows.some((r) => r.repoId === selected)) pendingSelects--;
+      else selected = m.selected;
       empty = m.empty;
       // Unfolded duplicates belong to one pair and orientation: a new pair or a swap folds them.
       if (m.pairKey !== pairKey) open.clear();
