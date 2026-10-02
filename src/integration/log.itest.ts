@@ -623,6 +623,57 @@ describe("Polylog panel", () => {
     await until("nothing uncommitted", (x) => x.workRows.length === 0);
   });
 
+  it("Commit: nothing to take asks nothing; a failed commit leaves the Log alone; a folder's own git settings apply", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    const folder = vscode.workspace.workspaceFolders!.find((f) => f.uri.fsPath === web.root)!;
+    const cfg = vscode.workspace.getConfiguration("git", folder.uri);
+    const asked = () => vscode.commands.executeCommand<number>("polylog._itest.asked");
+    const view = () => vscode.commands.executeCommand<{ items: string[]; lastError?: string }>("polylog._itest.uncommitted");
+    const hook = path.join(web.root, ".git", "hooks", "pre-commit");
+    try {
+      await vscode.commands.executeCommand("polylog.focusUncommitted");
+      // This folder's own settings (not the user's): smart commit, tracked files only.
+      await cfg.update("enableSmartCommit", true, vscode.ConfigurationTarget.WorkspaceFolder);
+      await cfg.update("smartCommitChanges", "tracked", vscode.ConfigurationTarget.WorkspaceFolder);
+      fs.writeFileSync(path.join(web.root, "brand-new.md"), "x\n");
+      await send({ type: "refresh" });
+      await waitFor("brand-new.md", async () => ((await view()).items.some((i) => i.includes("brand-new.md")) ? true : undefined));
+      const before = await asked();
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      assert.strictEqual(await asked(), before, "only a new file and tracked-only smart commit: nothing to commit, nothing asked");
+      // A failed commit: git's words, and no Log reload.
+      fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 5;\n");
+      cp.execFileSync("git", ["add", "client.ts"], { cwd: web.root });
+      fs.writeFileSync(hook, "#!/bin/sh\necho 'acme hook says no' >&2\nexit 1\n", { mode: 0o755 });
+      await send({ type: "refresh" });
+      await waitFor("staged", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
+      const reloads = (await snapshot()).stats.reloads;
+      await vscode.commands.executeCommand("polylog._itest.answer", "feat: blocked");
+      await vscode.commands.executeCommand("polylog.commitRepo", { repoId: web.id });
+      const err = (await view()).lastError ?? "";
+      assert.match(err, /acme hook says no/);
+      assert.ok(!err.endsWith(".."), `one period (${err})`);
+      assert.strictEqual((await snapshot()).stats.reloads, reloads, "a failed commit does not reload the Log");
+      const pal = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes.menus.commandPalette as { command: string; when: string }[];
+      assert.strictEqual(pal.find((m) => m.command === "polylog.uncommittedClose")?.when, "polylog.uncommittedShown", "Close only while shown");
+    } finally {
+      await vscode.commands.executeCommand("polylog._itest.answer", undefined);
+      fs.rmSync(hook, { force: true });
+      await cfg.update("enableSmartCommit", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      await cfg.update("smartCommitChanges", undefined, vscode.ConfigurationTarget.WorkspaceFolder);
+      // Folder settings live in the repository's .vscode/: gone with the test.
+      fs.rmSync(path.join(web.root, ".vscode"), { recursive: true, force: true });
+      fs.rmSync(path.join(web.root, "brand-new.md"), { force: true });
+      cp.execFileSync("git", ["reset", "-q"], { cwd: web.root });
+      cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
+    }
+    await send({ type: "refresh" });
+  });
+
   it("Commit with the Path box set says how many files the commit really takes, and stops if you decline", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");
@@ -637,6 +688,9 @@ describe("Polylog panel", () => {
       fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 7;\n");
       fs.writeFileSync(path.join(web.root, "outside.md"), "x\n");
       git("add", "client.ts", "outside.md");
+      // Both staged first (unfiltered), so the next "Staged | 1" is the Path box's own read.
+      await send({ type: "refresh" });
+      await waitFor("both staged", async () => ((await view()).items.some((i) => i.includes("Staged | 2")) ? true : undefined));
       await send({ type: "filter", filter: { ...ALL, path: "client.ts" } });
       await waitFor("only client.ts shown", async () => ((await view()).items.some((i) => i.includes("Staged | 1")) ? true : undefined));
       await vscode.commands.executeCommand("polylog._itest.answer", "Cancel");

@@ -597,6 +597,10 @@
         {
           "command": "polylog.compareHide",
           "when": "false"
+        },
+        {
+          "command": "polylog.uncommittedClose",
+          "when": "polylog.uncommittedShown"
         }
       ],
       "view/title": [

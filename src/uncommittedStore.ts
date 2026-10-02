@@ -187,6 +187,8 @@ export class UncommittedStore implements vscode.Disposable {
       if (spec !== this.spec) {
         const had = [...this.map.values()].some((w) => w.staged.length + w.changes.length > 0);
         this.map.clear();
+        // Another question: the badge waits for the whole answer again, not a count that climbs.
+        this.known = false;
         if (had) this.changedSoon();
       }
       this.spec = spec;

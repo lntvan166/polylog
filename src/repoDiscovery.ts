@@ -1,4 +1,4 @@
-import { promises as fs } from "fs";
+import { promises as fs, realpathSync } from "fs";
 import * as path from "path";
 import * as vscode from "vscode";
 import { walkForRepos } from "./discoverWalk";
@@ -39,7 +39,23 @@ function sameRoot(a: string, b: string): boolean {
     const n = path.normalize(p).replace(/[\\/]+$/, "");
     return process.platform === "win32" || process.platform === "darwin" ? n.toLowerCase() : n;
   };
-  return norm(a) === norm(b);
+  // A symlinked workspace folder is vscode.git's real path: compare where both lead too.
+  return norm(a) === norm(b) || norm(real(a)) === norm(real(b));
+}
+
+/** A folder's real path (symlinks resolved), once per folder: the same answer every time it is asked. */
+const realPaths = new Map<string, string>();
+function real(p: string): string {
+  let r = realPaths.get(p);
+  if (r === undefined) {
+    try {
+      r = realpathSync.native(p);
+    } catch {
+      r = p;
+    }
+    realPaths.set(p, r);
+  }
+  return r;
 }
 
 const headKey = (h: GitBranch | undefined) =>
@@ -156,6 +172,12 @@ export class RepoDiscovery implements vscode.Disposable {
   /** Roots vscode.git reports state changes for. */
   private readonly watched = new Set<string>();
   private readonly watchedChanged = new vscode.EventEmitter<void>();
+  private watchedTimer: ReturnType<typeof setTimeout> | undefined;
+  /** vscode.git opens repositories in a burst (68 at startup): one redraw, not one per repository. */
+  private watchedChangedSoon(): void {
+    clearTimeout(this.watchedTimer);
+    this.watchedTimer = setTimeout(() => this.watchedChanged.fire(), 100);
+  }
   /** vscode.git opened or closed a repository: which ones can stage has changed. */
   readonly onDidChangeWatched = this.watchedChanged.event;
 
@@ -164,7 +186,7 @@ export class RepoDiscovery implements vscode.Disposable {
    * git.autorefresh is on). Repositories it does not watch get no events at all.
    */
   reportsChanges(root: string): boolean {
-    return this.watched.has(root) && vscode.workspace.getConfiguration("git").get<boolean>("autorefresh", true) !== false;
+    return [...this.watched].some((w) => sameRoot(w, root)) && vscode.workspace.getConfiguration("git", vscode.Uri.file(root)).get<boolean>("autorefresh", true) !== false;
   }
 
   /** The git binary VS Code's Git extension uses, once it has activated. */
@@ -223,14 +245,14 @@ export class RepoDiscovery implements vscode.Disposable {
       if (d) {
         watching.set(r, d);
         this.watched.add(root);
-        this.watchedChanged.fire();
+        this.watchedChangedSoon();
       }
     };
     const unwatch = (r: GitRepository) => {
       watching.get(r)?.dispose();
       watching.delete(r);
       this.watched.delete(r.rootUri.fsPath);
-      this.watchedChanged.fire();
+      this.watchedChangedSoon();
     };
     api.repositories.forEach(watch);
     this.disposables.push(api.onDidOpenRepository(watch), api.onDidCloseRepository(unwatch), {
@@ -260,6 +282,7 @@ export class RepoDiscovery implements vscode.Disposable {
   dispose(): void {
     this.gitFound.dispose();
     this.repoStateChanged.dispose();
+    clearTimeout(this.watchedTimer);
     this.watchedChanged.dispose();
     for (const d of this.disposables) d.dispose();
   }

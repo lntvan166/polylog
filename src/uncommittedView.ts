@@ -17,8 +17,9 @@ const TREE_SCHEME = "polylog-tree";
 /** vscode.git's errors say "Failed to execute git"; git's own words are in their stderr. */
 function gitMessage(e: unknown): string {
   const stderr = (e as { stderr?: unknown } | undefined)?.stderr;
-  if (typeof stderr === "string" && stderr.trim() !== "") return errorLine(stderr);
-  return e instanceof Error ? e.message : String(e);
+  const text = typeof stderr === "string" && stderr.trim() !== "" ? errorLine(stderr) : e instanceof Error ? e.message : String(e);
+  // Put in a sentence that ends with its own period.
+  return text.replace(/[.\s]+$/, "");
 }
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
@@ -31,8 +32,9 @@ export class Ask {
   private readonly testing = process.env.POLYLOG_ITEST === "1";
   /** Test seam: runs once, as if while the dialog is open, before a queued answer is given. */
   beforeAnswer: (() => Promise<void>) | undefined;
-  /** Test seam: the last warning asked. */
+  /** Test seam: the last warning asked, and how many questions were asked. */
   lastWarning: string | undefined;
+  asked = 0;
 
   queue(value: string | undefined): void {
     if (value === undefined) this.answers.length = 0;
@@ -40,6 +42,7 @@ export class Ask {
   }
 
   async warning(message: string, detail: string, button: string): Promise<boolean> {
+    this.asked++;
     if (this.testing && this.answers.length > 0) {
       const hook = this.beforeAnswer;
       this.beforeAnswer = undefined;
@@ -51,6 +54,7 @@ export class Ask {
   }
 
   async input(prompt: string, placeHolder: string): Promise<string | undefined> {
+    this.asked++;
     if (this.testing && this.answers.length > 0) {
       const a = this.answers.shift();
       return a === "Cancel" ? undefined : a;
@@ -224,14 +228,21 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     const r = this.resolve(arg && typeof arg === "object" ? { repoId: (arg as Target).repoId } : arg);
     if (!r || !r.work.canStage) return;
     const { work } = r;
-    const smart = vscode.workspace.getConfiguration("git").get<boolean>("enableSmartCommit", false) === true;
+    // vscode.git's settings are per folder (resource scope): this repository's folder decides.
+    const git = vscode.workspace.getConfiguration("git", vscode.Uri.file(work.root));
+    const smart = git.get<boolean>("enableSmartCommit", false) === true;
     const step = commitStep(work.staged.length, work.changes.length, smart);
     if (step === "nothing") return;
     if (step === "askStageAll" && !(await this.ask.warning(`There are no staged changes in ${work.name}.`, "Stage all changes and commit them?", "Stage All and Commit"))) return;
     // Commit all, as VS Code's own smart commit: git.smartCommitChanges "tracked" leaves new files out.
-    const scope = vscode.workspace.getConfiguration("git").get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
+    const scope = git.get<string>("smartCommitChanges", "all") === "tracked" ? "tracked" : "all";
     const all: boolean | "tracked" = step === "message" ? false : scope === "tracked" ? "tracked" : true;
     const n = all ? commitCount(work, scope) : work.staged.length;
+    if (n === 0) {
+      // Smart commit of tracked files only, and only new files changed: git would say "nothing to commit".
+      void vscode.window.showInformationMessage(`Nothing to commit in ${work.name}: only new files changed, and git.smartCommitChanges is "tracked".`);
+      return;
+    }
     // The Path box hides part of the repository; a commit takes all of it. Say so, with the true numbers.
     if (this.deps.store.filtered) {
       const w = await this.deps.store.whole(work.repoId);
@@ -241,13 +252,16 @@ export class UncommittedView implements vscode.TreeDataProvider<UNode>, vscode.F
     }
     const message = await this.ask.input(`Commit message for ${work.name}`, `Message (${plural(n, "file")} ${all ? "to commit" : "staged"})`);
     if (!message || message.trim() === "") return;
+    let ok = true;
     try {
       await this.deps.discovery.commit(work.root, message, all);
     } catch (e) {
+      ok = false;
       this.showError(`Polylog could not commit ${work.name}: ${gitMessage(e)}.`);
     }
     await this.deps.store.readRepo(work.repoId);
-    this.deps.committed();
+    // Only a commit that landed changes the Log.
+    if (ok) this.deps.committed();
   }
 
   /** The diff a row opens, as Source Control: Staged is HEAD ↔ index; Changes is index (or HEAD) ↔ file. */

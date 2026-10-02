@@ -184,6 +184,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
       vscode.commands.registerCommand("polylog._itest.lastWarning", () => uncommittedView.ask.lastWarning),
+      vscode.commands.registerCommand("polylog._itest.asked", () => uncommittedView.ask.asked),
       vscode.commands.registerCommand("polylog._itest.beforeAnswer", (f: (() => Promise<void>) | undefined) => (uncommittedView.ask.beforeAnswer = f)),
     );
   }
