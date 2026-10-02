@@ -7,6 +7,64 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.0] — 2026-10-02
+
+### Added
+
+- **Work on uncommitted changes across every repository.** The **Uncommitted** view, in a
+  Polylog side bar (its button in the Log toolbar shows it and hides it again), lists each
+  ticked repository with uncommitted work, its Staged and Changes groups and files under
+  folders. Stage, Unstage, Discard (it always asks, and deletes exactly the files it listed)
+  and Commit… go through VS Code's own Git, so Source Control stays in step. The Log gains a
+  **Commits | Uncommitted** switch with a badge counting your uncommitted files.
+- **Compare two branches across every repository.** **Compare Branches** (⇄ in the Log
+  toolbar) opens the **Polylog Compare** panel tab, hidden until then:
+  - **Repositories**: the repositories whose files differ, in their Repo List colors. At the
+    top, ◀ left ▾ ⇄ ▶ right ▾, each box opening a searchable branch list (recent pairs,
+    ★ favorites, local, remote). Repositories missing a branch are listed apart, and
+    identical ones are only counted.
+  - **Left** and **Right**: what each branch changed since they split, as folder trees with
+    your file icons (**Files**), or as commits (**Commits**). A click opens the file as the
+    two branches have it now; right-click → **Changes since the Split** shows only what that
+    side changed. A file renamed on one side opens against its old name on the other.
+  - **Files already on both branches** (a cherry-pick: changed on both sides, yet the same
+    now) are hidden by default and counted in the title; the filter in the title bar lists
+    them again, dimmed. Commit counts stay in each row's tooltip: they mislead when the same
+    change travels by cherry-pick.
+  - It reads again after Fetch All, a pull or a moved branch.
+- **Blame in Polylog's diffs.** Put the cursor on a line of any Polylog diff or revision to
+  see who last changed it, as of the commit shown; hover for the details. It follows
+  `git.blame.editorDecoration.template`; `polylog.blame` turns it off.
+- **Pull All Repositories Behind**, and **Fetch and Pull All**, in the Log's `…` menu. Every
+  repository showing ↓ is brought up to what the last fetch brought: fast-forward only,
+  never a merge commit, and never a stash (`merge.autoStash` is turned off for it). A
+  repository that diverged, or whose local changes touch the incoming files, is left as it
+  was and named. Fetch and Pull All fetches first.
+- **All Files** in the Changes view: a commit's whole tree, like the Explorer, each folder
+  read only when opened; unchanged files open as they were at that commit.
+
+### Changed
+
+- **Fetch All shows that it is working, and what it found.** The cloud turns into a spinning
+  sync while it runs, the status bar counts "fetching 23/68…", and the result stays for
+  8 seconds: how many repositories are behind their upstream, or nothing to pull.
+- **Uncommitted work moved out of the commit list.** The pinned uncommitted rows, the eye
+  toggle and Review Uncommitted are replaced by the Commits | Uncommitted switch and the
+  Uncommitted view.
+- **Each view has its own icon**, and the Log toolbar's Compare and Uncommitted buttons keep
+  a fixed order and show which is on. Polylog never opens, expands or reveals a view by
+  itself.
+
+### Fixed
+
+- **File History of a route folder like `[id]`** lists that folder's commits: paths are
+  taken literally, not as globs.
+- **A repository that fails while paging keeps the commits already shown**, and Load More no
+  longer competes with a reload.
+- **A submodule in the Changes view is marked as one**, and does not try to open as a file.
+- **File History selects its file** in Changes once the folder holding it is shown, without
+  errors in VS Code's log.
+
 ## [0.5.0] — 2026-09-29
 
 ### Added
