@@ -127,12 +127,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   side by side. It compares two branches in every ticked
   repository, for example `origin/release-1.4` (◀ left, what you merge from) and
   `origin/main` (▶ right, where it goes).
-  - **Repositories** lists the repositories whose files differ, each with its Repo List color and `3 ◀ · 1 ▶ · =1`:
-    - **◀**: commits only on the left, which the merge brings in;
-    - **▶**: commits only on the right, which the release lacks (a hotfix never brought back);
-    - **=**: the same change committed on each side (a cherry-pick), listed under the row.
-
-    Merge commits aren't counted. Repositories that lack a branch are listed at the bottom.
+  - **Repositories** lists the repositories whose files differ, in their Repo List colors (commit
+    counts are in each row's tooltip; they mislead when the same change travels by cherry-pick).
+    A ▸ unfolds the changes committed on both sides (cherry-picks). Repositories that lack a
+    branch are listed at the bottom.
     At the top: **◀ left ▾ ⇄ ▶ right ▾**, each box opening a searchable branch list (recent
     pairs, ★ favorites, local, remote), then **Files | Commits** and **Refresh**.
   - **Left** and **Right** show the selected repository's two sides:
@@ -140,7 +138,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
       tree with your file icons. A file changed on both sides is marked **both**.
     - **Commits**: each side's commits, each expanding to its files.
 
-    Click a file to open its diff in the editor area.
+    Click a file to open it as the two branches have it now (the target branch on the left);
+    right-click → **Changes since the Split** shows only what that side changed (what the merge
+    brings in).
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.

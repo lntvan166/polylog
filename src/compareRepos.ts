@@ -359,7 +359,8 @@ export class CompareRepos implements vscode.WebviewViewProvider, vscode.Disposab
     return {
       open: this.view?.visible === true, description: tabTitle(this.pairShown()),
       message: this.message() ?? (pair && pair.left !== pair.right ? this.summary() : undefined), pair, mode: this.mode,
-      roots: rows.map((r) => `${r.name} | ${repoCounts(results.get(r.repoId)!)}`), selected: this.deps.selection.repoId, accents: rows.map((r) => r.accent),
+      // What a row shows: its name, or why it cannot be compared.
+      roots: rows.map((r) => (r.status === "differs" ? r.name : `${r.name} | ${repoCounts(results.get(r.repoId)!)}`)), selected: this.deps.selection.repoId, accents: rows.map((r) => r.accent),
     };
   }
 

@@ -1480,7 +1480,7 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.compareBranches");
       const r = await until2("listed", repos, (x) => x.open && x.roots.length === 2 && x.selected !== undefined);
       assert.strictEqual(r.description, "release-1.4 ↔ prod");
-      assert.deepStrictEqual(r.roots, ["acme-api | 1 ◀ · 1 ▶ · =1", "acme-web | 1 ◀"]);
+      assert.deepStrictEqual(r.roots, ["acme-api", "acme-web"], "names only: commit counts mislead when changes travel by cherry-pick (they are in the tooltip)");
       assert.strictEqual(r.selected, roots["acme-api"], "the first listed repository is selected");
       // Like the Log's Repo List: each repository's own color, as a dot.
       const { accentOf, assignAccents } = require("../webview/view") as typeof import("../webview/view");
@@ -1705,7 +1705,7 @@ describe("Polylog panel", () => {
       assert.deepStrictEqual(left.tree.map((l) => l.replace(/ · .*$/, "")), ["feat: rate limit per client | dana", "  limit.go | +1 −0"]);
       await vscode.commands.executeCommand("polylog.compareSwap");
       left = await until2("swapped", () => sideOf("left"), (x) => x.title === "prod only" && x.tree[0]?.startsWith("hotfix") === true);
-      assert.ok((await repos()).roots.includes("acme-web | 1 ▶"));
+      assert.ok((await repos()).roots.includes("acme-web"));
       await vscode.commands.executeCommand("polylog._itest.compareMode", "files");
       // A new pair: the old pair's files are gone at once.
       await viewPick({ left: "prod", right: "prod" });

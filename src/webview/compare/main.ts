@@ -174,8 +174,6 @@ function renderMissing(missing: string[]): void {
   for (const n of missing) ul.append(h("li", {}, [n]));
 }
 
-/** A count cell: blank when 0, so the columns stay aligned and quiet. */
-const cell = (n: number, cls: string, mark: string) => h("span", { class: `count ${cls}` }, [n > 0 ? `${n} ${mark}` : ""]);
 
 function renderRows(): void {
   clear(list);
@@ -193,9 +191,8 @@ function renderRows(): void {
       h("span", { class: "twisty", "data-twisty": dups ? r.repoId : undefined, "aria-hidden": "true" }, [dups ? (unfolded ? "▾" : "▸") : ""]),
       h("span", { class: `repo-dot accent-${r.accent}`, "aria-hidden": "true" }),
       h("span", { class: "repo-name" }, [r.name]),
-      ...(r.status === "differs"
-        ? [cell(r.left, "left", "◀"), cell(r.right, "right", "▶"), cell(r.same, "same", "=")]
-        : [h("span", { class: r.status === "error" ? "row-note error" : "row-note" }, [r.status === "nobase" ? "no common history" : "git error"])]),
+      // Names only: commit counts mislead when the same change travels by cherry-pick (they are in the tooltip).
+      r.status === "differs" ? null : h("span", { class: r.status === "error" ? "row-note error" : "row-note" }, [r.status === "nobase" ? "no common history" : "git error"]),
     ]));
     if (unfolded) {
       const items = open.get(r.repoId);

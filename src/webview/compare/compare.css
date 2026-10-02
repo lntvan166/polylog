@@ -34,7 +34,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 
 .repo-list { flex: 1; overflow: auto; outline: none; }
 /* Name, then three aligned count columns (◀ ▶ =), like the Log's columns. */
-.crepo { display: grid; grid-template-columns: 14px 8px minmax(0, 1fr) 4.5em 4.5em 3.5em; align-items: center; column-gap: 6px; padding: 0 8px; line-height: 22px; cursor: pointer; white-space: nowrap; }
+.crepo { display: grid; grid-template-columns: 14px 8px minmax(0, 1fr) auto; align-items: center; column-gap: 6px; padding: 0 8px; line-height: 22px; cursor: pointer; white-space: nowrap; }
 .crepo:hover { background: var(--vscode-list-hoverBackground); }
 .crepo.selected { background: var(--vscode-list-inactiveSelectionBackground); color: var(--vscode-list-inactiveSelectionForeground, var(--vscode-foreground)); outline: 1px dotted var(--vscode-contrastActiveBorder, transparent); outline-offset: -1px; }
 .repo-list:focus .crepo.selected { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); }
@@ -43,7 +43,7 @@ button:focus-visible, [tabindex]:focus-visible, input:focus-visible { outline: 1
 .repo-dot { width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
 .repo-name { overflow: hidden; text-overflow: ellipsis; }
 .count { text-align: right; font-variant-numeric: tabular-nums; }
-.row-note { grid-column: 4 / -1; text-align: right; color: var(--vscode-descriptionForeground); }
+.row-note { text-align: right; color: var(--vscode-descriptionForeground); }
 .dup { display: flex; gap: 8px; padding: 0 8px 0 36px; line-height: 20px; white-space: nowrap; color: var(--vscode-descriptionForeground); }
 .dup-subject { overflow: hidden; text-overflow: ellipsis; color: var(--vscode-foreground); }
 .missing { color: var(--vscode-descriptionForeground); border-top: 1px solid var(--vscode-panel-border); }

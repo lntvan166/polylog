@@ -119,22 +119,15 @@ export function mirror(c: RepoCompare): RepoCompare {
   return { kind: "differs", leftSha: c.rightSha, rightSha: c.leftSha, base: c.base, left: c.right, right: c.left, sameLeft: c.sameRight, sameRight: c.sameLeft };
 }
 
+/** The list's summary. No commit numbers: they mislead when the same change travels by cherry-pick. */
 export function summaryLabel(results: readonly RepoCompare[], ticked: number): string {
-  let differ = 0, l = 0, r = 0, same = 0, identical = 0, missing = 0;
+  let differ = 0, identical = 0, missing = 0;
   for (const c of results) {
     if (c.kind === "identical") identical++;
     else if (c.kind === "missing") missing++;
-    else {
-      differ++;
-      if (c.kind === "differs") {
-        l += c.left;
-        r += c.right;
-        same += c.sameLeft;
-      }
-    }
+    else differ++;
   }
   const parts = [`${differ} ${differ === 1 ? "repository differs" : "repositories differ"}`];
-  if (same > 0) parts.push(`=${same} on both`);
   if (identical > 0) parts.push(`${identical} identical`);
   if (missing > 0) parts.push(`${missing} missing a branch`);
   parts.push(`in ${plural(ticked, "repository", "repositories")}`);

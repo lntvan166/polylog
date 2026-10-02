@@ -77,7 +77,7 @@ assert.deepStrictEqual(mirror({ kind: "missing" }), { kind: "missing" });
 console.log("ok - swap mirrors a result without reading git");
 
 const results: RepoCompare[] = [differs, { ...differs, left: 5, right: 0, sameLeft: 0, sameRight: 0 }, { kind: "identical" }, { kind: "missing" }, { kind: "missing" }, { kind: "nobase" }];
-assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · =1 on both · 1 identical · 2 missing a branch · in 6 repositories");
+assert.strictEqual(summaryLabel(results, 6), "3 repositories differ · 1 identical · 2 missing a branch · in 6 repositories", "no commit numbers");
 assert.strictEqual(summaryLabel([{ kind: "identical" }], 1), "0 repositories differ · 1 identical · in 1 repository");
 assert.strictEqual(summaryLabel([{ ...results[1] }], 1), "1 repository differs · in 1 repository", "no =0, no 0 identical");
 console.log("ok - the summary counts what differs, what is identical and what is missing");

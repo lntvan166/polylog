@@ -303,7 +303,7 @@ section { display: grid; gap: 16px; }
         <div class="view t"><i class="n tl">28</i>
           <div class="vhead">▾ Repositories <span class="desc">release-1.4 ↔ main</span> <span class="tools t">⑂ ⇄ ⊙ ⟳<i class="n tl">31</i></span></div>
           <div class="vbody tree">
-            <div class="node t" style="--d:0"><span class="dot bg-api"></span> acme-api <span class="desc">3 ◀ · 1 ▶ · =1</span><i class="n tl">33</i></div>
+            <div class="node t" style="--d:0"><span class="dot bg-api"></span> acme-api<i class="n tl">33</i></div>
             <div class="node" style="--d:0"><span class="dot bg-web"></span> acme-web <span class="desc">5 ◀</span></div>
             <div class="node t" style="--d:0">▸ ⊘ Missing a branch <span class="desc">12 repositories</span><i class="n tl">36</i></div>
           </div>
@@ -332,7 +332,7 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
     <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>At the top of Repositories: ◀ left ▾ ⇄ ▶ right ▾ (each box opens the Branch picker), Files | Commits, ↻ Refresh; × in the view title hides the Polylog Compare tab. Show Commits / Show Files is also on Left and Right.</span></div>
     <div class="g"><i class="num">32</i><b>Branch picker</b><span>Opens under a branch box: a search box over Recent pairs, Favorites ★, Local and Remote, each name "in N repositories".</span></div>
-    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color, then ◀ / ▶ / = counts in aligned columns (commits only on the left, only on the right, on both; merges not counted). ▸ unfolds its duplicates. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
+    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color and name (commit counts in the tooltip); "no common history" or "git error" when it cannot be compared. ▸ unfolds the changes committed on both sides. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
     <div class="g"><i class="num">34</i><b>Left and Right views</b><span>The selected repository&#39;s two sides ("release-1.4 only", "main only" in their titles): the files each side changed since the split, with your file icons (Files), or its commits (Commits). A file changed on both sides says "both". A file opens its diff.</span></div>
     <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row with =N: each change committed on both sides (cherry-picked), with both commit ids.</span></div>
     <div class="g"><i class="num">36</i><b>Missing a branch</b><span>The last row: the repositories that lack one of the two branches.</span></div>

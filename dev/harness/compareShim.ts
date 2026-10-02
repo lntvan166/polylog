@@ -16,7 +16,7 @@ const rows: CRepoRow[] = [
   { repoId: "/work/acme-libs", name: "acme-libs", accent: 3, status: "differs", left: 0, right: 2, same: 3, behind: false },
   { repoId: "/work/acme-legacy", name: "acme-legacy", accent: 4, status: "nobase", left: 0, right: 0, same: 0, behind: false },
 ];
-const repos = () => send({ type: "repos", reading: false, summary: "4 repositories differ · =4 on both · 51 identical · 3 missing a branch · in 58 repositories", rows, missing: ["acme-docs", "acme-infra", "acme-ops"], selected, pairKey: `${pair.left}\0${pair.right}` });
+const repos = () => send({ type: "repos", reading: false, summary: "4 repositories differ · 51 identical · 3 missing a branch · in 58 repositories", rows, missing: ["acme-docs", "acme-infra", "acme-ops"], selected, pairKey: `${pair.left}\0${pair.right}` });
 const state = () => send({ type: "state", pair, mode: "files", recent: [pair, { left: "origin/release-1.3", right: "origin/prod" }], favorites: ["origin/main"] });
 
 function handle(m: ReposWebview): void {
