@@ -92,17 +92,20 @@
         {
           "id": "polylog.compare",
           "name": "Repositories",
-          "icon": "$(repo)"
+          "icon": "$(repo)",
+          "when": "polylog.compareShown"
         },
         {
           "id": "polylog.compareLeft",
           "name": "Left",
-          "icon": "$(arrow-left)"
+          "icon": "$(arrow-left)",
+          "when": "polylog.compareShown"
         },
         {
           "id": "polylog.compareRight",
           "name": "Right",
-          "icon": "$(arrow-right)"
+          "icon": "$(arrow-right)",
+          "when": "polylog.compareShown"
         }
       ],
       "polylog-side": [
@@ -326,6 +329,12 @@
         "command": "polylog.compareMore",
         "title": "Show More Commits",
         "category": "Polylog"
+      },
+      {
+        "command": "polylog.compareClose",
+        "title": "Close Polylog Compare",
+        "category": "Polylog",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -640,6 +649,11 @@
           "command": "polylog.compareShowFiles",
           "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode == commits",
           "group": "navigation@1"
+        },
+        {
+          "command": "polylog.compareClose",
+          "when": "view == polylog.compare",
+          "group": "navigation@9"
         }
       ],
       "explorer/context": [

@@ -90,6 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.compareBranches", () => compareRepos.open()),
     vscode.commands.registerCommand("polylog.compareWith", () => (log.branchBox ? compareRepos.compareWith(log.branchBox) : compareRepos.pick())),
     vscode.commands.registerCommand("polylog.comparePick", () => compareRepos.pick()),
+    vscode.commands.registerCommand("polylog.compareClose", () => compareRepos.close()),
     vscode.commands.registerCommand("polylog.compareSwap", () => compareRepos.swap()),
     vscode.commands.registerCommand("polylog.compareShowCommits", () => compareRepos.setMode("commits")),
     vscode.commands.registerCommand("polylog.compareShowFiles", () => compareRepos.setMode("files")),

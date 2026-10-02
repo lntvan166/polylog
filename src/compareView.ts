@@ -8,11 +8,15 @@ import { fileTree, type TreeNode } from "./fileTree";
 import type { LogView } from "./logView";
 import { isAbortError } from "./pool";
 import type { FileChange, Repo } from "./types";
+import { assignAccents } from "./webview/view";
 
 const PAIR = "polylog.compare.pair";
 const RECENT = "polylog.compare.recent";
 const FAVORITES = "polylog.compare.favorites";
 const MODE = "polylog.compare.mode";
+const SHOWN = "polylog.compare.shown";
+/** The Log's Repo List colors, in the same order (Uncommitted uses them too). */
+const ACCENT_COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
 const SCHEME = "polylog-compare";
 
 export type CompareMode = "files" | "commits";
@@ -92,6 +96,8 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
     );
     void this.setContext();
+    // The Polylog Compare tab is hidden until Compare Branches is clicked (remembered per workspace).
+    void vscode.commands.executeCommand("setContext", "polylog.compareShown", this.state.get<boolean>(SHOWN, false));
     if (this.view.visible) void this.start();
   }
 
@@ -100,6 +106,21 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
   }
   get mode(): CompareMode {
     return modeOf(this.deps.context);
+  }
+
+  /** Shows the Polylog Compare tab and focuses Repositories (the user asked). */
+  private async show(): Promise<void> {
+    if (!this.state.get<boolean>(SHOWN, false)) {
+      await this.state.update(SHOWN, true);
+      await vscode.commands.executeCommand("setContext", "polylog.compareShown", true);
+    }
+    await vscode.commands.executeCommand(`${CompareRepos.viewType}.focus`);
+  }
+
+  /** × in Repositories' title: hides the Polylog Compare tab until Compare Branches is clicked again. */
+  async close(): Promise<void> {
+    await this.state.update(SHOWN, false);
+    await vscode.commands.executeCommand("setContext", "polylog.compareShown", false);
   }
 
   private stop(): void {
@@ -118,12 +139,12 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
 
   /** ⇄ Compare Branches…: shows the Polylog Compare tab; with no pair yet, asks for one. */
   async open(): Promise<void> {
-    await vscode.commands.executeCommand(`${CompareRepos.viewType}.focus`);
+    await this.show();
     if (!this.deps.store.pair && !this.state.get<Pair>(PAIR)) await this.pick();
   }
 
   async compareWith(left: string): Promise<void> {
-    await vscode.commands.executeCommand(`${CompareRepos.viewType}.focus`);
+    await this.show();
     if (!validPair({ left, right: "x" })) return this.pick();
     this.pending = { left, right: "" };
     this.changed();
@@ -342,7 +363,9 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
         const dups = c?.kind === "differs" && c.sameLeft + c.sameRight > 0;
         const item = new vscode.TreeItem(hit?.repo.name ?? node.repoId, dups ? C.Collapsed : C.None);
         item.id = node.id;
-        item.iconPath = new vscode.ThemeIcon(c?.kind === "error" ? "warning" : "repo");
+        // As in the Log's Repo List: the repository's own color.
+        const accent = assignAccents(this.deps.log.repoList).get(node.repoId) ?? 0;
+        item.iconPath = c?.kind === "error" ? new vscode.ThemeIcon("warning") : new vscode.ThemeIcon("circle-filled", new vscode.ThemeColor(ACCENT_COLORS[accent % ACCENT_COLORS.length]));
         item.description = c ? repoCounts(c) : "";
         item.tooltip = c?.kind === "differs" && pair
           ? `${hit?.repo.name}: ${plural(c.left, "commit")} only on ${pair.left}, ${c.right} only on ${pair.right}, ${c.sameLeft} on both (merges not counted)`
@@ -375,8 +398,12 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
     }
   }
 
-  async snapshot(): Promise<{ open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: CompareMode; roots: string[]; selected: string | undefined }> {
+  async snapshot(): Promise<{ open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: CompareMode; roots: string[]; selected: string | undefined; icons: string[] }> {
     const roots = await this.getChildren();
+    const icons = roots.filter((n) => n.kind === "repo").map((n) => {
+      const icon = this.getTreeItem(n).iconPath as vscode.ThemeIcon;
+      return `${icon.id} ${(icon.color as { id?: string } | undefined)?.id ?? ""}`;
+    });
     return {
       open: this.view.visible, description: this.view.description ?? "", message: this.view.message, pair: this.deps.store.pair, mode: this.mode,
       roots: roots.filter((n) => n.kind === "repo").map((n) => {
@@ -384,6 +411,7 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
         return `${labelOf(item)} | ${item.description ?? ""}`;
       }),
       selected: this.deps.selection.repoId,
+      icons,
     };
   }
 

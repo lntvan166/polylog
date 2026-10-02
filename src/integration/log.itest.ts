@@ -1281,7 +1281,7 @@ describe("Polylog panel", () => {
       assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
     });
 
-    type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined };
+    type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; icons: string[] };
     type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] };
     const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
     const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
@@ -1301,6 +1301,11 @@ describe("Polylog panel", () => {
       assert.strictEqual(r.description, "release-1.4 ↔ prod");
       assert.deepStrictEqual(r.roots, ["acme-api | 1 ◀ · 1 ▶ · =1", "acme-web | 1 ◀"]);
       assert.strictEqual(r.selected, roots["acme-api"], "the first listed repository is selected");
+      // Like the Log's Repo List: each repository's own color, as a dot.
+      const { assignAccents } = require("../webview/view") as typeof import("../webview/view");
+      const COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
+      const accents = assignAccents((await snapshot()).repos);
+      assert.deepStrictEqual(r.icons, ["acme-api", "acme-web"].map((n) => `circle-filled ${COLORS[(accents.get(roots[n]) ?? 0) % COLORS.length]}`));
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
       assert.deepStrictEqual(pkg.viewsContainers, {
@@ -1340,6 +1345,16 @@ describe("Polylog panel", () => {
       await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: roots["acme-api"], path: "billing.ts" });
       await sleep(300);
       assert.strictEqual(tabs(), before, "a file opens only from the repository whose files are shown");
+    });
+
+    it("the Polylog Compare tab is hidden until Compare Branches is clicked, and × hides it again", async () => {
+      const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
+      for (const v of pkg.views["polylog-compare"] as { id: string; when?: string }[]) assert.strictEqual(v.when, "polylog.compareShown", `${v.id} is hidden by default`);
+      assert.ok((pkg.menus["view/title"] as { command: string; when: string }[]).some((m) => m.command === "polylog.compareClose" && m.when.includes("view == polylog.compare")));
+      await vscode.commands.executeCommand("polylog.compareClose");
+      await until2("hidden", repos, (x) => !x.open);
+      await vscode.commands.executeCommand("polylog.compareBranches");
+      await until2("shown again", repos, (x) => x.open && x.roots.length === 2);
     });
 
     it("Commits mode, swap, a new pair, and hiding the tab mid-read", async () => {

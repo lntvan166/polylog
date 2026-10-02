@@ -122,10 +122,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
 - **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
-  Compare** panel tab: three views side by side. It compares two branches in every ticked
+  Compare** panel tab (hidden until then; × in its title hides it again): three views side by side. It compares two branches in every ticked
   repository, for example `origin/release-1.4` (◀ left, what you merge from) and
   `origin/main` (▶ right, where it goes).
-  - **Repositories** lists the repositories whose files differ, each with `3 ◀ · 1 ▶ · =1`:
+  - **Repositories** lists the repositories whose files differ, each with its Repo List color and `3 ◀ · 1 ▶ · =1`:
     - **◀**: commits only on the left, which the merge brings in;
     - **▶**: commits only on the right, which the release lacks (a hotfix never brought back);
     - **=**: the same change committed on each side (a cherry-pick), listed under the row.
