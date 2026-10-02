@@ -173,7 +173,7 @@ section { display: grid; gap: 16px; }
         <div class="view t">
           <i class="n tl">2</i>
           <div class="vhead">▾ Log
-            <span class="tools t" title="Log toolbar">☰ ▭ ▯ ☁ ⋯<i class="n tl">3</i></span>
+            <span class="tools t" title="Log toolbar">☰ ⇄ ▣ ☁ ⋯<i class="n tl">3</i></span>
           </div>
           <div class="vbody log">
             <div class="pane t"><i class="n tl">4</i>
@@ -227,7 +227,7 @@ section { display: grid; gap: 16px; }
   <div class="gloss">
     <div class="g"><i class="num">1</i><b>Polylog panel</b><span>The "Polylog" tab in VS Code's bottom panel. Holds every Polylog view.</span></div>
     <div class="g"><i class="num">2</i><b>Log view</b><span>The merged history of every repository. Everything on its left side, down to the footer, belongs to it.</span></div>
-    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Icons in the Log\'s title, left to right: Group by Repository, Polylog Compare (panel icon) and Uncommitted View (side-bar icon) — outline when hidden, filled when shown, click to toggle — Fetch All, and the "⋯" menu (Show Only Repositories Behind).</span></div>
+    <div class="g"><i class="num">3</i><b>Log toolbar</b><span>Icons in the Log\'s title, left to right: Group by Repository, ⇄ Polylog Compare and Uncommitted View (the modified-file icon) — click to show, click again to hide — Fetch All, and the "⋯" menu (Show Only Repositories Behind).</span></div>
     <div class="g"><i class="num">4</i><b>Repo List</b><span>The list of repositories on the Log's left. Tick to choose which repositories the Log shows. Today's name in the code is "Repositories pane".</span></div>
     <div class="g"><i class="num">5</i><b>Repo search</b><span>"Filter repositories": narrows the Repo List by name.</span></div>
     <div class="g"><i class="num">6</i><b>All repositories row</b><span>Ticks or unticks every repository; shows how many are picked.</span></div>
@@ -330,9 +330,9 @@ section { display: grid; gap: 16px; }
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>In the Changes view's title: the selected commit's whole tree, like the Explorer; folders holding changes open, others read when opened.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository of the Uncommitted view. A file staged and changed again is in both.</span></div>
     <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
-    <div class="g"><i class="num">31</i><b>Compare title actions</b><span>In the Repositories view&#39;s title: Pick Branches…, ⇄ Swap Sides, Show Commits / Show Files (Files by default), Refresh. Show Commits / Show Files is on Left and Right too.</span></div>
-    <div class="g"><i class="num">32</i><b>Branch picker</b><span>VS Code&#39;s own Quick Pick, opened by Pick Branches…: Recent pairs, Favorites ★ (the star button), Local and Remote, each name "in N repositories"; first the left branch, then the right one.</span></div>
-    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: "3 ◀ · 1 ▶ · =1" (commits only on the left, only on the right, on both; merges not counted, zeros left out); "no common history" or "git error" when it cannot be compared. Selecting it fills Left and Right; with =N it expands to the duplicates. Right-click: the repository menu.</span></div>
+    <div class="g"><i class="num">31</i><b>Compare toolbar</b><span>At the top of Repositories: ◀ left ▾ ⇄ ▶ right ▾ (each box opens the Branch picker), Files | Commits, ↻ Refresh; × in the view title hides the Polylog Compare tab. Show Commits / Show Files is also on Left and Right.</span></div>
+    <div class="g"><i class="num">32</i><b>Branch picker</b><span>Opens under a branch box: a search box over Recent pairs, Favorites ★, Local and Remote, each name "in N repositories".</span></div>
+    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its Repo List color, then ◀ / ▶ / = counts in aligned columns (commits only on the left, only on the right, on both; merges not counted). ▸ unfolds its duplicates. Selecting it fills Left and Right. Right-click: the repository menu.</span></div>
     <div class="g"><i class="num">34</i><b>Left and Right views</b><span>The selected repository&#39;s two sides ("release-1.4 only", "main only" in their titles): the files each side changed since the split, with your file icons (Files), or its commits (Commits). A file changed on both sides says "both". A file opens its diff.</span></div>
     <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row with =N: each change committed on both sides (cherry-picked), with both commit ids.</span></div>
     <div class="g"><i class="num">36</i><b>Missing a branch</b><span>The last row: the repositories that lack one of the two branches.</span></div>

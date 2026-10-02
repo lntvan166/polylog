@@ -1,7 +1,9 @@
 import * as vscode from "vscode";
 import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { validPair } from "./compareModel";
-import { CompareRepos, CompareSelection, CompareSide, type CompareMode } from "./compareView";
+import type { ReposWebview } from "./compareProtocol";
+import { CompareRepos } from "./compareRepos";
+import { CompareSelection, CompareSide, type CompareMode } from "./compareView";
 import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
@@ -86,6 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
     compare,
     selection,
     compareRepos,
+    vscode.window.registerWebviewViewProvider(CompareRepos.viewType, compareRepos),
     sides.left,
     sides.right,
     vscode.window.registerFileDecorationProvider(sides.left),
@@ -176,6 +179,7 @@ export function activate(context: vscode.ExtensionContext): void {
       vscode.commands.registerCommand("polylog._itest.compareView", (p: unknown) => (validPair(p) ? compareRepos.setPair(p) : undefined)),
       vscode.commands.registerCommand("polylog._itest.compareMode", (m: CompareMode) => compareRepos.setMode(m)),
       vscode.commands.registerCommand("polylog._itest.compareSelect", (id: string) => compareRepos.select(id)),
+      vscode.commands.registerCommand("polylog._itest.compareReposSend", (m: ReposWebview) => compareRepos.onMessage(m)),
       vscode.commands.registerCommand("polylog._itest.expandChanges", (dir: string) => changes.expandPath(dir)),
       vscode.commands.registerCommand("polylog._itest.answer", (v: string | undefined) => uncommittedView.ask.queue(v)),
     );

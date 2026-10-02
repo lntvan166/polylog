@@ -1281,7 +1281,7 @@ describe("Polylog panel", () => {
       assert.ok(!after.spawnLog.slice(before).some((x) => x.cmd === "rev-parse"), "no rev-parse for a bad name");
     });
 
-    type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; icons: string[] };
+    type Repos = { open: boolean; description: string; message: string | undefined; pair: Pair | null; mode: string; roots: string[]; selected: string | undefined; accents: number[] };
     type SideSnap = { open: boolean; title: string; description: string; message: string | undefined; tree: string[]; files: string[] };
     const repos = () => vscode.commands.executeCommand<Repos>("polylog._itest.compare");
     const sideOf = (s: "left" | "right") => vscode.commands.executeCommand<SideSnap>("polylog._itest.compareSide", s);
@@ -1302,10 +1302,9 @@ describe("Polylog panel", () => {
       assert.deepStrictEqual(r.roots, ["acme-api | 1 ◀ · 1 ▶ · =1", "acme-web | 1 ◀"]);
       assert.strictEqual(r.selected, roots["acme-api"], "the first listed repository is selected");
       // Like the Log's Repo List: each repository's own color, as a dot.
-      const { assignAccents } = require("../webview/view") as typeof import("../webview/view");
-      const COLORS = ["charts.red", "charts.blue", "charts.yellow", "charts.green", "charts.purple", "terminal.ansiCyan"];
+      const { accentOf, assignAccents } = require("../webview/view") as typeof import("../webview/view");
       const accents = assignAccents((await snapshot()).repos);
-      assert.deepStrictEqual(r.icons, ["acme-api", "acme-web"].map((n) => `circle-filled ${COLORS[(accents.get(roots[n]) ?? 0) % COLORS.length]}`));
+      assert.deepStrictEqual(r.accents, ["acme-api", "acme-web"].map((n) => accentOf(accents, roots[n])));
       const pkg = vscode.extensions.getExtension("lntvan166.polylog-git")!.packageJSON.contributes;
       const views = pkg.views as Record<string, { id: string; icon?: string; type?: string }[]>;
       assert.deepStrictEqual(pkg.viewsContainers, {
@@ -1317,10 +1316,21 @@ describe("Polylog panel", () => {
         "polylog-compare": [["polylog.compare", "$(repo)"], ["polylog.compareLeft", "$(arrow-left)"], ["polylog.compareRight", "$(arrow-right)"]],
         "polylog-side": [["polylog.uncommitted", "$(diff-modified)"]],
       }, "Layout D: Log + Changes; the Compare tab; Uncommitted in the side bar");
-      const menus = pkg.menus["view/item/context"] as { command: string; when: string }[];
+      assert.strictEqual(views["polylog-compare"][0].type, "webview", "Repositories: the Branch boxes need a page; Left and Right stay native trees");
+      assert.strictEqual(views["polylog-compare"][1].type, undefined);
+      const menus = pkg.menus["webview/context"] as { command: string; when: string }[];
       for (const c of ["polylog.repoPull", "polylog.repoShowOnly", "polylog.repoHide", "polylog.repoOpenFolder", "polylog.repoCopyPath"]) {
-        assert.ok(menus.some((m) => m.command === c && m.when.includes("view == polylog.compare")), `${c} on a Compare repository row`);
+        assert.ok(menus.some((m) => m.command === c && m.when.includes("webviewId == 'polylog.compare'")), `${c} on a Compare repository row`);
       }
+      // The page's Branch boxes and rows: a pick and a click reach the host.
+      const rsend = (m: import("../compareProtocol").ReposWebview) => vscode.commands.executeCommand("polylog._itest.compareReposSend", m);
+      await rsend({ type: "pick", pair: { left: "prod", right: "release-1.4" } });
+      await until2("picked in the page", repos, (x) => x.description === "prod ↔ release-1.4" && x.roots.length === 2);
+      await rsend({ type: "pick", pair: { left: "release-1.4", right: "prod" } });
+      await until2("picked back", repos, (x) => x.description === "release-1.4 ↔ prod" && x.roots.length === 2);
+      await rsend({ type: "select", repoId: roots["acme-web"] });
+      await until2("row clicked", repos, (x) => x.selected === roots["acme-web"]);
+      await rsend({ type: "select", repoId: roots["acme-api"] });
       const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0);
       assert.strictEqual(left.title, "release-1.4 only");
       assert.strictEqual(left.description, "acme-api · 2 files");
@@ -1375,10 +1385,15 @@ describe("Polylog panel", () => {
       const icon = (cmd: string) => (pkg.commands as { command: string; icon?: string }[]).find((c) => c.command === cmd)?.icon;
       const log = (pkg.menus["view/title"] as { command: string; when: string }[]).filter((m) => m.when.startsWith("view == polylog.log"));
       const at = (cmd: string) => log.find((m) => m.command === cmd)?.when;
-      assert.deepStrictEqual([icon("polylog.uncommittedShow"), at("polylog.uncommittedShow")], ["$(layout-sidebar-left-off)", "view == polylog.log && !polylog.uncommittedShown"]);
-      assert.deepStrictEqual([icon("polylog.uncommittedHide"), at("polylog.uncommittedHide")], ["$(layout-sidebar-left)", "view == polylog.log && polylog.uncommittedShown"]);
-      assert.deepStrictEqual([icon("polylog.compareShow"), at("polylog.compareShow")], ["$(layout-panel-off)", "view == polylog.log && !polylog.compareShown"]);
-      assert.deepStrictEqual([icon("polylog.compareHide"), at("polylog.compareHide")], ["$(layout-panel)", "view == polylog.log && polylog.compareShown"]);
+      // Each button keeps its place whether shown or hidden: one position per button, not per state.
+      const pos = (cmd: string) => (log.find((m) => m.command === cmd) as { group?: string } | undefined)?.group;
+      assert.strictEqual(pos("polylog.compareShow"), pos("polylog.compareHide"));
+      assert.strictEqual(pos("polylog.uncommittedShow"), pos("polylog.uncommittedHide"));
+      assert.notStrictEqual(pos("polylog.compareShow"), pos("polylog.uncommittedShow"), "the two buttons never trade places");
+      assert.deepStrictEqual([icon("polylog.uncommittedShow"), at("polylog.uncommittedShow")], ["$(diff-modified)", "view == polylog.log && !polylog.uncommittedShown"]);
+      assert.deepStrictEqual([icon("polylog.uncommittedHide"), at("polylog.uncommittedHide")], ["$(diff-modified)", "view == polylog.log && polylog.uncommittedShown"]);
+      assert.deepStrictEqual([icon("polylog.compareShow"), at("polylog.compareShow")], ["$(git-compare)", "view == polylog.log && !polylog.compareShown"]);
+      assert.deepStrictEqual([icon("polylog.compareHide"), at("polylog.compareHide")], ["$(git-compare)", "view == polylog.log && polylog.compareShown"]);
       const shown = () => vscode.commands.executeCommand<boolean>("polylog._itest.uncommittedShown");
       await vscode.commands.executeCommand("polylog.uncommittedShow");
       assert.strictEqual(await shown(), true);

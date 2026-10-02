@@ -110,8 +110,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **The Uncommitted view** (in the Polylog side bar, like Source Control: the side-bar button
-    in the Log toolbar shows it, and, filled, hides it again): one
+  - **The Uncommitted view** (in the Polylog side bar, like Source Control: its button in the
+    Log toolbar shows it, and hides it again): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
     files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
     first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
@@ -122,9 +122,9 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     the Changes tree.
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
-- **Compare Branches** (the panel button in the Log toolbar, or the Command Palette) opens the
-  **Polylog Compare** panel tab, hidden until then; the same button, now filled, hides it again
-  (or × in its title): three views side by side. It compares two branches in every ticked
+- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
+  Compare** panel tab, hidden until then; ⇄ again (or × in its title) hides it: three views
+  side by side. It compares two branches in every ticked
   repository, for example `origin/release-1.4` (◀ left, what you merge from) and
   `origin/main` (▶ right, where it goes).
   - **Repositories** lists the repositories whose files differ, each with its Repo List color and `3 ◀ · 1 ▶ · =1`:
@@ -133,8 +133,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     - **=**: the same change committed on each side (a cherry-pick), listed under the row.
 
     Merge commits aren't counted. Repositories that lack a branch are listed at the bottom.
-    The title has **Pick Branches…** (VS Code's Quick Pick: recent pairs, favorites, local
-    and remote), **Swap**, **Files / Commits** and **Refresh**.
+    At the top: **◀ left ▾ ⇄ ▶ right ▾**, each box opening a searchable branch list (recent
+    pairs, ★ favorites, local, remote), then **Files | Commits** and **Refresh**.
   - **Left** and **Right** show the selected repository's two sides:
     - **Files** (the default): what each side changed since the branches split, as a folder
       tree with your file icons. A file changed on both sides is marked **both**.

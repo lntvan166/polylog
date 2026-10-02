@@ -195,6 +195,9 @@ export class CompareStore implements vscode.Disposable {
     return parseShow(await this.deps.run(repo.root, showArgs(sha), this.ctl.signal)).files;
   }
 
+  /** The remotes the last branch read found ("origin", …): the Branch picker's Remote group. */
+  remoteNames: string[] = [];
+
   /** Branch names across the ticked repositories, with how many have each (the Branch picker). */
   async readBranches(): Promise<{ name: string; count: number }[]> {
     const repos = [...this.deps.repos()];
@@ -207,6 +210,7 @@ export class CompareStore implements vscode.Disposable {
       return ref.replace(/^refs\/(heads|remotes)\//, "");
     }));
     setRemoteNames(remotes);
+    this.remoteNames = [...remotes];
     return branchSuggestions(lists);
   }
 

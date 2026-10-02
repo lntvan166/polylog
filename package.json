@@ -93,7 +93,8 @@
           "id": "polylog.compare",
           "name": "Repositories",
           "icon": "$(repo)",
-          "when": "polylog.compareShown"
+          "when": "polylog.compareShown",
+          "type": "webview"
         },
         {
           "id": "polylog.compareLeft",
@@ -348,25 +349,25 @@
         "command": "polylog.uncommittedShow",
         "title": "Show Uncommitted View",
         "category": "Polylog",
-        "icon": "$(layout-sidebar-left-off)"
+        "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.uncommittedHide",
         "title": "Hide Uncommitted View",
         "category": "Polylog",
-        "icon": "$(layout-sidebar-left)"
+        "icon": "$(diff-modified)"
       },
       {
         "command": "polylog.compareShow",
-        "title": "Show Polylog Compare (Compare Branches)",
+        "title": "Show Polylog Compare",
         "category": "Polylog",
-        "icon": "$(layout-panel-off)"
+        "icon": "$(git-compare)"
       },
       {
         "command": "polylog.compareHide",
         "title": "Hide Polylog Compare",
         "category": "Polylog",
-        "icon": "$(layout-panel)"
+        "icon": "$(git-compare)"
       }
     ],
     "menus": {
@@ -465,31 +466,6 @@
           "command": "polylog.fileHistory",
           "when": "view == polylog.uncommitted && viewItem =~ /^file\\.(staged|changes)(\\.readonly)?$/",
           "group": "3_history@1"
-        },
-        {
-          "command": "polylog.repoPull",
-          "when": "view == polylog.compare && viewItem == compareRepo.behind",
-          "group": "0_sync@1"
-        },
-        {
-          "command": "polylog.repoShowOnly",
-          "when": "view == polylog.compare && viewItem =~ /^compareRepo/",
-          "group": "1_filter@1"
-        },
-        {
-          "command": "polylog.repoHide",
-          "when": "view == polylog.compare && viewItem =~ /^compareRepo/",
-          "group": "1_filter@2"
-        },
-        {
-          "command": "polylog.repoOpenFolder",
-          "when": "view == polylog.compare && viewItem =~ /^compareRepo/",
-          "group": "2_open@1"
-        },
-        {
-          "command": "polylog.repoCopyPath",
-          "when": "view == polylog.compare && viewItem =~ /^compareRepo/",
-          "group": "3_copy@1"
         }
       ],
       "commandPalette": [
@@ -636,12 +612,12 @@
         {
           "command": "polylog.uncommittedShow",
           "when": "view == polylog.log && !polylog.uncommittedShown",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "polylog.uncommittedHide",
           "when": "view == polylog.log && polylog.uncommittedShown",
-          "group": "navigation@1"
+          "group": "navigation@2"
         },
         {
           "command": "polylog.compareShow",
@@ -656,7 +632,7 @@
         {
           "command": "polylog.fetchAll",
           "when": "view == polylog.log",
-          "group": "navigation@2"
+          "group": "navigation@3"
         },
         {
           "command": "polylog.showBehind",
@@ -677,31 +653,6 @@
           "command": "polylog.changesShowChanged",
           "when": "view == polylog.changes && polylog.changesAllFiles",
           "group": "navigation@1"
-        },
-        {
-          "command": "polylog.comparePick",
-          "when": "view == polylog.compare",
-          "group": "navigation@1"
-        },
-        {
-          "command": "polylog.compareSwap",
-          "when": "view == polylog.compare && polylog.comparePair",
-          "group": "navigation@2"
-        },
-        {
-          "command": "polylog.compareShowCommits",
-          "when": "view == polylog.compare && polylog.compareMode != commits",
-          "group": "navigation@3"
-        },
-        {
-          "command": "polylog.compareShowFiles",
-          "when": "view == polylog.compare && polylog.compareMode == commits",
-          "group": "navigation@3"
-        },
-        {
-          "command": "polylog.compareRefresh",
-          "when": "view == polylog.compare && polylog.comparePair",
-          "group": "navigation@4"
         },
         {
           "command": "polylog.compareShowCommits",
@@ -817,6 +768,31 @@
           "command": "polylog.repoExclude",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/",
           "group": "4_exclude@1"
+        },
+        {
+          "command": "polylog.repoPull",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo' && behind",
+          "group": "0_sync@1"
+        },
+        {
+          "command": "polylog.repoShowOnly",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "1_filter@1"
+        },
+        {
+          "command": "polylog.repoHide",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "1_filter@2"
+        },
+        {
+          "command": "polylog.repoOpenFolder",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "2_open@1"
+        },
+        {
+          "command": "polylog.repoCopyPath",
+          "when": "webviewId == 'polylog.compare' && webviewSection == 'compareRepo'",
+          "group": "3_copy@1"
         }
       ]
     },
@@ -853,20 +829,13 @@
           "description": "Glob patterns for repositories to leave out, matched against the repository folder name and its full path."
         }
       }
-    },
-    "viewsWelcome": [
-      {
-        "view": "polylog.compare",
-        "contents": "Compare two branches in every ticked repository: what one has that the other has not.\n[Pick Branches…](command:polylog.comparePick)",
-        "when": "!polylog.comparePair"
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run check:denylist && npm run bundle",
     "bundle:ext": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --platform=node --format=cjs --target=node18",
-    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify",
-    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap",
+    "bundle": "npm run bundle:ext -- --minify && npm run bundle:web -- --minify && npm run bundle:compare -- --minify",
+    "compile": "npm run bundle:ext -- --sourcemap && npm run bundle:web -- --sourcemap && npm run bundle:compare -- --sourcemap",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "check:denylist": "node scripts/check-denylist.mjs",
@@ -881,7 +850,8 @@
     "check:design": "npx --yes impeccable@4.1.0 detect src/webview",
     "build:itest": "esbuild src/integration/runTests.ts src/integration/index.ts src/integration/log.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --external:@vscode/test-electron --outdir=out/integration",
     "test:integration": "npm run compile && npm run build:itest && node out/integration/runTests.js",
-    "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs"
+    "perf:startup": "npm run compile && esbuild src/integration/index.ts src/integration/perf.itest.ts --bundle --platform=node --format=cjs --external:vscode --external:mocha --outdir=out/perf --log-level=warning && node dev/perf/run.mjs",
+    "bundle:compare": "esbuild src/webview/compare/main.ts --bundle --outfile=out/compare.js --platform=browser --format=iife --target=es2022"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
