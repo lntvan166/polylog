@@ -2,7 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor, stat } from "./changesModel";
 import type { OpenDiffArgs } from "./changesTree";
-import { COMMIT_PAGE, shownFiles, sidePage, type RepoCompare, type Side, type SideCommit } from "./compareModel";
+import { COMMIT_PAGE, shownFiles, sidePage, tipPaths, type RepoCompare, type Side, type SideCommit } from "./compareModel";
 import type { CompareMode } from "./compareProtocol";
 import type { CompareStore } from "./compareStore";
 import { fileTree, type TreeNode } from "./fileTree";
@@ -328,8 +328,9 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     const t = this.fileTarget(arg);
     if (!t) return;
     const { f, hit, pair } = t;
-    // Each tip's own copy of the file (an absent one is an empty side).
-    await this.deps.log.openDiff({ repoId: hit.repo.id, sha: hit.result.leftSha, parent: hit.result.rightSha, path: f.path}, false,
+    // Each tip's own copy of the file (an absent one is an empty side), under its name there.
+    const at = tipPaths(this.side, f);
+    await this.deps.log.openDiff({ repoId: hit.repo.id, sha: hit.result.leftSha, parent: hit.result.rightSha, path: at.left, ...(at.right !== at.left ? { oldPath: at.right } : {}) }, false,
       `${path.posix.basename(f.path)} (${short(pair.right)} ↔ ${short(pair.left)}) — ${hit.repo.name}`);
   }
 

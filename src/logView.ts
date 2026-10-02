@@ -27,6 +27,8 @@ export const HIDE_REPOS_KEY = "polylog.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
 const PANE_WIDTH_KEY = "polylog.repoPaneWidth";
 const DEFAULT_PANE_WIDTH = 190;
+/** For a git run that must finish once started (a merge rewriting the working tree). */
+const NEVER_ABORT = new AbortController().signal;
 /** Context key: Fetch All is running (the toolbar shows a spinning sync instead of the cloud). */
 const FETCHING_KEY = "polylog.fetching";
 /** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
@@ -783,7 +785,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     let settled: PromiseSettledResult<string>[];
     try {
       settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Pulling" }, () =>
-        runPool(repos, Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY), (r) => this.run(r.root, pullArgs(), outer), outer));
+        // The pool stops starting merges on an abort; a merge already running is never killed
+        // halfway through the working tree. No prompts (hooks and LFS may ask), and git's own words in English for pullReason.
+        runPool(repos, Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY), (r) => this.run(r.root, pullArgs(), NEVER_ABORT, { env: { ...FETCH_ENV, LC_ALL: "C" } }), outer));
     } finally {
       for (const r of repos) this.pulling.delete(r.id);
     }

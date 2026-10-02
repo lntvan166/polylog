@@ -932,6 +932,8 @@ describe("Polylog panel", () => {
       git(api.root, "commit", "-q", "--allow-empty", "-m", "wip: local only");
       const apiLocal = git(api.root, "rev-parse", "HEAD");
       fs.writeFileSync(path.join(libs.root, "package.json"), "{\"local\": true}\n");
+      // merge.autoStash would stash the edit, fast-forward and apply it back with conflict markers.
+      git(libs.root, "config", "merge.autoStash", "true");
 
       const result = await vscode.commands.executeCommand<{ pulled: string[]; skipped: { name: string; reason: string }[] }>("polylog.fetchAndPullAll");
       assert.deepStrictEqual(result.pulled, ["acme-web"]);
@@ -940,6 +942,7 @@ describe("Polylog panel", () => {
       assert.strictEqual(git(api.root, "rev-parse", "HEAD"), apiLocal, "a diverged branch is not touched");
       assert.strictEqual(git(libs.root, "rev-parse", "HEAD"), libs.before, "nothing merged over local changes");
       assert.strictEqual(fs.readFileSync(path.join(libs.root, "package.json"), "utf8"), "{\"local\": true}\n", "the local edit kept");
+      assert.strictEqual(git(libs.root, "stash", "list"), "", "nothing stashed");
       await until("acme-web no longer behind", (x) => x.sync[web.id] === undefined && x.sync[libs.id]?.behind === 1);
     } finally {
       const quietly = (f: () => unknown) => { try { f(); } catch { /* not set up */ } };
@@ -949,6 +952,7 @@ describe("Polylog panel", () => {
         quietly(() => git(r.root, "branch", "--unset-upstream", r.branch));
         quietly(() => git(r.root, "remote", "remove", "origin"));
       }
+      quietly(() => git(libs.root, "config", "--unset", "merge.autoStash"));
       fs.rmSync(remote, { recursive: true, force: true });
       // In the cleanup: a failure here must not leave stale ↓ marks for the tests after it.
       await send({ type: "refresh" });
@@ -1866,6 +1870,39 @@ describe("Polylog panel", () => {
       await sleep(500);
       const diffs = (await snapshot()).spawnLog.slice(before).filter((x) => x.cmd === "diff" && x.root === web).length;
       assert.strictEqual(diffs, 3, "one readFiles (each side's git diff, and the tips') for both sides");
+    });
+
+    it("a file renamed on one side opens against its old name at the other tip", async () => {
+      const api = roots["acme-api"];
+      const relTip = git(api, ["rev-parse", "refs/heads/release-1.4"]);
+      // ren: release-1.4 with limit.go renamed (same content) to rate.go.
+      const idx = path.join(os.tmpdir(), `polylog-ren-${process.pid}.index`);
+      const env = { ...process.env, GIT_INDEX_FILE: idx };
+      cp.execFileSync("git", ["read-tree", relTip], { cwd: api, env });
+      const blob = cp.execFileSync("git", ["rev-parse", `${relTip}:limit.go`], { cwd: api }).toString().trim();
+      cp.execFileSync("git", ["update-index", "--force-remove", "limit.go"], { cwd: api, env });
+      cp.execFileSync("git", ["update-index", "--add", "--cacheinfo", `100644,${blob},rate.go`], { cwd: api, env });
+      const tree = cp.execFileSync("git", ["write-tree"], { cwd: api, env }).toString().trim();
+      fs.rmSync(idx, { force: true });
+      const ren = git(api, ["commit-tree", tree, "-p", relTip, "-m", "refactor: rename limit to rate"]);
+      git(api, ["update-ref", "refs/heads/ren", ren]);
+      try {
+        await viewPick({ left: "ren", right: "release-1.4" });
+        await until2("listed", repos, (x) => x.roots.some((r) => r.startsWith("acme-api")));
+        await select(api);
+        await until2("ren left", () => sideOf("left"), (x) => x.tree.some((t) => t.startsWith("rate.go")));
+        await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+        await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "left", repoId: api, path: "rate.go" });
+        const tab = await waitFor("a diff", () => {
+          const t = vscode.window.tabGroups.activeTabGroup.activeTab;
+          return t?.input instanceof vscode.TabInputTextDiff ? t.input : undefined;
+        });
+        assert.strictEqual((await vscode.workspace.openTextDocument(tab.original)).getText(), "package limit\n", "release-1.4 has it as limit.go: not an empty side");
+        assert.strictEqual((await vscode.workspace.openTextDocument(tab.modified)).getText(), "package limit\n");
+      } finally {
+        cp.spawnSync("git", ["update-ref", "-d", "refs/heads/ren"], { cwd: api });
+        await vscode.commands.executeCommand("workbench.action.closeAllEditors");
+      }
     });
 
     it("a file's status badge follows the pair (no badge from another pair's same path)", async () => {

@@ -68,11 +68,13 @@ export function fetchSummary(total: number, behind: number): string {
 
 /**
  * Pull All Behind: the commits the last fetch brought, into the current branch. A merge with
- * the upstream, fast-forward only: no network, never a merge commit, and git refuses (changing
- * nothing) when local changes touch the incoming files.
+ * the upstream, fast-forward only: no fetch, never a merge commit, and git refuses (changing
+ * nothing) when local changes touch the incoming files. Hooks and LFS may still reach the network.
  */
 export function pullArgs(): string[] {
-  return ["merge", "--ff-only", "--quiet", "@{upstream}"];
+  // Pinned off: merge.autoStash would stash local edits, fast-forward and apply them back with
+  // conflict markers (and exit 0); submodule.recurse would check out submodules too.
+  return ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"];
 }
 
 /** Behind and not ahead: a fast-forward. Behind and ahead: diverged, left to the user. */

@@ -32,7 +32,8 @@ import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, p
   console.log("ok - Fetch All says how far it is, and what it found");
 }
 {
-  assert.deepStrictEqual(pullArgs(), ["merge", "--ff-only", "--quiet", "@{upstream}"], "what the last fetch brought: no network, never a merge commit");
+  assert.deepStrictEqual(pullArgs(), ["-c", "merge.autoStash=false", "-c", "submodule.recurse=false", "merge", "--ff-only", "--quiet", "@{upstream}"],
+    "what the last fetch brought: never a merge commit; autostash off, or it would merge local changes in and write conflict markers");
   const sync = { a: { ahead: 0, behind: 3 }, b: { ahead: 2, behind: 0 }, c: { ahead: 1, behind: 4 }, d: { ahead: 0, behind: 1 } };
   assert.deepStrictEqual(pullPlan(["d", "c", "b", "a", "e"], sync), { pull: ["d", "a"], diverged: ["c"] }, "behind and not ahead: a fast-forward; both: diverged, left alone");
   assert.strictEqual(pullReason("error: Your local changes to the following files would be overwritten by merge:\n\tx.go"), "local changes to the same files");

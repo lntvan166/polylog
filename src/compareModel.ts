@@ -116,6 +116,12 @@ export function shownFiles(files: readonly FileChange[], same: ReadonlySet<strin
   return { shown, hidden: files.length - shown.length };
 }
 
+/** The file's path at each tip: renamed on this side, the other tip still has it under its old name. */
+export function tipPaths(side: Side, f: { path: string; oldPath?: string }): { left: string; right: string } {
+  const other = f.oldPath ?? f.path;
+  return side === "left" ? { left: f.path, right: other } : { left: other, right: f.path };
+}
+
 /** Duplicates for display: a left and a right one with the same subject share a row. Counts come from git. */
 export function pairDuplicates(left: readonly SideCommit[], right: readonly SideCommit[]): Duplicate[] {
   const rights = [...right];

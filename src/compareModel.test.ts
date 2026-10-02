@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-  bothPaths, COMMIT_PAGE, sameNow, shownFiles, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
+  bothPaths, COMMIT_PAGE, sameNow, shownFiles, tipPaths, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
   parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, sidePage, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
@@ -68,6 +68,12 @@ console.log("ok - a file changed on both sides but not between the tips is the s
   assert.strictEqual(shownFiles(fs3, same, false).hidden, 0);
   console.log("ok - Hide Files Already on Both leaves them out and counts them");
 }
+
+// A rename on one side: the other tip still has the file under its old name.
+assert.deepStrictEqual(tipPaths("left", { path: "rate.go", oldPath: "limit.go" }), { left: "rate.go", right: "limit.go" });
+assert.deepStrictEqual(tipPaths("right", { path: "rate.go", oldPath: "limit.go" }), { left: "limit.go", right: "rate.go" });
+assert.deepStrictEqual(tipPaths("left", { path: "a.go" }), { left: "a.go", right: "a.go" });
+console.log("ok - a file renamed on one side opens against its old name at the other tip");
 
 assert.deepStrictEqual(logArgs("left", A, B, COMMIT_PAGE), [
   "log", "--left-only", "--cherry-mark", "--no-merges", "--max-count=500", "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${A}...${B}`,

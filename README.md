@@ -95,8 +95,8 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     pull settings, its credential prompts, conflicts in Source Control), or
     `git pull --ff-only` for a repository VS Code's Git does not have open.
     **Pull All Repositories Behind** (the Log's `…` menu, or right-click a repository) brings
-    every repository with ↓ up to what the last fetch brought, fast-forward only and with no
-    second fetch; **Fetch and Pull All** fetches first. A repository that diverged, or whose
+    every repository with ↓ up to what the last fetch brought, fast-forward only and without
+    fetching again; **Fetch and Pull All** fetches first. A repository that diverged, or whose
     local changes touch the incoming files, is left as it was and named.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
