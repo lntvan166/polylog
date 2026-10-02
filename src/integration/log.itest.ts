@@ -590,6 +590,39 @@ describe("Polylog panel", () => {
     await send({ type: "refresh" });
   });
 
+  it("on the Uncommitted side, a refresh or a commit selection leaves its files in the Changes view", async () => {
+    const fs = require("fs") as typeof import("fs");
+    const path = require("path") as typeof import("path");
+    const cp = require("child_process") as typeof import("child_process");
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const web = s0.repos.find((r) => r.name === "acme-web")!;
+    fs.writeFileSync(path.join(web.root, "client.ts"), "export const ok = 8;\n");
+    try {
+      await send({ type: "refresh" });
+      await until("acme-web behind the switch", (x) => x.workRows.length === 1);
+      await send({ type: "logMode", mode: "uncommitted" });
+      const uncommitted = (x: LogSnapshot) => x.changes.items[0]?.includes("not committed") === true;
+      await until("its files", uncommitted);
+      // A refresh: the commit rows are read again, none of them is the work tree.
+      await send({ type: "refresh" });
+      await sleep(600);
+      assert.ok(uncommitted(await snapshot()), "still the uncommitted files after a refresh");
+      // A commit selection (the Commit list re-selects its top row when rows change).
+      const c = bySubject(s0, "feat: add retry");
+      await send({ type: "select", repoId: c.repoId, sha: c.sha });
+      await sleep(600);
+      assert.ok(uncommitted(await snapshot()), "a commit selection does not replace them");
+      // Back on Commits: that selected commit.
+      await send({ type: "logMode", mode: "commits" });
+      await until("the selected commit on the Commits side", (x) => x.changes.items.some((i) => i.includes("upload.go")));
+    } finally {
+      await send({ type: "logMode", mode: "commits" });
+      cp.execFileSync("git", ["checkout", "--", "."], { cwd: web.root });
+    }
+    await send({ type: "refresh" });
+    await until("nothing uncommitted", (x) => x.workRows.length === 0);
+  });
+
   it("Commit with the Path box set says how many files the commit really takes, and stops if you decline", async () => {
     const fs = require("fs") as typeof import("fs");
     const path = require("path") as typeof import("path");

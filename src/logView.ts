@@ -1028,29 +1028,43 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const base = { commit, repoRoot: repo.root, repoName: repo.name, files: [], message: "", focusPath: commit.file?.path };
     // File history: the diff follows the selection, in one preview tab, keeping focus in the Log.
     if (this.history && commit.file) void this.openHistoryDiff(commit);
-    this.deps.changes.set({ ...base, status: "loading" });
+    this.setCommitTree({ ...base, status: "loading" });
     try {
       const { files, message } = parseShow(await this.run(repo.root, showArgs(sha), ctl.signal));
       if (ctl.signal.aborted) return; // a newer selection owns the tree now
-      this.deps.changes.set({ ...base, status: "ready", files, message });
+      this.setCommitTree({ ...base, status: "ready", files, message });
       if (this.openWhenLoaded === key) {
         this.openWhenLoaded = null;
         await this.openFirstOf(commit);
       }
     } catch (e) {
-      if (!isAbortError(e) && !ctl.signal.aborted) this.deps.changes.set({ ...base, status: "error", error: messageOf(e) });
+      if (!isAbortError(e) && !ctl.signal.aborted) this.setCommitTree({ ...base, status: "error", error: messageOf(e) });
     }
   }
 
   /** A filter or refresh removed the tree's commit from the list: show nothing rather than a stale commit. */
   private clearTreeIfGone(): void {
-    const current = this.deps.changes.current();
+    const current = this.commitTree();
     if (!current) return;
     const key = commitKey(current.commit);
     if (this.rows.some((c) => commitKey(c) === key)) return;
     this.detail.abort();
     this.openWhenLoaded = null;
-    this.deps.changes.set(null);
+    this.setCommitTree(null);
+  }
+
+  /**
+   * The Commits side's tree. On the Uncommitted side the Changes view shows a repository's
+   * work: a commit's files (a selection, a detail read finishing, a reload) wait for the switch
+   * to come back instead of replacing them.
+   */
+  private commitTree(): ReturnType<ChangesTree["current"]> {
+    return this.logMode === "uncommitted" ? this.commitsTree : this.deps.changes.current();
+  }
+
+  private setCommitTree(state: ReturnType<ChangesTree["current"]>): void {
+    if (this.logMode === "uncommitted") this.commitsTree = state;
+    else this.deps.changes.set(state);
   }
 
   private openHistoryDiff(commit: Commit, preserveFocus = true): Promise<void> {
@@ -1136,6 +1150,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     } else {
       this.deps.changes.set(this.commitsTree);
       this.commitsTree = null;
+      // It may be a commit the list no longer has (a filter changed meanwhile).
+      this.clearTreeIfGone();
     }
   }
 
