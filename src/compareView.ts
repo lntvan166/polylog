@@ -68,6 +68,9 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
   private readonly emitter = new vscode.EventEmitter<RNode | undefined>();
   readonly onDidChangeTreeData = this.emitter.event;
   private pending: Pair | null = null;
+  /** The user picked a repository: the selection stops following the first listed one. */
+  private chosen = false;
+  private revealTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly touched = new Set<string>();
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -82,7 +85,9 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
       this.view.onDidChangeVisibility(() => (this.view.visible ? void this.start() : this.stop())),
       this.view.onDidChangeSelection((e) => {
         const n = e.selection[0];
-        if (n?.kind === "repo") deps.selection.set(n.repoId);
+        if (n?.kind !== "repo" || n.repoId === deps.selection.repoId) return; // our own reveal
+        this.chosen = true;
+        deps.selection.set(n.repoId);
       }),
       deps.log.onDidChangeRefs((id) => this.refsMoved(id)),
     );
@@ -133,6 +138,7 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
     await this.state.update(PAIR, p);
     if (p.left !== p.right) await this.state.update(RECENT, pushRecent(this.state.get<Pair[]>(RECENT, []), p));
     // The old pair's files leave the sides at once.
+    this.chosen = false;
     this.deps.selection.set(undefined);
     this.changed();
     await this.deps.store.setPair(p);
@@ -160,6 +166,7 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
   /** Selects a repository row (test seam; a click does the same through the view). */
   select(repoId: string): void {
     if (!resultOf(this.deps.store, repoId)) return;
+    this.chosen = true;
     this.deps.selection.set(repoId);
     const n = this.nodes.get(repoId);
     if (n && this.view.visible) void this.view.reveal(n, { select: true, focus: false });
@@ -265,11 +272,26 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
     const listed = this.listed();
     const sel = this.deps.selection.repoId;
     if (pair && pair.right && pair.left !== pair.right) {
-      // (A side whose repository's branches moved reads again on its own: its detail key no longer matches.)
-      if (!sel || !listed.some((x) => x.repo.id === sel)) this.deps.selection.set(listed[0]?.repo.id);
+      // Until the user picks one, the selection is the first listed repository (repositories answer
+      // in any order). A side whose repository's branches moved reads again on its own (its key changed).
+      if (!this.chosen || !sel || !listed.some((x) => x.repo.id === sel)) {
+        if (sel && !listed.some((x) => x.repo.id === sel)) this.chosen = false;
+        this.deps.selection.set(listed[0]?.repo.id);
+      }
     }
+    this.revealSoon();
     void this.setContext();
     this.emitter.fire(undefined);
+  }
+
+  /** Highlights the selected repository's row (after the tree has drawn the new rows). */
+  private revealSoon(): void {
+    clearTimeout(this.revealTimer);
+    this.revealTimer = setTimeout(() => {
+      const id = this.deps.selection.repoId;
+      const n = id ? this.nodes.get(id) : undefined;
+      if (n && this.view.visible && this.view.selection[0]?.id !== n.id) void Promise.resolve(this.view.reveal(n, { select: true, focus: false })).catch(() => undefined);
+    }, 120);
   }
 
   private listed() {
@@ -290,6 +312,8 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
           this.nodes.set(x.repo.id, n);
           return n;
         });
+        // The rows exist now: highlight the selected one.
+        this.revealSoon();
         return this.deps.store.results().some((x) => x.result.kind === "missing") ? [...rows, { kind: "missing", id: "missing" }] : rows;
       }
       if (node.kind === "repo") {
@@ -365,6 +389,7 @@ export class CompareRepos implements vscode.TreeDataProvider<RNode>, vscode.Disp
 
   dispose(): void {
     clearTimeout(this.refreshTimer);
+    clearTimeout(this.revealTimer);
     for (const d of this.disposables) d.dispose();
     this.emitter.dispose();
   }
@@ -413,12 +438,12 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   private render(): void {
     const pair = this.deps.store.pair;
     const repoId = this.deps.selection.repoId;
-    const name = pair ? short(pair[this.side]) : "";
-    this.view.title = pair ? `${name} only` : this.side === "left" ? "Left" : "Right";
+    // VS Code title-cases view titles: the branch name goes in the description, as typed.
+    const only = pair ? `${short(pair[this.side])} only` : "";
     const hit = repoId ? resultOf(this.deps.store, repoId) : undefined;
     if (this.detail && (this.detail.repoId !== repoId || this.detail.key !== (repoId ? keyOf(this.deps.store, repoId) : "") || this.detail.mode !== this.mode)) this.detail = undefined;
     const n = this.detail ? (this.mode === "files" ? this.detail.files?.length ?? 0 : this.detail.commits?.length ?? 0) : undefined;
-    this.view.description = hit ? `${hit.repo.name}${n === undefined ? "" : ` · ${plural(n, this.mode === "files" ? "file" : "commit")}`}` : "";
+    this.view.description = [only, hit ? `${hit.repo.name}${n === undefined ? "" : ` · ${plural(n, this.mode === "files" ? "file" : "commit")}`}` : ""].filter(Boolean).join(" · ");
     this.view.message = !pair || !repoId ? "Select a repository in Repositories."
       : hit?.result.kind === "nobase" ? `${hit.repo.name}: the two branches share no history, so there is no split point.`
       : hit?.result.kind === "error" ? `${hit.repo.name}: git could not compare the branches: ${hit.result.reason}`
@@ -453,8 +478,9 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     const before = this.view.message;
     const hit = this.detail ? resultOf(this.deps.store, this.detail.repoId) : undefined;
     const n = this.mode === "files" ? this.detail?.files?.length : this.detail?.commits?.length;
+    const pair = this.deps.store.pair;
     if (hit && n !== undefined) {
-      this.view.description = `${hit.repo.name} · ${plural(n, this.mode === "files" ? "file" : "commit")}`;
+      this.view.description = `${pair ? `${short(pair[this.side])} only · ` : ""}${hit.repo.name} · ${plural(n, this.mode === "files" ? "file" : "commit")}`;
       this.view.message = n === 0 ? "No changes on this side." : before === "No changes on this side." ? undefined : before;
     }
   }
@@ -573,7 +599,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     };
     await walk(await this.getChildren(), 0);
     this.renderHeader();
-    return { open: this.view.visible, title: this.view.title ?? "", description: this.view.description ?? "", message: this.view.message, tree: lines };
+    return { open: this.view.visible, title: this.view.description?.split(" · ")[0] ?? "", description: this.view.description?.split(" · ").slice(1).join(" · ") ?? "", message: this.view.message, tree: lines };
   }
 
   dispose(): void {

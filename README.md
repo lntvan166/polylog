@@ -110,7 +110,7 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 - **Open File** on any Polylog diff (the title-bar button, or a file's right-click in
   Changes) opens the file as it is in your workspace now, at the same line number.
 - **Uncommitted changes, across every repo:**
-  - **The Uncommitted view** (third in the Polylog panel, collapsed until you open it): one
+  - **The Uncommitted view** (under the **Polylog** icon in the Activity Bar, like Source Control): one
     row per ticked repository with uncommitted work, its **Staged** and **Changes** groups,
     files under folders. Hover for **Stage**, **Unstage**, **Discard** (it always asks
     first) and, on a repository, **Commit…**, all through VS Code's own Git, so Source
@@ -121,22 +121,24 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     the Changes tree.
   - Read once in the background after the Log's first page, then kept current by your
     saves and VS Code's Git, one repository at a time.
-- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) shows the Compare view,
-  fourth in the Polylog panel. It compares two branches in every ticked repository, for example
-  `origin/release-1.4` (◀ left, what you merge from) and `origin/main` (▶ right, where it goes):
-  - **◀ left only**: commits the merge brings in;
-  - **▶ right only**: commits on the target the release does not have (a hotfix never
-    brought back);
-  - **= on both**: the same change committed on each side (a cherry-pick).
+- **Compare Branches** (⇄ in the Log toolbar, or the Command Palette) opens the **Polylog
+  Compare** panel tab: three views side by side. It compares two branches in every ticked
+  repository, for example `origin/release-1.4` (◀ left, what you merge from) and
+  `origin/main` (▶ right, where it goes).
+  - **Repositories** lists the repositories whose files differ, each with `3 ◀ · 1 ▶ · =1`:
+    - **◀**: commits only on the left, which the merge brings in;
+    - **▶**: commits only on the right, which the release lacks (a hotfix never brought back);
+    - **=**: the same change committed on each side (a cherry-pick), listed under the row.
 
-  **Pick Branches…** in the view's title opens VS Code's Quick Pick (recent pairs, favorites,
-  local and remote branches). Each repository row shows its **=** count (◀ and ▶ are in its
-  tooltip). Repositories whose
-  files are the same on both branches are hidden, whatever merge commits differ; ones that
-  lack a branch are listed at the bottom. **Files** (the default) shows each side's changes
-  since the branches split as a folder tree, a file changed on both sides marked **both**;
-  **Commits** lists them commit by commit, merges left out. Click a file to open its diff in
-  the editor area, above the panel.
+    Merge commits aren't counted. Repositories that lack a branch are listed at the bottom.
+    The title has **Pick Branches…** (VS Code's Quick Pick: recent pairs, favorites, local
+    and remote), **Swap**, **Files / Commits** and **Refresh**.
+  - **Left** and **Right** show the selected repository's two sides:
+    - **Files** (the default): what each side changed since the branches split, as a folder
+      tree with your file icons. A file changed on both sides is marked **both**.
+    - **Commits**: each side's commits, each expanding to its files.
+
+    Click a file to open its diff in the editor area.
 - **File History.** From the Explorer, an editor, a tab, or a file in Changes. Follows
   renames, and always shows every commit of the file: it sets your date range, search and
   author aside while open, and gives them back when you close it.
@@ -151,6 +153,11 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
 | `Esc` | Clear the search, then return to the list |
 
 ---
+
+**Where things are:** the **Polylog** panel tab holds the Log and the Changes view; the
+**Polylog Compare** tab holds Compare; the Uncommitted view is in the Polylog side bar. Drag
+any view elsewhere and VS Code keeps it there (views you moved yourself stay put after an
+update).
 
 ## How It Works
 

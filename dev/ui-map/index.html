@@ -283,11 +283,11 @@ section { display: grid; gap: 16px; }
 
 <!-- ============ PLANNED ============ -->
 <section aria-labelledby="s-planned">
-  <div class="sec-head"><h2 id="s-planned">The Uncommitted and Compare views</h2><span class="pill now">Uncommitted: exists</span><span class="pill now">Compare Branches: exists</span></div>
+  <div class="sec-head"><h2 id="s-planned">The Polylog side bar and the Polylog Compare tab</h2><span class="pill now">Uncommitted: exists</span><span class="pill now">Compare Branches: exists</span></div>
   <div class="stage">
     <div class="vs">
       <div class="tabs"><span>Problems</span><span>Terminal</span><span class="on">Polylog</span></div>
-      <div class="views" style="grid-template-columns: 1fr 1fr">
+      <div class="views" style="grid-template-columns: 1fr 1fr 1fr 1fr">
         <div class="view t"><i class="n tl">27</i>
           <div class="vhead">▾ Uncommitted <span class="tools">⟳ ⊟</span></div>
           <div class="vbody tree">
@@ -301,32 +301,40 @@ section { display: grid; gap: 16px; }
           </div>
         </div>
         <div class="view t"><i class="n tl">28</i>
-          <div class="vhead">▾ Compare <span class="desc">release-1.4 ↔ main</span> <span class="tools t">⑂ ⇄ ⊙ ⟳ ⊟<i class="n tl">31</i></span></div>
+          <div class="vhead">▾ Repositories <span class="desc">release-1.4 ↔ main</span> <span class="tools t">⑂ ⇄ ⊙ ⟳<i class="n tl">31</i></span></div>
           <div class="vbody tree">
-            <div class="node t" style="--d:0">▾ <span class="dot bg-api"></span> acme-api <span class="desc">=1</span><i class="n tl">33</i></div>
-            <div class="node t" style="--d:1">▾ ← release-1.4 only <span class="desc">3 files</span><i class="n tl">34</i></div>
-            <div class="node" style="--d:2">▾ src <span class="desc">2</span></div>
-            <div class="node" style="--d:3"><span class="mod">limit.go</span> <span class="desc">+40 −0</span><span class="badge add">A</span></div>
-            <div class="node" style="--d:3"><span class="mod">client.go</span> <span class="desc">+3 −1 · both</span><span class="badge mod">M</span></div>
-            <div class="node" style="--d:1">▸ → main only <span class="desc">2 files</span></div>
-            <div class="node t" style="--d:1">▸ = on both <span class="desc">1</span><i class="n tl">35</i></div>
-            <div class="node" style="--d:0">▸ <span class="dot bg-web"></span> acme-web</div>
+            <div class="node t" style="--d:0"><span class="dot bg-api"></span> acme-api <span class="desc">3 ◀ · 1 ▶ · =1</span><i class="n tl">33</i></div>
+            <div class="node" style="--d:0"><span class="dot bg-web"></span> acme-web <span class="desc">5 ◀</span></div>
             <div class="node t" style="--d:0">▸ ⊘ Missing a branch <span class="desc">12 repositories</span><i class="n tl">36</i></div>
+          </div>
+        </div>
+        <div class="view t"><i class="n tl">34</i>
+          <div class="vhead">▾ Left <span class="desc">release-1.4 only · acme-api · 3 files</span></div>
+          <div class="vbody tree">
+            <div class="node" style="--d:0">▾ src <span class="desc">2</span></div>
+            <div class="node" style="--d:1"><span class="add">limit.go</span> <span class="desc">+40 −0</span><span class="badge add">A</span></div>
+            <div class="node" style="--d:1"><span class="mod">client.go</span> <span class="desc">+3 −1 · both</span><span class="badge mod">M</span></div>
+          </div>
+        </div>
+        <div class="view t">
+          <div class="vhead">▾ Right <span class="desc">main only · acme-api · 1 file</span></div>
+          <div class="vbody tree">
+            <div class="node" style="--d:0"><span class="mod">client.go</span> <span class="desc">+1 −1 · both</span><span class="badge mod">M</span></div>
           </div>
         </div>
       </div>
     </div>
   </div>
   <div class="gloss">
-    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>Third view in the Polylog panel (collapsed on a first install): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository; − Unstage; ↶ Discard (asks first) and + Stage. Each file opens the diff Source Control would.</span></div>
+    <div class="g"><i class="num">27</i><b>Uncommitted view</b><span>In the Polylog side bar (the Polylog icon in the Activity Bar, like Source Control): one row per ticked repository with uncommitted work. Hover a row: ✓ Commit… on a repository; − Unstage; ↶ Discard (asks first) and + Stage. Each file opens the diff Source Control would.</span></div>
     <div class="g"><i class="num">29</i><b>All Files toggle</b><span>In the Changes view's title: the selected commit's whole tree, like the Explorer; folders holding changes open, others read when opened.</span></div>
     <div class="g"><i class="num">30</i><b>Staged group</b><span>And its sibling, the Changes group: what is staged and what is not, under each repository of the Uncommitted view. A file staged and changed again is in both.</span></div>
-    <div class="g"><i class="num">28</i><b>Compare view</b><span>Fourth view in the Polylog panel (collapsed on a first install; ⇄ in the Log toolbar or the Command Palette shows it): two branches compared in every ticked repository; a file opens its diff in the editor area above. ◀ left only (what the merge brings in), ▶ right only (missing from the release), = on both (cherry-picked).</span></div>
-    <div class="g"><i class="num">31</i><b>Compare title actions</b><span>In the Compare view&#39;s title: Pick Branches…, ⇄ Swap Sides, Show Commits / Show Files (Files by default), Refresh, Collapse All.</span></div>
+    <div class="g"><i class="num">28</i><b>Polylog Compare tab</b><span>A panel tab next to Polylog (⇄ in the Log toolbar, or the Command Palette): Repositories · Left · Right, side by side; a file opens its diff in the editor area above.</span></div>
+    <div class="g"><i class="num">31</i><b>Compare title actions</b><span>In the Repositories view&#39;s title: Pick Branches…, ⇄ Swap Sides, Show Commits / Show Files (Files by default), Refresh. Show Commits / Show Files is on Left and Right too.</span></div>
     <div class="g"><i class="num">32</i><b>Branch picker</b><span>VS Code&#39;s own Quick Pick, opened by Pick Branches…: Recent pairs, Favorites ★ (the star button), Local and Remote, each name "in N repositories"; first the left branch, then the right one.</span></div>
-    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: its = count when there is one; ◀ ▶ commit counts in the tooltip; "no common history" or "git error" when it cannot be compared. Right-click: the repository menu.</span></div>
-    <div class="g"><i class="num">34</i><b>Side groups</b><span>Under a repository: "release-1.4 only" (← blue) and "main only" (→ yellow): the files each side changed since the split, with your file icons (Files), or its commits (Commits; merges left out). A file changed on both sides says "both". A file opens its diff in the editor area.</span></div>
-    <div class="g"><i class="num">35</i><b>On both group</b><span>"= on both" under a repository: each change committed on both sides (cherry-picked), with both commit ids.</span></div>
+    <div class="g"><i class="num">33</i><b>Compare repository row</b><span>One per ticked repository whose files differ: "3 ◀ · 1 ▶ · =1" (commits only on the left, only on the right, on both; merges not counted, zeros left out); "no common history" or "git error" when it cannot be compared. Selecting it fills Left and Right; with =N it expands to the duplicates. Right-click: the repository menu.</span></div>
+    <div class="g"><i class="num">34</i><b>Left and Right views</b><span>The selected repository&#39;s two sides ("release-1.4 only", "main only" in their titles): the files each side changed since the split, with your file icons (Files), or its commits (Commits). A file changed on both sides says "both". A file opens its diff.</span></div>
+    <div class="g"><i class="num">35</i><b>On both duplicates</b><span>Under a Repositories row with =N: each change committed on both sides (cherry-picked), with both commit ids.</span></div>
     <div class="g"><i class="num">36</i><b>Missing a branch</b><span>The last row: the repositories that lack one of the two branches.</span></div>
   </div>
 </section>
