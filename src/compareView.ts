@@ -319,10 +319,10 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     return uri.scheme === SCHEME ? this.decorations.get(uri.toString()) : undefined;
   }
 
-  /** A Files-mode file: the merge base ↔ this side's tip. Only a file of the repository shown here opens. */
   /**
    * A Files-mode file, as the two branches have it now: the right branch (the target) in the
-   * left pane, the left branch in the right one — the same from either side view.
+   * left pane, the left branch in the right one — the same from either side view. Only a file
+   * of the repository shown here opens.
    */
   async openFile(arg: unknown): Promise<void> {
     const t = this.fileTarget(arg);

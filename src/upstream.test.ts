@@ -38,6 +38,7 @@ import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, p
   assert.deepStrictEqual(pullPlan(["d", "c", "b", "a", "e"], sync), { pull: ["d", "a"], diverged: ["c"] }, "behind and not ahead: a fast-forward; both: diverged, left alone");
   assert.strictEqual(pullReason("error: Your local changes to the following files would be overwritten by merge:\n\tx.go"), "local changes to the same files");
   assert.strictEqual(pullReason("fatal: Not possible to fast-forward, aborting."), "it has diverged from its upstream");
+  assert.strictEqual(pullReason("error: The following untracked working tree files would be overwritten by merge:\n\tnew.go"), "untracked files in the way");
   assert.strictEqual(pullReason("fatal: something else"), "fatal: something else");
   assert.strictEqual(pullSummary(14), "Polylog: pulled 14 repositories");
   assert.strictEqual(pullSummary(1), "Polylog: pulled 1 repository");

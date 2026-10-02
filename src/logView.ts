@@ -758,7 +758,8 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const timer = setTimeout(stop, FETCH_TIMEOUT_MS);
     outer.addEventListener("abort", stop, { once: true });
     try {
-      await this.run(repo.root, ["pull", "--ff-only", "--quiet", "--recurse-submodules=no"], ctl.signal, { tree: true, env: FETCH_ENV });
+      // English: its "fast-forward" error is recognized below whatever the system's language.
+      await this.run(repo.root, ["pull", "--ff-only", "--quiet", "--recurse-submodules=no"], ctl.signal, { tree: true, env: { ...FETCH_ENV, LC_ALL: "C" } });
     } finally {
       clearTimeout(timer);
       outer.removeEventListener("abort", stop);
@@ -777,7 +778,9 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     const byId = (id: string) => this.repos.find((r) => r.id === id)!;
     const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
     if (repos.length === 0 && plan.diverged.length === 0) {
-      void vscode.window.showInformationMessage("Polylog: no repository is behind its upstream (as of the last fetch).");
+      void vscode.window.showInformationMessage(plan.pull.length > 0
+        ? "Polylog: the repositories behind their upstream are already being pulled."
+        : "Polylog: no repository is behind its upstream (as of the last fetch).");
       return { pulled: [], skipped: [] };
     }
     for (const r of repos) this.pulling.add(r.id);
@@ -814,9 +817,11 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
 
   /** Fetch and Pull All: Fetch All, then Pull All Behind with what it brought. */
   async fetchAndPullAll(): Promise<PullResult | undefined> {
+    // Taken before: a git.path change mid-fetch aborts this one and swaps in a fresh controller.
+    const signal = this.fetchCtl.signal;
     await this.fetchAll();
-    // Disposed, or git changed mid-fetch: nothing more.
-    if (this.fetchCtl.signal.aborted) return undefined;
+    // Disposed, or git changed mid-fetch: nothing more (the ↓ marks are from the old git).
+    if (signal.aborted) return undefined;
     return this.pullAllBehind();
   }
 

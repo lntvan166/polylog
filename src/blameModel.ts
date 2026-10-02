@@ -24,7 +24,8 @@ export function parseBlame(out: string): Blame {
   const ranges: Blame["ranges"] = [];
   let cur: BlameInfo | undefined;
   for (const line of out.split("\n")) {
-    const head = /^([0-9a-f]{40}) \d+ (\d+) (\d+)$/.exec(line);
+    // A SHA-1 or SHA-256 commit id.
+    const head = /^([0-9a-f]{40}(?:[0-9a-f]{24})?) \d+ (\d+) (\d+)$/.exec(line);
     if (head) {
       cur = commits.get(head[1]);
       if (!cur) {

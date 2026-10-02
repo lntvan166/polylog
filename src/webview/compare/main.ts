@@ -174,7 +174,6 @@ function renderMissing(missing: string[]): void {
   for (const n of missing) ul.append(h("li", {}, [n]));
 }
 
-
 function renderRows(): void {
   clear(list);
   if (rows.length === 0 && empty) list.append(h("div", { class: "cempty", role: "presentation" }, [empty]));
