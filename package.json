@@ -212,6 +212,16 @@
         "category": "Polylog"
       },
       {
+        "command": "polylog.pullAllBehind",
+        "title": "Pull All Repositories Behind",
+        "category": "Polylog"
+      },
+      {
+        "command": "polylog.fetchAndPullAll",
+        "title": "Fetch and Pull All Repositories",
+        "category": "Polylog"
+      },
+      {
         "command": "polylog.commitCopySha",
         "title": "Copy Commit ID",
         "category": "Polylog"
@@ -674,6 +684,16 @@
           "group": "1_filter@1"
         },
         {
+          "command": "polylog.fetchAndPullAll",
+          "when": "view == polylog.log && !polylog.fetching",
+          "group": "0_sync@1"
+        },
+        {
+          "command": "polylog.pullAllBehind",
+          "when": "view == polylog.log && polylog.anyBehind && !polylog.fetching",
+          "group": "0_sync@2"
+        },
+        {
           "command": "polylog.refreshUncommitted",
           "when": "view == polylog.uncommitted",
           "group": "navigation@1"
@@ -787,6 +807,11 @@
           "command": "polylog.showBehind",
           "when": "webviewId == 'polylog.log' && webviewSection =~ /^(repo|commit|uncommitted)$/ && polylog.anyBehind",
           "group": "1_filter@4"
+        },
+        {
+          "command": "polylog.pullAllBehind",
+          "when": "webviewId == 'polylog.log' && webviewSection == 'repo' && polylog.anyBehind && !polylog.fetching",
+          "group": "0_sync@2"
         },
         {
           "command": "polylog.repoOpenFolder",

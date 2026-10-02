@@ -895,6 +895,67 @@ describe("Polylog panel", () => {
     await until("six rows again", (x) => x.rows.length === 6 && x.sync[web.id] === undefined);
   });
 
+  it("Fetch and Pull All: fast-forwards the repositories behind; a diverged one and one with local changes in the way are left as they were", async () => {
+    const cp = require("child_process") as typeof import("child_process");
+    const fs = require("fs") as typeof import("fs");
+    const os = require("os") as typeof import("os");
+    const path = require("path") as typeof import("path");
+    await send({ type: "filter", filter: ALL });
+    const s0 = await until("six rows", (x) => x.rows.length === 6);
+    const who = { ...process.env, GIT_AUTHOR_NAME: "rin", GIT_AUTHOR_EMAIL: "rin@example.com", GIT_COMMITTER_NAME: "rin", GIT_COMMITTER_EMAIL: "rin@example.com" };
+    const git = (cwd: string, ...args: string[]) => cp.execFileSync("git", args, { cwd, env: who }).toString().trim();
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), "polylog-pullall-"));
+    const repos = Object.fromEntries(["acme-web", "acme-api", "acme-libs"].map((n) => {
+      const r = s0.repos.find((x) => x.name === n)!;
+      return [n, { ...r, branch: git(r.root, "rev-parse", "--abbrev-ref", "HEAD"), before: git(r.root, "rev-parse", "HEAD") }];
+    }));
+    const web = repos["acme-web"], api = repos["acme-api"], libs = repos["acme-libs"];
+    try {
+      // Each gets a remote one commit ahead: acme-web's touches nothing local; acme-libs' changes
+      // package.json, which has a local edit; acme-api also has a commit of its own (diverged).
+      const theirs: Record<string, string> = {};
+      for (const [n, r] of Object.entries(repos)) {
+        git(remote, "clone", "-q", "--bare", r.root, `${n}.git`);
+        const bare = path.join(remote, `${n}.git`);
+        git(r.root, "remote", "add", "origin", bare);
+        git(r.root, "fetch", "-q", "origin");
+        git(r.root, "branch", `--set-upstream-to=origin/${r.branch}`, r.branch);
+        const blob = cp.execFileSync("git", ["hash-object", "-w", "--stdin"], { cwd: bare, input: n === "acme-libs" ? "{\"v\": 2}\n" : "remote\n" }).toString().trim();
+        const idx = path.join(remote, `${n}.index`);
+        const env = { ...who, GIT_INDEX_FILE: idx };
+        cp.execFileSync("git", ["read-tree", r.branch], { cwd: bare, env });
+        cp.execFileSync("git", ["update-index", "--add", "--cacheinfo", `100644,${blob},${n === "acme-libs" ? "package.json" : "REMOTE.md"}`], { cwd: bare, env });
+        const tree = cp.execFileSync("git", ["write-tree"], { cwd: bare, env }).toString().trim();
+        theirs[n] = git(bare, "commit-tree", tree, "-p", r.branch, "-m", "chore: from the remote");
+        git(bare, "update-ref", `refs/heads/${r.branch}`, theirs[n]);
+      }
+      git(api.root, "commit", "-q", "--allow-empty", "-m", "wip: local only");
+      const apiLocal = git(api.root, "rev-parse", "HEAD");
+      fs.writeFileSync(path.join(libs.root, "package.json"), "{\"local\": true}\n");
+
+      const result = await vscode.commands.executeCommand<{ pulled: string[]; skipped: { name: string; reason: string }[] }>("polylog.fetchAndPullAll");
+      assert.deepStrictEqual(result.pulled, ["acme-web"]);
+      assert.deepStrictEqual(result.skipped.map((x) => `${x.name}: ${x.reason}`).sort(), ["acme-api: it has diverged from its upstream", "acme-libs: local changes to the same files"]);
+      assert.strictEqual(git(web.root, "rev-parse", "HEAD"), theirs["acme-web"], "fast-forwarded to the remote's commit");
+      assert.strictEqual(git(api.root, "rev-parse", "HEAD"), apiLocal, "a diverged branch is not touched");
+      assert.strictEqual(git(libs.root, "rev-parse", "HEAD"), libs.before, "nothing merged over local changes");
+      assert.strictEqual(fs.readFileSync(path.join(libs.root, "package.json"), "utf8"), "{\"local\": true}\n", "the local edit kept");
+      await until("acme-web no longer behind", (x) => x.sync[web.id] === undefined && x.sync[libs.id]?.behind === 1);
+    } finally {
+      const quietly = (f: () => unknown) => { try { f(); } catch { /* not set up */ } };
+      for (const r of Object.values(repos)) {
+        quietly(() => git(r.root, "checkout", "-q", "--", "."));
+        quietly(() => git(r.root, "reset", "-q", "--hard", r.before));
+        quietly(() => git(r.root, "branch", "--unset-upstream", r.branch));
+        quietly(() => git(r.root, "remote", "remove", "origin"));
+      }
+      fs.rmSync(remote, { recursive: true, force: true });
+      // In the cleanup: a failure here must not leave stale ↓ marks for the tests after it.
+      await send({ type: "refresh" });
+      await until("six rows again", (x) => x.rows.length === 6 && Object.keys(x.sync).length === 0);
+    }
+  });
+
   it("right-click a commit: Copy Commit ID, Copy Message, Open on Remote", async () => {
     const cp = require("child_process") as typeof import("child_process");
     await send({ type: "filter", filter: ALL });

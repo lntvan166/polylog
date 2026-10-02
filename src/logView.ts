@@ -16,7 +16,7 @@ import { commitWebUrl } from "./remoteUrl";
 import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, type AheadBehind } from "./upstream";
+import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, pullArgs, pullPlan, pullReason, pullSummary, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff } from "./uncommittedView";
 import { renderHtml } from "./webview/html";
@@ -31,6 +31,8 @@ const DEFAULT_PANE_WIDTH = 190;
 const FETCHING_KEY = "polylog.fetching";
 /** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
 export interface FetchResult { fetched: number; failed: string[]; summary?: string }
+/** Pull All Behind's answer: the repositories pulled, and those left as they were (and why). */
+export interface PullResult { pulled: string[]; skipped: { name: string; reason: string }[] }
 /** Fetch All: network-bound, so fewer at once than the log reads; and a fetch that hangs stops. */
 const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 60_000;
@@ -759,6 +761,59 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       clearTimeout(timer);
       outer.removeEventListener("abort", stop);
     }
+  }
+
+  /**
+   * Pull All Behind (the Log's … menu): every repository with ↓ fast-forwarded to what the last
+   * fetch brought, a few at a time. A diverged one, or one whose local changes touch the incoming
+   * files, is left as it was and named.
+   */
+  async pullAllBehind(): Promise<PullResult> {
+    if (this.fetching) await this.fetching;
+    if (this.repos.length === 0) await this.loadRepos();
+    const plan = pullPlan(this.repos.map((r) => r.id), Object.fromEntries(this.sync));
+    const byId = (id: string) => this.repos.find((r) => r.id === id)!;
+    const repos = plan.pull.map(byId).filter((r) => !this.pulling.has(r.id));
+    if (repos.length === 0 && plan.diverged.length === 0) {
+      void vscode.window.showInformationMessage("Polylog: no repository is behind its upstream (as of the last fetch).");
+      return { pulled: [], skipped: [] };
+    }
+    for (const r of repos) this.pulling.add(r.id);
+    const outer = this.fetchCtl.signal;
+    let settled: PromiseSettledResult<string>[];
+    try {
+      settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Pulling" }, () =>
+        runPool(repos, Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY), (r) => this.run(r.root, pullArgs(), outer), outer));
+    } finally {
+      for (const r of repos) this.pulling.delete(r.id);
+    }
+    if (outer.aborted) return { pulled: [], skipped: [] };
+    const pulled = repos.filter((_, i) => settled[i].status === "fulfilled");
+    const skipped = [
+      ...repos.flatMap((r, i) => { const s = settled[i]; return s.status === "rejected" ? [{ name: r.name, reason: pullReason(messageOf(s.reason)) }] : []; }),
+      ...plan.diverged.map((id) => ({ name: byId(id).name, reason: "it has diverged from its upstream" })),
+    ];
+    if (skipped.length > 0) {
+      const list = skipped.slice(0, 3).map((x) => `${x.name} (${x.reason})`).join(", ");
+      const more = skipped.length > 3 ? ` and ${skipped.length - 3} more` : "";
+      void vscode.window.showWarningMessage(`Polylog pulled ${pulled.length} of ${pulled.length + skipped.length} repositories. Left as they were: ${list}${more}. Pull those in Source Control or a terminal.`);
+    } else {
+      vscode.window.setStatusBarMessage(pullSummary(pulled.length), 8000);
+    }
+    // The new commits, each branch's distance from its upstream, and the working trees.
+    for (const r of pulled) void this.deps.uncommitted.readRepo(r.id);
+    await this.reload();
+    await this.readSync();
+    this.refsChanged.fire(undefined);
+    return { pulled: pulled.map((r) => r.name), skipped };
+  }
+
+  /** Fetch and Pull All: Fetch All, then Pull All Behind with what it brought. */
+  async fetchAndPullAll(): Promise<PullResult | undefined> {
+    await this.fetchAll();
+    // Disposed, or git changed mid-fetch: nothing more.
+    if (this.fetchCtl.signal.aborted) return undefined;
+    return this.pullAllBehind();
   }
 
   /** Show Only Repositories Behind: tick the repositories with commits to pull (as of the last fetch). */

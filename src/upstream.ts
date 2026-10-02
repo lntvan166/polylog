@@ -65,3 +65,29 @@ export function fetchSummary(total: number, behind: number): string {
   const found = behind === 0 ? "nothing to pull" : `${behind} behind ${behind === 1 ? "its" : "their"} upstream`;
   return `Polylog: fetched ${repos} · ${found}`;
 }
+
+/**
+ * Pull All Behind: the commits the last fetch brought, into the current branch. A merge with
+ * the upstream, fast-forward only: no network, never a merge commit, and git refuses (changing
+ * nothing) when local changes touch the incoming files.
+ */
+export function pullArgs(): string[] {
+  return ["merge", "--ff-only", "--quiet", "@{upstream}"];
+}
+
+/** Behind and not ahead: a fast-forward. Behind and ahead: diverged, left to the user. */
+export function pullPlan(repoIds: readonly string[], sync: Readonly<Record<string, AheadBehind>>): { pull: string[]; diverged: string[] } {
+  const behind = behindRepos(repoIds, sync);
+  return { pull: behind.filter((id) => sync[id].ahead === 0), diverged: behind.filter((id) => sync[id].ahead > 0) };
+}
+
+/** Why git refused a fast-forward, in a few words. */
+export function pullReason(message: string): string {
+  if (/would be overwritten/i.test(message)) return "local changes to the same files";
+  if (/fast-forward/i.test(message)) return "it has diverged from its upstream";
+  return message.trim();
+}
+
+export function pullSummary(pulled: number): string {
+  return `Polylog: pulled ${pulled} ${pulled === 1 ? "repository" : "repositories"}`;
+}

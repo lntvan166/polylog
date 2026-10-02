@@ -94,6 +94,10 @@ plus any it finds in your workspace folders (up to `polylog.scanDepth` levels de
     Right-click a repository showing ↓ to **Pull** it: through VS Code's own Git (your
     pull settings, its credential prompts, conflicts in Source Control), or
     `git pull --ff-only` for a repository VS Code's Git does not have open.
+    **Pull All Repositories Behind** (the Log's `…` menu, or right-click a repository) brings
+    every repository with ↓ up to what the last fetch brought, fast-forward only and with no
+    second fetch; **Fetch and Pull All** fetches first. A repository that diverged, or whose
+    local changes touch the incoming files, is left as it was and named.
   - **Right-click a repository**, in the pane or on any of its commits in the Log: Show
     Only This Repository, Hide from the Log, Show All Repositories, Open Folder in New
     Window, Copy Path, or Exclude from Polylog (adds its path to `polylog.excludeRepos`,
@@ -219,7 +223,7 @@ skewed clock can place a commit out of order.
 | VS Code 1.85+ | Or a compatible editor that installs from Open VSX |
 | Git | The same git as VS Code: your `git.path` setting, then the git VS Code's Git extension found, then `git` on `PATH`. Changing `git.path` takes effect at once |
 
-Polylog only reads history. It never runs a command that changes a repository.
+Polylog only reads history, except when you ask it to fetch or pull.
 
 ---
 
