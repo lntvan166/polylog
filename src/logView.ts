@@ -16,7 +16,7 @@ import { commitWebUrl } from "./remoteUrl";
 import { addExclusion, authorSuggestions, branchSuggestions, undoExclusion } from "./repos";
 import { readSettings } from "./settings";
 import { commitKey, isSha, UNCOMMITTED, type Commit, type FileChange, type Repo, type RepoFailure } from "./types";
-import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, parseAheadBehind, type AheadBehind } from "./upstream";
+import { aheadBehindArgs, behindRepos, FETCH_ENV, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, type AheadBehind } from "./upstream";
 import type { UncommittedStore } from "./uncommittedStore";
 import { openWorkDiff } from "./uncommittedView";
 import { renderHtml } from "./webview/html";
@@ -27,6 +27,10 @@ export const HIDE_REPOS_KEY = "polylog.hideRepos";
 /** globalState: the Repositories pane width the user dragged to. */
 const PANE_WIDTH_KEY = "polylog.repoPaneWidth";
 const DEFAULT_PANE_WIDTH = 190;
+/** Context key: Fetch All is running (the toolbar shows a spinning sync instead of the cloud). */
+const FETCHING_KEY = "polylog.fetching";
+/** Fetch All's answer; summary is the status-bar line shown when every fetch succeeded. */
+export interface FetchResult { fetched: number; failed: string[]; summary?: string }
 /** Fetch All: network-bound, so fewer at once than the log reads; and a fetch that hangs stops. */
 const FETCH_CONCURRENCY = 8;
 const FETCH_TIMEOUT_MS = 60_000;
@@ -76,6 +80,8 @@ export interface LogSnapshot {
   spawnLog: { root: string; cmd: string }[];
   /** Each repository's distance from its upstream (only those with one). */
   sync: Record<string, AheadBehind>;
+  /** Fetch All is running. */
+  fetching: boolean;
   /** Repositories VS Code's Git reports changes for (the others are always read again). */
   reported: string[];
   /** Messages posted to the webview, by type, and their total size in bytes (integration runs only). */
@@ -626,30 +632,40 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
     void vscode.commands.executeCommand("setContext", "polylog.anyBehind", behindRepos([...next.keys()], Object.fromEntries(next)).length > 0);
   }
 
-  private fetching: Promise<{ fetched: number; failed: string[] }> | undefined;
+  private fetching: Promise<FetchResult> | undefined;
 
   /**
    * Fetch All (the Log's toolbar): git fetch in every repository, a few at a time, then read how
    * far each is from its upstream again. The only thing Polylog changes in a repository, and only
    * when asked. Never prompts (GIT_TERMINAL_PROMPT=0); a fetch that hangs stops after a minute.
    */
-  fetchAll(): Promise<{ fetched: number; failed: string[] }> {
-    this.fetching ??= this.runFetchAll().finally(() => {
-      this.fetching = undefined;
-      this.refsChanged.fire(undefined);
-    });
+  fetchAll(): Promise<FetchResult> {
+    if (!this.fetching) {
+      // The toolbar's cloud turns into a spinning sync until it is done.
+      void vscode.commands.executeCommand("setContext", FETCHING_KEY, true);
+      this.fetching = this.runFetchAll().finally(() => {
+        this.fetching = undefined;
+        void vscode.commands.executeCommand("setContext", FETCHING_KEY, false);
+        this.refsChanged.fire(undefined);
+      });
+    }
     return this.fetching;
   }
 
-  private async runFetchAll(): Promise<{ fetched: number; failed: string[] }> {
+  private async runFetchAll(): Promise<FetchResult> {
     if (this.repos.length === 0) await this.loadRepos();
     const repos = [...this.repos];
     const prune = vscode.workspace.getConfiguration("git").get<boolean>("pruneOnFetch", false) === true;
     // Network work, not disk: fewer at once than the log reads.
     const limit = Math.min(this.settings().maxConcurrency, FETCH_CONCURRENCY);
     const outer = this.fetchCtl.signal;
+    // A minute or so over SSH for many repositories: the Log's progress line, and a count in the status bar.
     const settled = await vscode.window.withProgress({ location: { viewId: LogView.id }, title: "Fetching" }, () =>
-      runPool(repos, limit, (r) => this.fetchOne(r, prune, outer), outer));
+      vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "Polylog" }, (progress) => {
+        let done = 0;
+        progress.report({ message: fetchProgress(done, repos.length) });
+        return runPool(repos, limit, (r) => this.fetchOne(r, prune, outer).finally(() => progress.report({ message: fetchProgress(++done, repos.length) })), outer);
+      }));
     if (outer.aborted) return { fetched: 0, failed: [] }; // disposed, or git changed: say nothing
     const failed = settled.flatMap((s, i) => (s.status === "rejected" ? [{ repo: repos[i], reason: s.reason }] : []));
     if (failed.length > 0) {
@@ -657,15 +673,19 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       const list = failed.slice(0, 3).map((f) => `${f.repo.name} (${why(f.reason)})`).join(", ");
       const more = failed.length > 3 ? ` and ${failed.length - 3} more` : "";
       void vscode.window.showWarningMessage(`Polylog could not fetch ${failed.length} of ${repos.length} repositories: ${list}${more}.`);
-    } else {
-      vscode.window.setStatusBarMessage(`Polylog: fetched ${repos.length} repositories`, 4000);
     }
     // New remote branches: the Branch box's suggestions and a branch-mode page are out of date.
     this.suggestionsFor.delete("branches");
     if (this.suggestionsWanted.has("branches")) void this.loadSuggestions("branches");
     if (this.filter.branch) await this.reload();
     await this.readSync();
-    return { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
+    const result: FetchResult = { fetched: repos.length - failed.length, failed: failed.map((f) => f.repo.name) };
+    if (failed.length === 0) {
+      // What it found, long enough to read after a long wait.
+      result.summary = fetchSummary(repos.length, behindRepos(repos.map((r) => r.id), Object.fromEntries(this.sync)).length);
+      vscode.window.setStatusBarMessage(result.summary, 8000);
+    }
+    return result;
   }
 
   /** Aborted by dispose and by a new git binary: a fetch in flight stops, with its helpers. */
@@ -1018,6 +1038,7 @@ export class LogView implements vscode.WebviewViewProvider, vscode.Disposable {
       workTotals: totals(this.deps.uncommitted.works()),
       workKnown: this.deps.uncommitted.known,
       sync: Object.fromEntries(this.sync),
+      fetching: this.fetching !== undefined,
       reported: this.repos.filter((r) => this.deps.discovery.reportsChanges(r.root)).map((r) => r.root),
       posts: structuredClone(this.posts),
     };

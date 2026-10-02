@@ -53,3 +53,15 @@ export const FETCH_ENV: Record<string, string> = { GCM_INTERACTIVE: "never", SSH
 export function behindRepos(repoIds: readonly string[], sync: Readonly<Record<string, AheadBehind>>): string[] {
   return repoIds.filter((id) => (sync[id]?.behind ?? 0) > 0);
 }
+
+/** Fetch All in the status bar while it runs ("Polylog: fetching 23/68…"): how many are done. */
+export function fetchProgress(done: number, total: number): string {
+  return `fetching ${done}/${total}…`;
+}
+
+/** Fetch All's result, when every fetch succeeded: the ↓ marks it leaves, in one line. */
+export function fetchSummary(total: number, behind: number): string {
+  const repos = `${total} ${total === 1 ? "repository" : "repositories"}`;
+  const found = behind === 0 ? "nothing to pull" : `${behind} behind ${behind === 1 ? "its" : "their"} upstream`;
+  return `Polylog: fetched ${repos} · ${found}`;
+}

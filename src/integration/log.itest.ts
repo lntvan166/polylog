@@ -973,8 +973,15 @@ describe("Polylog panel", () => {
       const theirs = git(bare, "commit-tree", `${branch}^{tree}`, "-p", branch, "-m", "theirs");
       git(bare, "update-ref", `refs/heads/${branch}`, theirs);
       assert.strictEqual((await snapshot()).sync[web.id], undefined, "not known before a fetch: Polylog never fetches on its own");
-      const result = await vscode.commands.executeCommand<{ fetched: number; failed: string[] }>("polylog.fetchAll");
+      const running = vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
+      assert.strictEqual((await snapshot()).fetching, true, "the toolbar shows it is fetching");
+      const result = await running;
       assert.deepStrictEqual(result, { fetched: 2, failed: ["acme-api"] }, "every repository fetched; the unreachable one named");
+      assert.strictEqual((await snapshot()).fetching, false);
+      // The unreachable remote gone: every fetch succeeds, and the status bar says what it found.
+      git(api.root, "remote", "remove", "origin");
+      const ok = await vscode.commands.executeCommand<{ fetched: number; failed: string[]; summary?: string }>("polylog.fetchAll");
+      assert.strictEqual(ok.summary, "Polylog: fetched 3 repositories · 1 behind its upstream");
       const s = await until("acme-web behind by one", (x) => x.sync[web.id]?.behind === 1);
       assert.deepStrictEqual(s.sync[web.id], { ahead: 0, behind: 1 });
 

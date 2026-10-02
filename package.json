@@ -201,6 +201,12 @@
         "icon": "$(cloud-download)"
       },
       {
+        "command": "polylog.fetching",
+        "title": "Fetching All Repositories…",
+        "category": "Polylog",
+        "icon": "$(sync~spin)"
+      },
+      {
         "command": "polylog.showBehind",
         "title": "Show Only Repositories Behind",
         "category": "Polylog"
@@ -493,6 +499,10 @@
           "when": "false"
         },
         {
+          "command": "polylog.fetching",
+          "when": "false"
+        },
+        {
           "command": "polylog.fileHistory",
           "when": "resourceScheme == file || resourceScheme == polylog"
         },
@@ -650,7 +660,12 @@
         },
         {
           "command": "polylog.fetchAll",
-          "when": "view == polylog.log",
+          "when": "view == polylog.log && !polylog.fetching",
+          "group": "navigation@3"
+        },
+        {
+          "command": "polylog.fetching",
+          "when": "view == polylog.log && polylog.fetching",
           "group": "navigation@3"
         },
         {

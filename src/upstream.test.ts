@@ -1,5 +1,5 @@
 import * as assert from "assert";
-import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, syncLabel } from "./upstream";
+import { aheadBehindArgs, behindRepos, fetchArgs, fetchProgress, fetchSummary, parseAheadBehind, syncLabel } from "./upstream";
 
 {
   assert.deepStrictEqual(aheadBehindArgs(), ["rev-list", "--left-right", "--count", "HEAD...@{upstream}", "--"], "local refs only: no fetch");
@@ -23,4 +23,11 @@ import { aheadBehindArgs, behindRepos, fetchArgs, parseAheadBehind, syncLabel } 
   assert.deepStrictEqual(behindRepos(["/ws/acme-web", "/ws/acme-api", "/ws/acme-libs"], sync), ["/ws/acme-web", "/ws/acme-api"], "behind only (not merely ahead), in repo order");
   assert.deepStrictEqual(behindRepos(["/ws/acme-web"], {}), []);
   console.log("ok - Fetch All's arguments; the repositories behind their upstream");
+}
+{
+  assert.strictEqual(fetchProgress(23, 68), "fetching 23/68…", "after the progress title, Polylog");
+  assert.strictEqual(fetchSummary(68, 3), "Polylog: fetched 68 repositories · 3 behind their upstream");
+  assert.strictEqual(fetchSummary(68, 1), "Polylog: fetched 68 repositories · 1 behind its upstream");
+  assert.strictEqual(fetchSummary(1, 0), "Polylog: fetched 1 repository · nothing to pull");
+  console.log("ok - Fetch All says how far it is, and what it found");
 }
