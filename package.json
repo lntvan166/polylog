@@ -335,6 +335,18 @@
         "icon": "$(files)"
       },
       {
+        "command": "polylog.compareHideSame",
+        "title": "Hide Files Already on Both",
+        "category": "Polylog",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "polylog.compareShowSame",
+        "title": "Show Files Already on Both",
+        "category": "Polylog",
+        "icon": "$(filter-filled)"
+      },
+      {
         "command": "polylog.compareRefresh",
         "title": "Refresh",
         "category": "Polylog",
@@ -717,6 +729,16 @@
           "command": "polylog.compareShowFiles",
           "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode == commits",
           "group": "navigation@1"
+        },
+        {
+          "command": "polylog.compareHideSame",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits && !polylog.compareHideSame",
+          "group": "navigation@0"
+        },
+        {
+          "command": "polylog.compareShowSame",
+          "when": "(view == polylog.compareLeft || view == polylog.compareRight) && polylog.compareMode != commits && polylog.compareHideSame",
+          "group": "navigation@0"
         },
         {
           "command": "polylog.compareClose",

@@ -2,7 +2,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 import { decorationFor, stat } from "./changesModel";
 import type { OpenDiffArgs } from "./changesTree";
-import { COMMIT_PAGE, sidePage, type RepoCompare, type Side, type SideCommit } from "./compareModel";
+import { COMMIT_PAGE, shownFiles, sidePage, type RepoCompare, type Side, type SideCommit } from "./compareModel";
 import type { CompareMode } from "./compareProtocol";
 import type { CompareStore } from "./compareStore";
 import { fileTree, type TreeNode } from "./fileTree";
@@ -15,6 +15,8 @@ export const RECENT = "polylog.compare.recent";
 export const FAVORITES = "polylog.compare.favorites";
 export const MODE = "polylog.compare.mode";
 export const SHOWN = "polylog.compare.shown";
+/** globalState: Hide Files Already on Both (on unless the user turned it off). Also a context key. */
+export const HIDE_SAME = "polylog.compareHideSame";
 const SCHEME = "polylog-compare";
 
 export type { CompareMode };
@@ -53,6 +55,7 @@ export interface Deps {
 }
 
 export const modeOf = (context: vscode.ExtensionContext): CompareMode => context.workspaceState.get<CompareMode>(MODE, "files");
+export const hideSameOf = (context: vscode.ExtensionContext): boolean => context.globalState.get<boolean>(HIDE_SAME, true);
 export const resultOf = (store: CompareStore, repoId: string): { repo: Repo; result: RepoCompare } | undefined => store.results().find((x) => x.repo.id === repoId);
 /** The result a side's detail was read for: its two tips and their merge base. */
 export const keyOf = (store: CompareStore, repoId: string): string => {
@@ -106,6 +109,31 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     return modeOf(this.deps.context);
   }
 
+  /** Files mode: the files listed (Hide Files Already on Both applied) and how many it left out. */
+  private filesOf(d: NonNullable<CompareSide["detail"]>): { shown: FileChange[]; hidden: number } {
+    return shownFiles(d.files ?? [], d.same ?? new Set(), hideSameOf(this.deps.context));
+  }
+
+  /** "acme-api · 3 files", and in Files mode the ones hidden as already on both. */
+  private countText(): { n: number; text: string } | undefined {
+    const d = this.detail;
+    if (!d) return undefined;
+    if (this.mode !== "files") return { n: d.commits?.length ?? 0, text: plural(d.commits?.length ?? 0, "commit") };
+    const f = this.filesOf(d);
+    return { n: f.shown.length, text: `${plural(f.shown.length, "file")}${f.hidden > 0 ? ` · ${f.hidden} already on both (hidden)` : ""}` };
+  }
+
+  /** The empty-side message: all hidden is not "no changes". */
+  private emptyText(): string {
+    const d = this.detail;
+    return d && this.mode === "files" && this.filesOf(d).hidden > 0 ? "Every file this side changed is already on both branches (Show Files Already on Both in the title bar)." : "No changes on this side.";
+  }
+
+  /** Hide Files Already on Both was switched: the tree again, from the detail already read. */
+  hideSameChanged(): void {
+    this.render();
+  }
+
   private render(): void {
     const pair = this.deps.store.pair;
     const repoId = this.deps.selection.repoId;
@@ -113,12 +141,13 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
     const only = pair ? `${short(pair[this.side])} only` : "";
     const hit = repoId ? resultOf(this.deps.store, repoId) : undefined;
     if (this.detail && (this.detail.repoId !== repoId || this.detail.key !== (repoId ? keyOf(this.deps.store, repoId) : "") || this.detail.mode !== this.mode)) this.detail = undefined;
-    const n = this.detail ? (this.mode === "files" ? this.detail.files?.length ?? 0 : this.detail.commits?.length ?? 0) : undefined;
-    this.view.description = [only, hit ? `${hit.repo.name}${n === undefined ? "" : ` · ${plural(n, this.mode === "files" ? "file" : "commit")}`}` : ""].filter(Boolean).join(" · ");
+    const count = this.countText();
+    const n = count?.n;
+    this.view.description = [only, hit ? `${hit.repo.name}${count ? ` · ${count.text}` : ""}` : ""].filter(Boolean).join(" · ");
     this.view.message = !pair || !repoId ? "Select a repository in Repositories."
       : hit?.result.kind === "nobase" ? `${hit.repo.name}: the two branches share no history, so there is no split point.`
       : hit?.result.kind === "error" ? `${hit.repo.name}: git could not compare the branches: ${hit.result.reason}`
-      : n === 0 ? "No changes on this side." : undefined;
+      : n === 0 ? this.emptyText() : undefined;
     const ask = this.ask();
     if (ask === this.drawn) return;
     this.drawn = ask;
@@ -129,7 +158,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   private ask(): string {
     const p = this.deps.store.pair;
     const repoId = this.deps.selection.repoId ?? "";
-    return [p?.left, p?.right, repoId, repoId ? keyOf(this.deps.store, repoId) : "", this.mode, this.limit, this.waiting()].join("\0");
+    return [p?.left, p?.right, repoId, repoId ? keyOf(this.deps.store, repoId) : "", this.mode, this.limit, this.waiting(), hideSameOf(this.deps.context)].join("\0");
   }
 
   /** The selection was made for the user while the list is still read: it may move, so wait for the list. */
@@ -183,11 +212,12 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
   private renderHeader(): void {
     const before = this.view.message;
     const hit = this.detail ? resultOf(this.deps.store, this.detail.repoId) : undefined;
-    const n = this.mode === "files" ? this.detail?.files?.length : this.detail?.commits?.length;
+    const count = this.countText();
     const pair = this.deps.store.pair;
-    if (hit && n !== undefined) {
-      this.view.description = `${pair ? `${short(pair[this.side])} only · ` : ""}${hit.repo.name} · ${plural(n, this.mode === "files" ? "file" : "commit")}`;
-      this.view.message = n === 0 ? "No changes on this side." : before === "No changes on this side." ? undefined : before;
+    if (hit && count) {
+      this.view.description = `${pair ? `${short(pair[this.side])} only · ` : ""}${hit.repo.name} · ${count.text}`;
+      const empty = this.emptyText();
+      this.view.message = count.n === 0 ? empty : before === "No changes on this side." || before?.startsWith("Every file this side changed") ? undefined : before;
     }
   }
 
@@ -197,7 +227,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
         if (!this.view.visible) return [];
         const d = await this.read();
         if (!d) return [];
-        if (d.mode === "files") return this.tree(fileTree(d.files ?? []), `${d.repoId}/${this.side}`, d.repoId, d.both ?? new Set(), "", d.same ?? new Set());
+        if (d.mode === "files") return this.tree(fileTree(this.filesOf(d).shown), `${d.repoId}/${this.side}`, d.repoId, d.both ?? new Set(), "", d.same ?? new Set());
         const rows = (d.commits ?? []).map((commit): SNode => ({ kind: "commit", id: `${d.repoId}/${this.side}/c:${commit.sha}`, repoId: d.repoId, commit }));
         return d.more ? [...rows, { kind: "more", id: "more" }] : rows;
       }
@@ -237,7 +267,7 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       case "file": {
         const item = new vscode.TreeItem(node.name, C.None);
         item.id = node.id;
-        item.description = node.same ? `${stat(node.file)} · same now` : node.both ? `${stat(node.file)} · both` : stat(node.file);
+        item.description = node.same ? `${stat(node.file)} · already on both` : node.both ? `${stat(node.file)} · both` : stat(node.file);
         item.tooltip = node.same ? `${node.file.path}: changed on both sides since the split, and the two branches now have the same content — nothing to merge`
           : node.both ? `${node.file.path}: changed on both sides since the split — look at it before merging`
           : node.file.oldPath ? `${node.file.oldPath} → ${node.file.path}` : node.file.path;

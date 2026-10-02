@@ -3,7 +3,7 @@ import { ChangesTree, type OpenDiffArgs } from "./changesTree";
 import { validPair } from "./compareModel";
 import type { ReposWebview } from "./compareProtocol";
 import { CompareRepos } from "./compareRepos";
-import { CompareSelection, CompareSide, type CompareMode } from "./compareView";
+import { CompareSelection, CompareSide, HIDE_SAME, hideSameOf, type CompareMode } from "./compareView";
 import { CompareStore, rowLabel } from "./compareStore";
 import { GitRunner } from "./git";
 import { gitCandidates } from "./gitBinary";
@@ -52,6 +52,14 @@ export function activate(context: vscode.ExtensionContext): void {
   const compareDeps = { context, store: compare, log, selection };
   const compareRepos = new CompareRepos(compareDeps);
   const sides = { left: new CompareSide("left", compareDeps), right: new CompareSide("right", compareDeps) };
+  // Hide Files Already on Both: on unless turned off; both sides follow it.
+  void vscode.commands.executeCommand("setContext", HIDE_SAME, hideSameOf(context));
+  const setHideSame = async (hide: boolean) => {
+    await context.globalState.update(HIDE_SAME, hide);
+    await vscode.commands.executeCommand("setContext", HIDE_SAME, hide);
+    sides.left.hideSameChanged();
+    sides.right.hideSameChanged();
+  };
   const blame = new BlameView((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root));
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
@@ -107,6 +115,8 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("polylog.compareSwap", () => compareRepos.swap()),
     vscode.commands.registerCommand("polylog.compareShowCommits", () => compareRepos.setMode("commits")),
     vscode.commands.registerCommand("polylog.compareShowFiles", () => compareRepos.setMode("files")),
+    vscode.commands.registerCommand("polylog.compareHideSame", () => setHideSame(true)),
+    vscode.commands.registerCommand("polylog.compareShowSame", () => setHideSame(false)),
     vscode.commands.registerCommand("polylog.compareRefresh", () => compareRepos.refresh()),
     vscode.commands.registerCommand("polylog.compareOpenFile", (arg?: { side?: unknown }) => (arg?.side === "left" || arg?.side === "right" ? sides[arg.side].openFile(arg) : undefined)),
     vscode.commands.registerCommand("polylog.compareOpenSinceSplit", (arg?: { side?: unknown; repoId?: unknown; path?: unknown }) => {

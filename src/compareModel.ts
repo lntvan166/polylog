@@ -110,6 +110,12 @@ export function sameNow(both: ReadonlySet<string>, tipsDiff: string): Set<string
   return new Set([...both].filter((p) => !differ.has(p)));
 }
 
+/** Files mode with Hide Files Already on Both: the files listed, and how many were left out. */
+export function shownFiles(files: readonly FileChange[], same: ReadonlySet<string>, hide: boolean): { shown: FileChange[]; hidden: number } {
+  const shown = hide ? files.filter((f) => !same.has(f.path)) : [...files];
+  return { shown, hidden: files.length - shown.length };
+}
+
 /** Duplicates for display: a left and a right one with the same subject share a row. Counts come from git. */
 export function pairDuplicates(left: readonly SideCommit[], right: readonly SideCommit[]): Duplicate[] {
   const rights = [...right];

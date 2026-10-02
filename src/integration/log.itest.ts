@@ -1609,14 +1609,25 @@ describe("Polylog panel", () => {
       await rsend({ type: "select", repoId: roots["acme-api"] });
       const left = await until2("left side", () => sideOf("left"), (x) => x.tree.length > 0);
       assert.strictEqual(left.title, "release-1.4 only");
-      assert.strictEqual(left.description, "acme-api · 2 files");
-      // retry.go, cherry-picked to both: the same at both tips now, so dimmed; limit.go still differs.
-      assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · same now"]);
-      assert.deepStrictEqual(left.dimmed, ["retry.go"]);
+      // retry.go, cherry-picked to both: the same at both tips now, so hidden by default; limit.go still differs.
+      assert.strictEqual(left.description, "acme-api · 1 file · 1 already on both (hidden)");
+      assert.deepStrictEqual(left.tree, ["limit.go | +1 −0 · both"]);
       const right = await until2("right side", () => sideOf("right"), (x) => x.tree.length > 0);
       assert.strictEqual(right.title, "prod only");
-      assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · same now", "timeout.go | +1 −0"]);
-      assert.deepStrictEqual(right.dimmed, ["retry.go"]);
+      assert.deepStrictEqual(right.tree, ["limit.go | +1 −0 · both", "timeout.go | +1 −0"]);
+      // Show Files Already on Both: listed again, dimmed; Hide puts it back.
+      await vscode.commands.executeCommand("polylog.compareShowSame");
+      try {
+        const shown = await until2("left with retry.go", () => sideOf("left"), (x) => x.tree.length === 2);
+        assert.strictEqual(shown.description, "acme-api · 2 files");
+        assert.deepStrictEqual(shown.tree, ["limit.go | +1 −0 · both", "retry.go | +1 −0 · already on both"]);
+        assert.deepStrictEqual(shown.dimmed, ["retry.go"]);
+        const rshown = await until2("right with retry.go", () => sideOf("right"), (x) => x.tree.length === 3);
+        assert.deepStrictEqual(rshown.dimmed, ["retry.go"]);
+      } finally {
+        await vscode.commands.executeCommand("polylog.compareHideSame");
+      }
+      await until2("left hides it again", () => sideOf("left"), (x) => x.tree.length === 1);
       await vscode.commands.executeCommand("polylog.compareOpenFile", { side: "right", repoId: roots["acme-api"], path: "timeout.go" });
       const tab = await waitFor("a diff", () => {
         const t = vscode.window.tabGroups.activeTabGroup.activeTab;

@@ -1,6 +1,6 @@
 import * as assert from "assert";
 import {
-  bothPaths, COMMIT_PAGE, sameNow, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
+  bothPaths, COMMIT_PAGE, sameNow, shownFiles, tipsDiffArgs, filesArgs, logArgs, mergeBaseArgs, mirror, pairDuplicates, parseFiles, parseRevParse,
   parseSideCount, parseSideLog, pickerGroups, pushRecent, repoCounts, sidePage, repoDescription, revParseArgs, sideCountArgs, summaryLabel, tabTitle, validPair,
   type RepoCompare,
 } from "./compareModel";
@@ -58,6 +58,16 @@ assert.deepStrictEqual(tipsDiffArgs(A, B), ["diff", "--name-only", "-z", "--no-r
 assert.deepStrictEqual([...sameNow(new Set(["retry.go", "limit.go", "a b/c.go"]), ["limit.go", "other.go", ""].join("\0"))].sort(), ["a b/c.go", "retry.go"]);
 assert.deepStrictEqual([...sameNow(new Set(["x.go"]), "")], ["x.go"]);
 console.log("ok - a file changed on both sides but not between the tips is the same now");
+
+{
+  const fs3 = parseFiles(["1\t0\ta.go", "2\t0\tb.go", "3\t0\tc.go", ""].join("\0"));
+  const same = new Set(["b.go"]);
+  assert.deepStrictEqual(shownFiles(fs3, same, true).shown.map((f) => f.path), ["a.go", "c.go"]);
+  assert.strictEqual(shownFiles(fs3, same, true).hidden, 1);
+  assert.deepStrictEqual(shownFiles(fs3, same, false).shown.map((f) => f.path), ["a.go", "b.go", "c.go"]);
+  assert.strictEqual(shownFiles(fs3, same, false).hidden, 0);
+  console.log("ok - Hide Files Already on Both leaves them out and counts them");
+}
 
 assert.deepStrictEqual(logArgs("left", A, B, COMMIT_PAGE), [
   "log", "--left-only", "--cherry-mark", "--no-merges", "--max-count=500", "--format=%m%x1f%H%x1f%P%x1f%ct%x1f%aN%x1f%s%x1e", `${A}...${B}`,
