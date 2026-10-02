@@ -149,6 +149,12 @@ export class CompareSide implements vscode.TreeDataProvider<SNode>, vscode.FileD
       : hit?.result.kind === "error" ? `${hit.repo.name}: git could not compare the branches: ${hit.result.reason}`
       : n === 0 ? this.emptyText() : undefined;
     const ask = this.ask();
+    // Hidden: left as drawn until shown. Emptied while hidden, VS Code keeps the rows it drew and
+    // logs an error for each when a context key changes (the tab closing).
+    if (!this.view.visible) {
+      this.drawn = undefined;
+      return;
+    }
     if (ask === this.drawn) return;
     this.drawn = ask;
     this.emitter.fire(undefined);

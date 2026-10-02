@@ -1252,6 +1252,7 @@ describe("Polylog panel", () => {
     });
     assert.strictEqual((await vscode.workspace.openTextDocument(input.modified)).getText(), "package upload\n");
     await until("the file is highlighted in Changes", (x) => x.changes.focused === "upload.go" && x.changes.items[0]?.startsWith("feat: scaffold api") === true);
+    await until("the file selected in the Changes tree", (x) => x.changes.selected.join() === "upload.go");
     await send({ type: "exitHistory" });
     s = await until("all commits again", (x) => x.history === null);
     assert.strictEqual(s.filter.date, "7d", "closing the history restores the previous date range");

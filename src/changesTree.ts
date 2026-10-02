@@ -27,6 +27,8 @@ export interface ChangesSnapshot {
   decorations: string[];
   /** File history: the highlighted file's label. */
   focused: string | undefined;
+  /** What VS Code has selected in the tree (File History reveals its file). */
+  selected: string[];
 }
 
 const nowSec = () => Math.floor(Date.now() / 1000);
@@ -101,7 +103,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     const focus = rows.find((r) => r.kind === "file" && r.path === s.focusPath);
     if (focus) {
       this.focused = focus;
-      if (this.view.visible) setTimeout(() => void this.view.reveal(focus, { select: true, focus: false }).then(undefined, () => undefined), 0);
+      this.revealSoon(focus);
     }
     return rows;
   }
@@ -157,7 +159,7 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
       const model = n.kind === "file" ? decorationFor(n.file.status) : undefined;
       return d && model ? [`${n.label} ${d.badge} ${model.color}`] : [];
     });
-    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label };
+    return { message: this.message, description: this.view.description ?? "", items: walk(this.roots, 0), schemes, decorations, focused: this.focused?.label, selected: this.view.selection.map((n) => n.label) };
   }
 
   private render(): void {
@@ -193,7 +195,29 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
     if (changed.length > 0) this.decorationsChanged.fire(changed);
     // File history: select the file this history is about, without taking focus from the Log.
     const target = this.focused;
-    if (target && this.view.visible) setTimeout(() => void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined), 0);
+    this.pendingReveal = target;
+  }
+
+  /**
+   * Selects the File History file once VS Code has fetched the folder holding it: revealed any
+   * earlier, or after the tree was redrawn (stepping through commits), VS Code cannot find the
+   * node and logs an error.
+   */
+  private revealSoon(target: NodeDesc): void {
+    this.pendingReveal = target;
+  }
+  private pendingReveal: NodeDesc | undefined;
+
+  /** VS Code has these children: reveal the File History file if it is among them, and still the one shown. */
+  private fetched(children: NodeDesc[]): NodeDesc[] {
+    const target = this.pendingReveal;
+    if (target && children.includes(target)) {
+      this.pendingReveal = undefined;
+      setTimeout(() => {
+        if (this.focused === target) void this.view.reveal(target, { select: true, focus: false }).then(undefined, () => undefined);
+      }, 0);
+    }
+    return children;
   }
 
   /**
@@ -215,10 +239,10 @@ export class ChangesTree implements vscode.TreeDataProvider<NodeDesc>, vscode.Fi
   }
 
   getChildren(node?: NodeDesc): NodeDesc[] | Promise<NodeDesc[]> {
-    if (!node) return this.roots;
+    if (!node) return this.fetched(this.roots);
     if (node.kind === "file") return [];
-    if (this.allFilesActive()) return this.level(node.kind === "commit" ? "" : node.path, node);
-    return node.children;
+    if (this.allFilesActive()) return this.level(node.kind === "commit" ? "" : node.path, node).then((rows) => this.fetched(rows));
+    return this.fetched(node.children);
   }
 
   getTreeItem(node: NodeDesc): vscode.TreeItem {
