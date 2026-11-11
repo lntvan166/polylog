@@ -104,8 +104,23 @@ export function activate(context: vscode.ExtensionContext): void {
   const blame = new BlameView((root, args, signal) => log.countedRun(root, args, signal), () => log.repoList.map((r) => r.root));
   // Group by Repository shows the Repositories pane; on unless the user turned it off.
   void vscode.commands.executeCommand("setContext", HIDE_REPOS_KEY, context.globalState.get<boolean>(HIDE_REPOS_KEY, false));
+  // One click from anywhere to the merged log; `polylog.statusBar` hides it.
+  const statusItem = vscode.window.createStatusBarItem("polylog.statusBar", vscode.StatusBarAlignment.Left, 0);
+  statusItem.name = "Polylog";
+  statusItem.text = "$(history) Polylog";
+  statusItem.tooltip = "Open the merged log of every repository";
+  statusItem.command = "polylog.open";
+  const showStatusItem = () => {
+    if (vscode.workspace.getConfiguration("polylog").get<boolean>("statusBar", true)) statusItem.show();
+    else statusItem.hide();
+  };
+  showStatusItem();
   // Polylog never opens, expands or reveals a view by itself: hiding and collapsing are the user's.
   context.subscriptions.push(
+    statusItem,
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration("polylog.statusBar")) showStatusItem();
+    }),
     // Switching git.path takes effect at once: forget the binary, stop git processes still
     // running on the old one, and read everything again.
     vscode.workspace.onDidChangeConfiguration((e) => {
