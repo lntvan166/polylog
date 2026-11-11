@@ -107,7 +107,7 @@ export function activate(context: vscode.ExtensionContext): void {
   // One click from anywhere to the merged log; `polylog.statusBar` hides it.
   const statusItem = vscode.window.createStatusBarItem("polylog.statusBar", vscode.StatusBarAlignment.Left, 0);
   statusItem.name = "Polylog";
-  statusItem.text = "$(history) Polylog";
+  statusItem.text = "Polylog";
   statusItem.tooltip = "Open the merged log of every repository";
   statusItem.command = "polylog.open";
   const showStatusItem = () => {
