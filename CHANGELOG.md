@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.4.0] — 2026-11-11
+
+### Added
+
+- **A Polylog item in the status bar opens the merged log in one click.** It sits on the
+  left as plain text, next to items like Git Graph, and runs Polylog: Open Merged Log.
+  Turn it off with the new `polylog.statusBar` setting; the change applies without a reload.
+
 ## [1.3.1] — 2026-10-22
 
 ### Fixed
