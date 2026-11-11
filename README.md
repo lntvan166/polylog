@@ -236,6 +236,7 @@ skewed clock can place a commit out of order.
 | `polylog.scanDepth` | `2` | Folder levels to search the workspace folders for repositories, in addition to those the Git extension has open. |
 | `polylog.excludeRepos` | `[]` | Glob patterns for repositories to leave out, matched against the folder name and full path. |
 | `polylog.blame` | `true` | Show who last changed the cursor's line in Polylog's diffs and revisions. |
+| `polylog.statusBar` | `true` | Show a Polylog item in the status bar that opens the merged log. |
 
 ---
 

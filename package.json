@@ -1267,6 +1267,11 @@
           },
           "markdownDescription": "Named groups of repositories for the Repo List, e.g. `{ \"backend\": [\"acme-api\", \"acme-libs\"] }`. Each repository is its path relative to the workspace folder (`.` for the folder itself; in a multi-root workspace, the folder's name first). Saved from the Repo List; clicking a profile ticks its repositories and changes no other filter."
         },
+        "polylog.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a Polylog item in the status bar that opens the merged log."
+        },
         "polylog.blame": {
           "type": "boolean",
           "default": true,
